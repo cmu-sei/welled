@@ -1,0 +1,58 @@
+From 49ecf9eb9f645e4fc3f306b1d30aa3ba7c023cee Mon Sep 17 00:00:00 2001
+From: Adam Welle <arwelle@cert.org>
+Date: Tue, 3 Nov 2015 16:03:44 -0500
+Subject: [PATCH 3/3] mac80211_hwsim: updated to allow any MAC address
+
+get_hwsim_data_ref_from_add() updated to use mac80211_hwsim_addr_match()
+mac80211_hwsim_addr_match() updated
+---
+ drivers/net/wireless/mac80211_hwsim.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/wireless/mac80211_hwsim.c b/drivers/net/wireless/mac80211_hwsim.c
+index 362e38e..268f0c4 100644
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -594,13 +594,15 @@ static void mac80211_hwsim_addr_iter(void *data, u8 *mac,
+ static bool mac80211_hwsim_addr_match(struct mac80211_hwsim_data *data,
+ 				      const u8 *addr)
+ {
+-	struct mac80211_hwsim_addr_match_data md;
++	struct mac80211_hwsim_addr_match_data md = {
++		.ret = false,
++	};
+ 
+-	if (memcmp(addr, data->hw->wiphy->perm_addr, ETH_ALEN) == 0)
++	if (data->scanning && memcmp(addr, data->scan_addr, ETH_ALEN) == 0)
+ 		return true;
+ 
+-	md.ret = false;
+-	md.addr = addr;
++	memcpy(md.addr, addr, ETH_ALEN);
++
+ 	ieee80211_iterate_active_interfaces_atomic(data->hw,
+ 						   IEEE80211_IFACE_ITER_NORMAL,
+ 						   mac80211_hwsim_addr_iter,
+@@ -642,8 +644,7 @@ static void mac80211_hwsim_tx_frame_nl(struct ieee80211_hw *hw,
+ 		goto nla_put_failure;
+ 	}
+ 
+-	if (nla_put(skb, HWSIM_ATTR_ADDR_TRANSMITTER,
+-		    sizeof(struct mac_address), data->addresses[1].addr))
++	if (nla_put(skb, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, hdr->addr2))
+ 		goto nla_put_failure;
+ 
+ 	/* We get the skb->data */
+@@ -1912,8 +1913,7 @@ static struct mac80211_hwsim_data *get_hwsim_data_ref_from_addr(
+ 
+ 	spin_lock_bh(&hwsim_radio_lock);
+ 	list_for_each_entry(data, &hwsim_radios, list) {
+-		if (memcmp(data->addresses[1].addr, addr,
+-			  sizeof(struct mac_address)) == 0) {
++		if (mac80211_hwsim_addr_match(data, addr)) {
+ 			_found = true;
+ 			break;
+ 		}
+-- 
+2.1.4
+

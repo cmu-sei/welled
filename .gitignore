@@ -1,0 +1,6 @@
+.vscode/
+bin/
+*.o
+html/
+latex/
+.*swp

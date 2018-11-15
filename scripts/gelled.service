@@ -1,0 +1,15 @@
+[Unit]
+Description=GPS Emulation Link Layer Exchange Daemon
+Before=gpsd.service
+
+[Service]
+ExecStartPre=modprobe gps dev=ttyUSB pairs=2
+ExecStartPre=chmod 666 /dev/ttyUSB*
+ExecStart=/bin/gelled -d /dev/ttyUSB0
+#ExecStartPost=/bin/gelled-ctrl -y 35 -x 30 -d 0 -k 0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

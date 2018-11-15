@@ -1,0 +1,5 @@
+--- a/external/mac80211/driver_wext.c
++++ b/external/mac80211/driver_wext.c
+@@ -54,1 +55,1 @@ wpa_driver_priv_driver_cmd()
+
++ ret = 0;

@@ -1,0 +1,10 @@
+2.3.0 - wmasterd: Accepts update struct with climb. Removes UDP from all
+    applications since it has never been used. Pulls guestinfo.isolationTag
+    from the VMX file.
+2.2.2 - wmasterd: Parses VMX files on Windows for room ID and Display Name
+2.2.1 - wmasterd: Bug fix links memcpy to glibc 2.2.5 again.
+2.2.0 - wmasterd: Handles old and new guestinfo variable storage methods
+    within the vmx file. Old method was storing themn inside of the annotations
+    field but the new message sets them on their own lines. 
+2.1.3 - wmasterd: Bug fix resulting in performance improvement by resetting
+    timeval structure used by the select() call.

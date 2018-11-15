@@ -1,0 +1,37 @@
+--- a/hardware/libhardware/source/hardware/hardware.c
++++ b/hardware/libhardware/source/hardware/hardware.c
+@@ -214,6 +215,10 @@
+
++ typedef struct welled_module {
++    hw_module_t common;
++    int (*associate_mac)(string mac_address);
++    int (*set_device_info)(int device_id, struct welled_info *info);
++ } welled_module_t;
++
++ struct welled_module HAL_MODULE_INFO_SYM = {
++     .common = {
++         .tag = HARDWARE_MODULE_TAG,
++         .module_api_version = WIFI_MODULE_API_VERSION_0_1,
++         .hal_api_version = HARDWARE_HAL_API_VERSION,
++         .id = WIFI_HARDWARE_MODULE_ID,
++         .name = "Welle-d wifi simulator",
++         .author = "Ben Draffin, CERT at SEI",
++         .methods = &hal_module_methods,
++     },
++ };
++
++ struct welled_hw_device {
++     struct hw_device_t common;
++
++     uint32_t (*get_supported_devices)(const struct welled_hw_device *dev);
++ };
++ typedef struct welled_hw_device welled_hw_device_t;
+
+
+-- a/hardware/libhardware_legacy/wifi/wifi.c
+-- b/hardware/libhardware_legacy/wifi/wifi.c
+@@ -54,1 +54,1 @@ rmmod()
+return 0;
+
+@@ -75,1 +76,1 @@ insmod()
+return 0;

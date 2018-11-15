@@ -1,0 +1,25 @@
+[files]
+.TP
+/bin/wmasterd
+	Executable
+.TP
+/etc/init.d/wmasterd
+	SysVinit Script
+
+[description]
+This is a test
+
+[see also]
+.PP
+\fBwelled\fR(8),
+\fBgelled\fR(8),
+\fBgelled-ctrl\fR(8)
+
+[availability]
+The latest version of this distribution is available on-line from:
+https://github.com/cmu-sei/welle-d
+
+[author]
+.TP
+Adam Welle <arwelle@cert.org>
+

@@ -1,0 +1,11 @@
+Package: welled
+Version: 2.2.1
+Source: welled
+Priority: optional
+Maintainer: Adam Welle <arwelle@cert.org>
+Build-Depends: 
+Standards-Version: 3.9.8
+Homepage: http://www.cert.org
+Architecture: all
+Depends: 
+Description: wireless emulation link layer exchange daemon

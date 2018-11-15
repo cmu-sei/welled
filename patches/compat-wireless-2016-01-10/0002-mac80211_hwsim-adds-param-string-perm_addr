@@ -1,0 +1,73 @@
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -65,6 +65,10 @@ static bool use_hwsim_mon = true;
+ module_param(use_hwsim_mon, bool, 0444);
+ MODULE_PARM_DESC(use_hwsim_mon, "Create and use hwsim0 monitor device");
+ 
++static char perm_addr[18];
++module_param_string(perm_addr, perm_addr, 18, 0444);
++MODULE_PARM_DESC(perm_addr, "Permanent hardware address for first radio");
++
+ /**
+  * enum hwsim_regtest - the type of regulatory tests we offer
+  *
+@@ -120,7 +124,7 @@ MODULE_PARM_DESC(use_hwsim_mon, "Create and use hwsim0 monitor device");
+  * 	5 - strict regulatory domain settings using the third driver regulatory
+  * 	    domain request
+  * 	6 and on - should follow the intersection of the 3rd, 4rth and 5th radio
+- * 	           regulatory requests.
++ * 		   regulatory requests.
+  */
+ enum hwsim_regtest {
+ 	HWSIM_REGTEST_DISABLED = 0,
+@@ -2357,6 +2361,8 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
+ 	enum ieee80211_band band;
+ 	const struct ieee80211_ops *ops = &mac80211_hwsim_ops;
+ 	int idx;
++	int perm_addr_len;
++	int match;
+ 
+ 	if (WARN_ON(param->channels > 1 && !param->use_chanctx))
+ 		return -EINVAL;
+@@ -2395,13 +2401,34 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
+ 	skb_queue_head_init(&data->pending);
+ 
+ 	SET_IEEE80211_DEV(hw, data->dev);
+-	eth_zero_addr(addr);
+-	addr[0] = 0x02;
+-	addr[3] = idx >> 8;
+-	addr[4] = idx;
+-	memcpy(data->addresses[0].addr, addr, ETH_ALEN);
+-	memcpy(data->addresses[1].addr, addr, ETH_ALEN);
+-	data->addresses[1].addr[0] |= 0x40;
++
++	/* convert perm_addr string to mac address */
++	perm_addr_len = strlen(perm_addr);
++
++	if (perm_addr_len == 17) {
++		printk(KERN_DEBUG "mac80211_hwsim: perm_addr %s\n", perm_addr);
++		memset(addr, 0, ETH_ALEN);
++		match = sscanf(perm_addr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
++			&addr[0], &addr[1], &addr[2],
++			&addr[3], &addr[4], &addr[5]);
++		if (match != 6) {
++			printk(KERN_DEBUG "mac80211_hwsim: perm_addr failed\n");
++			goto default_address;
++		}
++		addr[5] += idx;
++		memcpy(data->addresses[0].addr, addr, ETH_ALEN);
++		memcpy(data->addresses[1].addr, addr, ETH_ALEN);
++	} else {
++default_address:
++		printk(KERN_DEBUG "mac80211_hwsim: using default addresses\n");
++		memset(addr, 0, ETH_ALEN);
++		addr[0] = 0x02;
++		addr[3] = idx >> 8;
++		addr[4] = idx;
++		memcpy(data->addresses[0].addr, addr, ETH_ALEN);
++		memcpy(data->addresses[1].addr, addr, ETH_ALEN);
++		data->addresses[1].addr[0] |= 0x40;
++	}
+ 	hw->wiphy->n_addresses = 2;
+ 	hw->wiphy->addresses = data->addresses;
+ 

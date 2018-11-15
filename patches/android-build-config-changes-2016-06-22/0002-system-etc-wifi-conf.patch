@@ -1,0 +1,11 @@
+--- a/kernel/system/etc/wifi/80211_hwsim.conf
++++ b/kernel/system/etc/wifi/80211_hwsim.conf
+@@ -10,1 +11,1 @@
+
+
++ ctrl_interface=wlan0  GROUP=wifi
++ update_config=1
++ ap_scan=0
++ network={
++ key_mgmt=NONE
++ }

@@ -1,0 +1,59 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          welled
+# Required-Start:    $network $syslog $vmware-tools
+# Required-Stop:     $network $syslog $vmware-tools
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start welled
+### END INIT INFO
+
+PATH="/sbin:/bin:/usr/sbin:/usr/bin"
+
+. /lib/lsb/init-functions
+
+DAEMON=/bin/welled
+PIDFILE=/var/run/welled.pid
+OPTS=-a
+
+test -x $DAEMON || exit 5
+
+case "$1" in
+	start)
+		log_daemon_msg "Starting wireless emulation" "welled"
+		modprobe mac80211_hwsim radios=1 use_hwsim_mon=0 perm_addr=42:00:00:00:01:00
+		start-stop-daemon --start --oknodo --make-pidfile --pidfile $PIDFILE --background --exec $DAEMON -- $OPTS
+		log_end_msg $?
+		/bin/gelled-ctrl -y 35 -x 35 -d 0 -k 0
+		;;
+	stop)
+		log_daemon_msg "Stopping wireless emulation" "welled"
+		start-stop-daemon --stop --pidfile $PIDFILE
+		log_end_msg $?
+		rm -f $PIDFILE
+		;;
+	force-reload|restart)
+		$0 stop && sleep 2 && $0 start
+		;;
+	reload)
+		echo "reload not implemented"
+		;;
+	status)
+		status_of_proc $DAEMON "welled"
+		;;
+        enable)
+		/usr/sbin/update-rc.d welled defaults
+        	;;
+        disable)
+                /usr/sbin/update-rc.d welled remove
+        	;;
+	*)
+	echo "Usage: /etc/init.d/welled {start|stop|reload|restart|force-reload|enable|disable}"
+	exit 1
+	;;
+esac
+
+exit 0
+
+# vim: noet ts=8

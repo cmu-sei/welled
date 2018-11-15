@@ -1,0 +1,20 @@
+
+config zone
+	option name		wlan
+	option input		ACCEPT
+	option output		ACCEPT
+	option network		wlan
+	option forward		ACCEPT
+
+config forwarding
+	option dest		lan
+	option src		wlan
+
+config forwarding
+	option dest		wan
+	option src		wlan
+
+config forwarding
+	option dest		wlan
+	option src		lan
+

@@ -1,0 +1,19 @@
+[files]
+.TP
+/bin/gelled-ctrl
+	Executable
+
+[see also]
+.PP
+\fBwmasterd\fR(8),
+\fBwelled\fR(8)
+\fBgelled\fR(8)
+
+[availability]
+The latest version of this distribution is available on-line from:
+https://github.com/cmu-sei/welle-d
+
+[author]
+.TP
+Adam Welle <arwelle@cert.org>
+

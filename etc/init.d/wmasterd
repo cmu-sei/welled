@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# Copyright (c) 2015 Carnegie Mellon University
+#
+# Author: Adam Welle      <arwelle@cert.org>
+#
+# wmasterd:
+#   Start and stop the wmasterd daemon
+#
+# chkconfig: on 90 90
+# description: wireless emulation master daemon
+
+WMASTERD=/bin/wmasterd
+WMASTERD_TAG=wmasterd
+
+case "$1" in
+	start)
+		if [ -z "$(pidof -xs "${WMASTERD}")" ]; then
+			/sbin/watchdog.sh -d -s "${WMASTERD_TAG}" "${WMASTERD} -d -c /wmasterd_nodes"
+			echo "wmasterd started"
+		else
+			echo "wmasterd already running"
+		fi
+	;;
+	stop)
+		if [ -n "$(pidof -xs "${WMASTERD}")" ]; then
+			/sbin/watchdog.sh -k "${WMASTERD_TAG}"
+			pkill -9 "${WMASTERD}"
+		else
+			echo "wmasterd is not running"
+		fi
+	;;
+	status)
+		if [ -n "$(pidof -xs "${WMASTERD}")" ]; then
+			echo "wmasterd is running as $(pidof -xs "${WMASTERD}")"
+			kill -usr1 $(pidof -xs "${WMASTERD}")
+			cat /tmp/wmasterd.status 2>/dev/null
+			rm /tmp/wmasterd.status 2>/dev/null
+			exit 0
+		else
+			echo "wmasterd is not running"
+			exit 3
+		fi
+	;;
+	restart)
+		$0 stop
+		while [ -n "$(pidof -xs "${WMASTERD}")" ];  do
+			sleep 1
+		done
+		$0 start
+	;;
+	reload)
+		$0 restart
+	;;
+        enable)
+                chkconfig wmasterd on
+        ;;
+        disable)
+                chkconfig wmasterd off
+        ;;
+	*)
+		echo "Usage: wmasterd {start|stop|status|reload|restart|enable|disable"
+		exit 1
+	;;
+esac

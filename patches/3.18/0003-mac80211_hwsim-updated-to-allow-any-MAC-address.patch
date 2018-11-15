@@ -1,0 +1,47 @@
+From b0f73fc9e7edafae49ba41e4816343c8a0e43bf9 Mon Sep 17 00:00:00 2001
+From: Adam Welle <arwelle@cert.org>
+Date: Tue, 3 Nov 2015 16:04:02 -0500
+Subject: [PATCH 3/3] mac80211_hwsim: updated to allow any MAC address
+
+get_hwsim_data_ref_from_add() updated to use mac80211_hwsim_addr_match()
+mac80211_hwsim_addr_match() updated
+---
+ drivers/net/wireless/mac80211_hwsim.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/mac80211_hwsim.c b/drivers/net/wireless/mac80211_hwsim.c
+index 7ca40da..ea2e52d 100644
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -818,6 +818,9 @@ static bool mac80211_hwsim_addr_match(struct mac80211_hwsim_data *data,
+ 		.ret = false,
+ 	};
+ 
++	if (data->scanning && memcmp(addr, data->scan_addr, ETH_ALEN) == 0)
++		return true;
++
+ 	memcpy(md.addr, addr, ETH_ALEN);
+ 
+ 	ieee80211_iterate_active_interfaces_atomic(data->hw,
+@@ -887,8 +890,7 @@ static void mac80211_hwsim_tx_frame_nl(struct ieee80211_hw *hw,
+ 		goto nla_put_failure;
+ 	}
+ 
+-	if (nla_put(skb, HWSIM_ATTR_ADDR_TRANSMITTER,
+-		    ETH_ALEN, data->addresses[1].addr))
++	if (nla_put(skb, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, hdr->addr2))
+ 		goto nla_put_failure;
+ 
+ 	/* We get the skb->data */
+@@ -2257,7 +2259,7 @@ static struct mac80211_hwsim_data *get_hwsim_data_ref_from_addr(const u8 *addr)
+ 
+ 	spin_lock_bh(&hwsim_radio_lock);
+ 	list_for_each_entry(data, &hwsim_radios, list) {
+-		if (memcmp(data->addresses[1].addr, addr, ETH_ALEN) == 0) {
++		if (mac80211_hwsim_addr_match(data, addr)) {
+ 			_found = true;
+ 			break;
+ 		}
+-- 
+2.1.4
+

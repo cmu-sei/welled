@@ -1,0 +1,8 @@
+
+config interface 'wlan'
+	option _orig_ifname 'radio0.network1'
+	option _orig_bridge 'false'
+	option proto 'static'
+	option ipaddr '192.168.1.1'
+	option netmask '255.255.255.0'
+

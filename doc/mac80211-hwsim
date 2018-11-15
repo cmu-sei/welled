@@ -1,0 +1,1 @@
+mac80211_hwsim radios=1 use_hwsim_mon=0 perm_addr=00:0c:41:00:00:00

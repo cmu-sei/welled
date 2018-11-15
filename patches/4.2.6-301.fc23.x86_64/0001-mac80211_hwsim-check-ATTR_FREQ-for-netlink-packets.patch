@@ -1,0 +1,37 @@
+From 32a357858565c5c16e425f2d8ed740a88a96ed3c Mon Sep 17 00:00:00 2001
+From: Adam Welle <arwelle@cert.org>
+Date: Thu, 3 Dec 2015 16:15:02 -0500
+Subject: [PATCH] mac80211_hwsim: check ATTR_FREQ for netlink packets
+
+---
+ drivers/net/wireless/mac80211_hwsim.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/wireless/mac80211_hwsim.c b/drivers/net/wireless/mac80211_hwsim.c
+index 99e873d..c129b76 100644
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -2827,10 +2827,16 @@ static int hwsim_cloned_frame_received_nl(struct sk_buff *skb_2,
+ 
+ 	/* A frame is received from user space */
+ 	memset(&rx_status, 0, sizeof(rx_status));
+-	/* TODO: Check ATTR_FREQ if it exists, and maybe throw away off-channel
+-	 * packets?
+-	 */
+-	rx_status.freq = data2->channel->center_freq;
++
++	/* Check ATTR_FREQ if it exists, and throw away off-channel packets */
++	if (info->attrs[HWSIM_ATTR_FREQ]) {
++		rx_status.freq = nla_get_u32(info->attrs[HWSIM_ATTR_FREQ]);
++		if (rx_status.freq != data2->channel->center_freq)
++			goto out;
++	} else {
++		rx_status.freq = data2->channel->center_freq;
++	}
++
+ 	rx_status.band = data2->channel->band;
+ 	rx_status.rate_idx = nla_get_u32(info->attrs[HWSIM_ATTR_RX_RATE]);
+ 	rx_status.signal = nla_get_u32(info->attrs[HWSIM_ATTR_SIGNAL]);
+-- 
+2.5.0
+

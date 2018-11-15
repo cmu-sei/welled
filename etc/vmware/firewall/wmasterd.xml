@@ -1,0 +1,19 @@
+<ConfigRoot>
+  <service id='0000'>
+    <id>wmasterd</id>
+    <rule id='0000'>
+      <direction>inbound</direction>
+      <protocol>udp</protocol>
+      <porttype>dst</porttype>
+      <port>2018</port>
+    </rule>
+    <rule id='0001'>
+      <direction>outbound</direction>
+      <protocol>udp</protocol>
+      <porttype>dst</porttype>
+      <port>2018</port>
+    </rule>
+    <enabled>true</enabled>
+    <required>false</required>
+  </service>
+</ConfigRoot>

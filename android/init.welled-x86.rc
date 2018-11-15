@@ -1,0 +1,31 @@
+# required modules
+on boot
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/vmw_vsock/vsock.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/vmw_vsock/vmw_vsock_vmci_transport.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/wireless/cfg80211.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/mac80211/mac80211.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/drivers/net/wireless/mac80211_hwsim.ko radios=1
+
+on property:vold.post_fs_data_done=1
+    copy /system/etc/wifi/wpa_supplicant.conf /data/misc/wifi/wpa_supplicant.conf
+    chown wifi wifi /data/misc/wifi/wpa_supplicant.conf
+
+# services
+on property:welled.start=daemon
+    setprop welled.start none
+    start welled_prep
+    start welled
+
+on property:welled.stop=daemon
+    setprop welled.stop none
+    stop welled
+
+service welled /system/bin/welled
+    class main
+    seclabel u:r:su:s0
+
+service welled_prep /system/bin/welled_prep
+    oneshot
+    disabled
+
+

@@ -1,0 +1,2 @@
+%_topdir   %(echo PATH)
+%_tmppath  %{_topdir}/tmp

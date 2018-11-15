@@ -1,0 +1,17 @@
+# required modules
+
+on property:vold.post_fs_data_done=1
+   start step-startup
+
+# services
+on property:step-startup.start=daemon
+    setprop step-startup.start none
+    start step-startup
+
+on property:step-startup.stop=daemon
+    setprop step-startup.stop none
+    stop step-startup
+
+service step-startup /system/bin/step-startup.sh
+    oneshot
+    disabled

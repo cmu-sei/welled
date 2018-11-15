@@ -1,0 +1,31 @@
+# required modules
+on boot
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/wireless/cfg80211.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/net/mac80211/mac80211.ko
+    insmod /lib/modules/4.9.31-android-x86/kernel/drivers/net/wireless/mac80211_hwsim.ko radios=1a
+
+    # common socket dirs
+    mkdir /system/etc/wifi 0770 wifi wifi
+    chmod 0770 /system/etc/wifi
+    chmod 0660 /system/etc/wifi/wpa_supplicant.conf
+    chown wifi wifi /system/etc/wifi/wpa_supplicant.conf
+
+    # android socket dirs
+    mkdir /data/misc/wifi 0770 wifi wifi
+    mkdir /data/misc/wifi/sockets 0770 wifi wifi
+    chmod 0770 /data/misc/wifi
+    chmod 0660 /data/misc/wifi/wpa_supplicant.conf
+    chown wifi wifi /data/misc/wifi
+    chown wifi wifi /data/misc/wifi/wpa_supplicant.conf
+
+    # unix socket dirs
+    mkdir /data/system/wpa_supplicant 0771 wifi wifi
+    chmod 0771 /data/system/wpa_supplicant
+    chown wifi wifi /data/system/wpa_supplicant
+
+# service
+service wpa_supplicant /system/bin/wpa_supplicant \
+    -iwlan0 -Dnl80211 \
+    -c/system/etc/wifi/wpa_supplicant.conf
+    class main
+    seclabel u:r:su:s0

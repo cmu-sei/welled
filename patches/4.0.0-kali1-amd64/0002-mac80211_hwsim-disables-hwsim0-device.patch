@@ -1,0 +1,89 @@
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -61,6 +61,10 @@ static bool support_p2p_device = true;
+ module_param(support_p2p_device, bool, 0444);
+ MODULE_PARM_DESC(support_p2p_device, "Support P2P-Device interface type");
+ 
++static bool use_hwsim_mon = true;
++module_param(use_hwsim_mon, bool, 0444);
++MODULE_PARM_DESC(use_hwsim_mon, "Create and use hwsim0 monitor device");
++
+ /**
+  * enum hwsim_regtest - the type of regulatory tests we offer
+  *
+@@ -733,6 +737,9 @@ static void mac80211_hwsim_monitor_rx(struct ieee80211_hw *hw,
+ 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(tx_skb);
+ 	struct ieee80211_rate *txrate = ieee80211_get_tx_rate(hw, info);
+ 
++	if (!use_hwsim_mon)
++		return;
++
+ 	if (!netif_running(hwsim_mon))
+ 		return;
+ 
+@@ -777,6 +784,9 @@ static void mac80211_hwsim_monitor_ack(struct ieee80211_channel *chan,
+ 	u16 flags;
+ 	struct ieee80211_hdr *hdr11;
+ 
++	if (!use_hwsim_mon)
++		return;
++
+ 	if (!netif_running(hwsim_mon))
+ 		return;
+ 
+@@ -3186,26 +3196,28 @@ static int __init init_mac80211_hwsim(void)
+ 			goto out_free_radios;
+ 	}
+ 
+-	hwsim_mon = alloc_netdev(0, "hwsim%d", NET_NAME_UNKNOWN,
++	if (use_hwsim_mon) {
++		hwsim_mon = alloc_netdev(0, "hwsim%d", NET_NAME_UNKNOWN,
+ 				 hwsim_mon_setup);
+-	if (hwsim_mon == NULL) {
+-		err = -ENOMEM;
+-		goto out_free_radios;
+-	}
++		if (hwsim_mon == NULL) {
++			err = -ENOMEM;
++			goto out_free_radios;
++		}
+ 
+-	rtnl_lock();
+-	err = dev_alloc_name(hwsim_mon, hwsim_mon->name);
+-	if (err < 0) {
+-		rtnl_unlock();
+-		goto out_free_radios;
+-	}
++		rtnl_lock();
++		err = dev_alloc_name(hwsim_mon, hwsim_mon->name);
++		if (err < 0) {
++			rtnl_unlock();
++			goto out_free_radios;
++		}
+ 
+-	err = register_netdevice(hwsim_mon);
+-	if (err < 0) {
++		err = register_netdevice(hwsim_mon);
++		if (err < 0) {
++			rtnl_unlock();
++			goto out_free_mon;
++		}
+ 		rtnl_unlock();
+-		goto out_free_mon;
+ 	}
+-	rtnl_unlock();
+ 
+ 	return 0;
+ 
+@@ -3226,7 +3238,10 @@ static void __exit exit_mac80211_hwsim(void)
+ 	hwsim_exit_netlink();
+ 
+ 	mac80211_hwsim_free();
+-	unregister_netdev(hwsim_mon);
++
++	if (hwsim_mon)
++		unregister_netdev(hwsim_mon);
++
+ 	platform_driver_unregister(&mac80211_hwsim_driver);
+ }
+ module_exit(exit_mac80211_hwsim);

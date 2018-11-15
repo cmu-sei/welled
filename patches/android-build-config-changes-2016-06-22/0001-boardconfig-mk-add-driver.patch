@@ -1,0 +1,18 @@
+--- a/kernel/BoardConfig.mk
++++ b/kernel/BoardConfig.mk
+@@ -108,1 +109,1 @@
+
+- BOARD_80211_HW_SIM_DRIVER := ATMEL
++ BOARD_80211_HW_SIM_DRIVER := WELLED
++ WIFI_DRIVER_MODULE_PATH := /etc/welled
++ WIFI_DRIVER_MODULE_NAME := wlan0
+
+
+
+-- a/init.rc
+++ a/init.rc
+@@ -15,1 +16,1 @@
+
++ setprop wifi.interface "wlan0"
++ setprop wlan.driver.status "ok"
++ setprio wifi.firmware /etc/firmware/welled

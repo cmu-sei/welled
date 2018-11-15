@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# /etc/rc.d/init.d/welled
+#
+# <description of the *service*>
+# <any general comments about this init script>
+#
+# <tags -- see below for tag definitions. *Every line* from the top
+# of the file to the end of the tags section must begin with a #
+# character. After the tags section, there should be a blank line.
+# This keeps normal comments in the rest of the file from being
+# mistaken for tags, should they happen to fit the pattern.>
+
+### BEGIN INIT INFO
+# Provides: welled
+# Required-Start: network
+# Defalt-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Description: wireless emulation link layer exchange daemon
+### END INIT INFO
+
+DAEMON=/bin/welled
+ARGS=-a
+
+case "$1" in
+	start)
+                if [ -s /var/run/welled.pid ]; then
+                        echo "welled is running"
+                        exit
+                fi
+		echo -n "Starting welled services: "
+		modprobe mac80211_hwsim radios=1 use_hwsim_mon=0 perm_addr=42:00:00:00:01:00
+		#daemon function
+		$DAEMON $ARGS &
+		pidof welled > /var/run/welled.pid
+		/bin/gelled-ctrl -y 35 -x 35 -d 0 -k 0
+	;;
+	stop)
+		if [ -s /var/run/welled.pid ]; then
+			echo -n "Shutting down welled services: "
+			#killproc function
+			PID=`cat /var/run/welled.pid`
+			kill $PID
+			rm -f /var/run/welled.pid
+			exit
+		else
+			echo "welled not running"
+			exit
+		fi
+	;;
+	status)
+		#status function
+		if [ -s /var/run/welled.pid ]; then
+			echo "welled is running"
+		else
+			echo "welled not running"
+                fi
+		exit
+	;;
+	restart)
+		$0 stop; $0 start
+	;;
+	reload)
+		#kill -HUP
+		$0 stop; $0 start
+	;;
+	probe)
+		echo "Not implemented"
+		exit
+	;;
+        enable)
+                chkconfig welled on
+        ;;
+        disable)
+                chkconfig welled off
+        ;;
+	*)
+		echo "Usage: welled {start|stop|status|reload|restart|enable|disable[|probe]"
+		exit 1
+	;;
+esac

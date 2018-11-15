@@ -1,0 +1,7 @@
+
+config dhcp 'wlan'
+	option start '100'
+	option leasetime '12h'
+	option interface 'wlan'
+	option limit '50'
+

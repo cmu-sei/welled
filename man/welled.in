@@ -1,0 +1,35 @@
+[files]
+.TP
+/bin/welled
+	Executable
+.TP
+/etc/init.d/welled
+	SysVinit Script
+.TP
+/lib/systemd/system/welled.path
+	systemd unit file
+.TP
+/lib/systemd/system/welled.service
+	systemd unit file
+
+[see also]
+.PP
+\fBwmasterd\fR(8),
+\fBgelled\fR(8),
+\fBgelled-ctrl\fR(8),
+\fBmodprobe\fR(8),
+\fBlsmod\fR(8),
+\fBmodinfo\fR(8),
+\fBinsmod\fR(8),
+\fBrmmod\fR(8),
+\fBwpa_supplicant\fR(8),
+\fBhostapd\fR(8)
+
+[availability]
+The latest version of this distribution is available on-line from:
+https://github.com/cmu-sei/welle-d
+
+[author]
+.TP
+Adam Welle <arwelle@cert.org>
+

@@ -1,0 +1,5 @@
+--- a/external/net/80211/Android.mk
++++ a/external/net/80211/Android.mk
+@@ -43,1 +43,1 @@
+
++ 80211_HW_SIM_BUILD := TRUE

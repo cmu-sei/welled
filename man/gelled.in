@@ -1,0 +1,27 @@
+[files]
+.TP
+/bin/gelled
+	Executable
+.TP
+/etc/init.d/gelled
+	SysVinit Script
+.TP
+/lib/systemd/system/gelled.path
+	systemd unit file
+.TP
+/lib/systemd/system/gelled.service
+	systemd unit file
+
+[see also]
+.PP
+\fBwmasterd\fR(8),
+\fBgelled\fR(8),
+\fBgelled-ctrl\fR(8)
+
+[availability]
+The latest version of this distribution is available on-line from:
+https://github.com/cmu-sei/welle-d
+
+[author]
+Adam Welle <arwelle@cert.org>
+
