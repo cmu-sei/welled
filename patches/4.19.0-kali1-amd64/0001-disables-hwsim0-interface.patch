@@ -1,0 +1,66 @@
+From df87d23e2504467bab99ef0efce8f7eaaabe078e Mon Sep 17 00:00:00 2001
+From: Adam Welle <arwelle@cert.org>
+Date: Wed, 27 Feb 2019 13:29:01 -0500
+Subject: [PATCH 1/2] disables hwsim0 interface
+
+---
+ drivers/net/wireless/mac80211_hwsim.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/mac80211_hwsim.c b/drivers/net/wireless/mac80211_hwsim.c
+index 4ca6592f..2015be46 100644
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -64,6 +64,10 @@ static bool support_p2p_device = true;
+ module_param(support_p2p_device, bool, 0444);
+ MODULE_PARM_DESC(support_p2p_device, "Support P2P-Device interface type");
+ 
++static bool use_hwsim_mon = true;
++module_param(use_hwsim_mon, bool, 0444);
++MODULE_PARM_DESC(use_hwsim_mon, "Create and use hwsim0 monitor device");
++
+ /**
+  * enum hwsim_regtest - the type of regulatory tests we offer
+  *
+@@ -860,6 +864,8 @@ static void mac80211_hwsim_monitor_rx(struct ieee80211_hw *hw,
+ 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(tx_skb);
+ 	struct ieee80211_rate *txrate = ieee80211_get_tx_rate(hw, info);
+ 
++	if(!use_hwsim_mon)
++		return;
+ 	if (WARN_ON(!txrate))
+ 		return;
+ 
+@@ -907,6 +913,8 @@ static void mac80211_hwsim_monitor_ack(struct ieee80211_channel *chan,
+ 	u16 flags;
+ 	struct ieee80211_hdr *hdr11;
+ 
++	if(!use_hwsim_mon)
++		return;
+ 	if (!netif_running(hwsim_mon))
+ 		return;
+ 
+@@ -3800,6 +3808,9 @@ static int __init init_mac80211_hwsim(void)
+ 			goto out_free_radios;
+ 	}
+ 
++	if(!use_hwsim_mon)
++		return 0;
++
+ 	hwsim_mon = alloc_netdev(0, "hwsim%d", NET_NAME_UNKNOWN,
+ 				 hwsim_mon_setup);
+ 	if (hwsim_mon == NULL) {
+@@ -3851,7 +3862,9 @@ static void __exit exit_mac80211_hwsim(void)
+ 	flush_workqueue(hwsim_wq);
+ 
+ 	rhashtable_destroy(&hwsim_radios_rht);
+-	unregister_netdev(hwsim_mon);
++
++	if(hwsim_mon)
++		unregister_netdev(hwsim_mon);
+ 	platform_driver_unregister(&mac80211_hwsim_driver);
+ 	unregister_pernet_device(&hwsim_net_ops);
+ 	destroy_workqueue(hwsim_wq);
+-- 
+2.19.1
+

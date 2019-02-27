@@ -88,7 +88,6 @@ cd linux-source-4.9
 git init
 git add .
 git commit -m "initial commit"
-git apply ~/welled/patches/$(uname -r)/*
 ```
 Now, it is expected that the patches will fail to apply when you attempt to do
 this with a new kernel version. You will then need to manually adjust the code
@@ -98,15 +97,21 @@ file to get added to our repo.
 cd /usr/src/linux-source-4.9/
 cp /lib/modules/$(uname -r)/build/.config .config
 cp /lib/modules/$(uname -r)/build/Module.symvers Module.symvers
-cp /lib/modules/$(uname -r)/build/include/generated/utsrelease.h include/generated/utsrelease.h
 make oldconfig && make prepare && make modules_prepare
-make -j4 modules SUBDIRS=drivers/net/wireless/
+cp /lib/modules/$(uname -r)/build/include/generated/utsrelease.h include/generated/utsrelease.h
+make -j4 modules M=drivers/net/wireless/
 ```
 If that compiles `mac80211_hwsim.ko` successfully, attempt to install it:
 ```
 insmod ./drivers/net/wireless/mac80211_hwsim.ko
 ```
-Now generate the patch:
+If that worked, attempt to apply the exsting patches:
+```
+git apply ~/welled/patches/$(uname -r)/*
+```
+If that worked, you are good to go. If not, attempt to apply the patches one by
+one, making any modifications as needed.
+To generate a new patch:
 ```
 git add drivers/net/wireless/mac80211_hwsim.c
 git commit -m "patch description"

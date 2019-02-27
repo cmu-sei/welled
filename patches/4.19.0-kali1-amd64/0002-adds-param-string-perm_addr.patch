@@ -1,0 +1,47 @@
+From 4aa165392818feed35afe897859d4494548dbd53 Mon Sep 17 00:00:00 2001
+From: Adam Welle <arwelle@cert.org>
+Date: Wed, 27 Feb 2019 14:59:03 -0500
+Subject: [PATCH 2/2] adds param string perm_addr
+
+---
+ drivers/net/wireless/mac80211_hwsim.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/mac80211_hwsim.c b/drivers/net/wireless/mac80211_hwsim.c
+index 2015be46..3f2973a5 100644
+--- a/drivers/net/wireless/mac80211_hwsim.c
++++ b/drivers/net/wireless/mac80211_hwsim.c
+@@ -68,6 +68,10 @@ static bool use_hwsim_mon = true;
+ module_param(use_hwsim_mon, bool, 0444);
+ MODULE_PARM_DESC(use_hwsim_mon, "Create and use hwsim0 monitor device");
+ 
++static char perm_addr[18];
++module_param_string(perm_addr, perm_addr, 18, 0444);
++MODULE_PARM_DESC(perm_addr, "Permanent hardware address for first radio");
++
+ /**
+  * enum hwsim_regtest - the type of regulatory tests we offer
+  *
+@@ -3732,7 +3736,18 @@ static int __init init_mac80211_hwsim(void)
+ 
+ 	for (i = 0; i < radios; i++) {
+ 		struct hwsim_new_radio_params param = { 0 };
+-
++		u8 u8_mac[ETH_ALEN];
++
++		eth_zero_addr(u8_mac);
++		sscanf(perm_addr, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
++				&u8_mac[0],
++				&u8_mac[1],
++				&u8_mac[2],
++				&u8_mac[3],
++				&u8_mac[4],
++				&u8_mac[5]);
++		u8_mac[5] += i;
++		param.perm_addr = u8_mac;
+ 		param.channels = channels;
+ 
+ 		switch (regtest) {
+-- 
+2.19.1
+
