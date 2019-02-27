@@ -374,6 +374,12 @@ Be advised this this script will default to enabled distance mode with `-d` and
 also will enabled a "cache" file that stores the location of each `welled`
 client into `/wmasterd_nodes`.
 
+## Installing wmasterd on ESXi with a VIB
+```
+esxcli software acceptance set --level=CommunitySupported
+esxcli software vib install -d /CMU-wmasterd-2.3.0-offline_bundle.zip
+```
+
 ## Building wmasterd for Windows
 You can compile `wmasterd` for Windows as well. This can be done to allow the
 use of `welled` with VMCI Sockets on a Windows laptop which has VMWare

@@ -1,0 +1,14 @@
+<vendorList>
+  <vendor>
+    <name>Carnegie Mellon University</name>
+    <code>CMU</code>
+    <indexfile>vendor-index.xml</indexfile>
+    <patchUrl></patchUrl>
+    <relativePath></relativePath>
+    <content>
+      <name>VMware ESX</name>
+      <type>http://www.vmware.com/depotmanagement/esx</type>
+    </content>
+  </vendor>
+</vendorList>
+

@@ -304,6 +304,54 @@ esx: wmasterd-esx
 	cp ../../wmasterd_$(VERSION)_esx.tar.bz2 ../dist/esx/
 	rm ../wmasterd.tgz
 
+vib0: wmasterd-esx
+	mkdir -p ../usr/lib/vmware/wmasterd/bin/
+	cp ../bin/wmasterd ../usr/lib/vmware/wmasterd/bin/wmasterd
+	chmod 775 ../usr/lib/vmware/wmasterd/bin/wmasterd
+	cd ..; tar --owner=0 --group=0 -cvf stage.vtar usr/ etc/; cd -
+	cd ..; gzip -c stage.vtar > wmasterd; cd -
+
+#TODO release-date needed by ./descriptor.xml and ./vibs/wmasterd-$(VERSION)-$(DATE).xml
+vib: RELEASEDATE=$(shell date -u +%FT%T.000000%:z)
+vib: vib0
+	test -d VIB/ || rm -rf VIB/
+	cp -pr ../VIB .
+	mkdir -p VIB/vib20/wmasterd/
+	cp ../metadata/descriptor.tmp ../descriptor.xml
+	sed -i "s/VERSION/$(VERSION)/g" ../descriptor.xml
+	sed -i "s/SIZE/$(shell stat --format %s ../stage.vtar)/" ../descriptor.xml
+	sed -i "s/SHA256/$(shell sha256sum ../wmasterd | cut -f 1 -d ' ')/" ../descriptor.xml
+	sed -i "s/SHA1/$(shell sha1sum ../stage.vtar | cut -f 1 -d ' ')/" ../descriptor.xml
+	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../descriptor.xml
+	cd ..; ar r CMU_bootbank_wmasterd_$(VERSION).vib descriptor.xml sig.pkcs7 wmasterd; cd -
+	cp ../CMU_bootbank_wmasterd_$(VERSION).vib ../../
+	cp ../CMU_bootbank_wmasterd_$(VERSION).vib ../dist/esx/
+	mv ../CMU_bootbank_wmasterd_$(VERSION).vib VIB/vib20/wmasterd/
+	rm ../descriptor.xml
+	cp ../metadata/vibs/wmasterd.xml ../metadata/vibs/wmasterd.tmp
+	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../metadata/vibs/wmasterd.tmp
+
+offline-bundle: DATE=$(shell date +%s)
+offline-bundle: vib
+	cp ../metadata/bulletins/wmasterd.xml ../metadata/bulletins/wmasterd-$(VERSION).xml
+	sed -i "s/VERSION/$(VERSION)/g" ../metadata/bulletins/wmasterd-$(VERSION).xml
+	mv ../metadata/vibs/wmasterd.tmp ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/VERSION/$(VERSION)/g" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/VIBSIZE/$(shell stat --format %s VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib)/g" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/VIBSHA256/$(shell sha256sum VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib | cut -f 1 -d ' ')/g" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/SIZE/$(shell stat --format %s ../stage.vtar)/" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/SHA256/$(shell sha256sum ../wmasterd | cut -f 1 -d ' ')/" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	sed -i "s/SHA1/$(shell sha1sum ../stage.vtar | cut -f 1 -d ' ')/" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
+	cp ../metadata/vmware.tmp ../metadata/vmware.xml
+	sed -i "s/VERSION/$(VERSION)/g" ../metadata/vmware.xml
+	sed -i "s/VIBSIZE/$(shell stat --format %s VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib)/g" ../metadata/vmware.xml
+	sed -i "s/VIBSHA256/$(shell sha256sum VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib | cut -f 1 -d ' ')/g" ../metadata/vmware.xml
+	cd ../metadata; zip -r ../metadata.zip vmware.xml vendor-index.xml bulletins/wmasterd-$(VERSION).xml vibs/wmasterd-$(VERSION)-$(DATE).xml; cd -
+	mv ../metadata.zip VIB/
+	cd VIB/; zip -r ../../../CMU-wmasterd-$(VERSION)-offline_bundle.zip index.xml vendor-index.xml metadata.zip vib20/; cd -
+	cp ../../CMU-wmasterd-$(VERSION)-offline_bundle.zip ../dist/esx/
+	rm -rf VIB ../wmasterd ../metadata/vmware.xml ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml ../metadata/bulletins/wmasterd-$(VERSION).xml ../stage.vtar
+
 doc:
 	cd ..; doxygen Doxyfile; cd -
 
