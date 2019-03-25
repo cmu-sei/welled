@@ -263,9 +263,9 @@ void update_cache_file_info(struct client *node)
 	matched = 0;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
-		ret = sscanf(buf, "%u ", &cid);
+		ret = sscanf(buf, "%d ", &cid);
 
-		if (ret != 2) {
+		if (ret != 1) {
 			if (verbose)
 				printf("wmasterd: error: did not parseline for '%s'\n", buf);
 		} else if (cid == node->cid) {
@@ -289,7 +289,8 @@ void update_cache_file_info(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		printf("wmasterd: error no match for node in cache file\n");
+		printf("wmasterd: error no match for node %d in cache file\n",
+				node->cid);
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -324,9 +325,9 @@ void update_cache_file_location(struct client *node)
 	matched = 0;
 	
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
-		ret = sscanf(buf, "%u ", &cid);
+		ret = sscanf(buf, "%d ", &cid);
 
-		if (ret != 2) {
+		if (ret != 1) {
 			if (verbose)
 				printf("wmasterd: error: did not parseline for '%s'\n", buf);
 		} else if (cid == node->cid) {
@@ -350,7 +351,8 @@ void update_cache_file_location(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		printf("wmasterd: error no match for node in cache file\n");
+		printf("wmasterd: error no match for node %d in cache file\n",
+				node->cid);
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -553,13 +555,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 	}
 
 	/* do not update location if device is not moving */
-	if (node->loc.velocity == 0) {
-		if (verbose) {
-			printf("wmasterd: no update required for %s\n",
-				node->name);
-		}
-		return;
-	} else if (verbose) {
+	if ((node->loc.velocity != 0) && verbose) {
 		printf("wmasterd: updating location due to velocity %f\n",
 			node->loc.velocity);
 	}
@@ -1784,12 +1780,14 @@ void update_node_info(struct client *node, struct update_2 *data)
 
 	/* TODO make sure we dont lose existing name */
 
-	if (strnlen(data->name, NAME_LEN) > 0) {
+	if ((strnlen(data->name, NAME_LEN) > 0) &&
+			(strnlen(data->name, NAME_LEN) > 0)) {
 		strncpy(node->name, data->name, NAME_LEN - 1);
 		update_file = 1;
 	}
 
-	if ((strncmp(node->room, data->room, UUID_LEN - 1) != 0)) {
+	if ((strnlen(data->room, UUID_LEN) > 0) &&
+			(strncmp(node->room, data->room, UUID_LEN - 1) != 0)) {
 		strncpy(node->room, data->room, UUID_LEN - 1);
 		update_file = 1;
 	}
@@ -1972,6 +1970,7 @@ void recv_from_welled_vmci(void)
 			data_2.altitude = data_1.altitude;
 			data_2.velocity = data_1.velocity;
 			data_2.heading = data_1.heading;
+			snprintf(data_2.room, UUID_LEN, "%d", data_1.room_id);
 			strncpy(data_2.name, data_1.name, NAME_LEN - 1);
 			data_2.cid = data_1.cid;
 		} else if (bytes == (sizeof(struct update_2) + 7)) {
