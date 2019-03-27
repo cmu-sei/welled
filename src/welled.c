@@ -1201,7 +1201,9 @@ void recv_from_master(void)
 				20 * log10(2412) +
 				32.44 - gain_tx - gain_rx;
 		}
-		printf("loss: %f\n", loss);
+		if (verbose) {
+			printf("loss: %f\n", loss);
+		}
 
 		signal = -10 - loss;
 		rate_idx = 0;
