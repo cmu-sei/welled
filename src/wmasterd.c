@@ -252,9 +252,6 @@ void update_cache_file_info(struct client *node)
 	if (!cache)
 		return;
 
-	if (verbose)
-		printf("wmasterd: updating cache file for node info\n");
-
 	pthread_mutex_lock(&file_mutex);
 
 	fseek(cache_fp, 0, SEEK_SET);
@@ -1205,6 +1202,11 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 		if (room_found)
 			break;
 	}
+	if (!room_found) {
+		strncpy(room, "0", 2);
+		if (verbose)
+			printf("wmasterd: no room found for %d\n", srchost);
+	}
 
 #ifdef _WIN32
 	ret = _pclose(pipe);
@@ -1274,12 +1276,12 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 		/* TODO: update the cache file to include alt and climb */
 
 		while (((fgets(buf, 1024, cache_fp)) != NULL) && (!matched)) {
-			ret = sscanf(buf, "%u %s %lf %lf %lf %lf %lf %lf %s",
+			ret = sscanf(buf, "%d %s %lf %lf %lf %lf %lf %lf %s",
 				&cid, room, &lat, &lon, &alt, &sog, &cog, &clm, name);
 			if ((ret != 8) && (ret != 9)) {
 				printf("wmasterd: error did not parseline for '%s'\n", buf);
 				printf("only matched %d variables:\n", ret);
-				printf("cid:  %u\n", cid);
+				printf("cid:  %d\n", cid);
 				printf("room: %s\n", room);
 				printf("lat:  %f\n", lat);
 				printf("lon:  %f\n", lon);
@@ -1420,7 +1422,7 @@ struct client *search_node_name(char *name)
 
 void print_node(struct client *node)
 {
-	printf("%u\n", node->cid);
+	printf("%d\n", node->cid);
 	printf("%s\n", node->name);
 	printf("%s\n", node->room);
 	printf("%d\n", node->time);
@@ -1646,7 +1648,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 	now = time(NULL);
 
 	if (verbose)
-		printf("wmasterd: src room is %s\n", node->room);
+		printf("wmasterd: sending to nodes in room %s\n", node->room);
 
 	while (curr != NULL) {
 		age = now - curr->time;
@@ -1712,8 +1714,12 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 				sizeof(struct sockaddr));
 		}
 		if (bytes_sent < 0) {
-			if (verbose)
+			if (verbose) {
 				sock_error("wmasterd: sendto");
+				printf("wmasterd: name %s cid %d bytes %d\n",
+						curr->name, curr->cid, bytes + 12);
+				print_node(curr);
+			}
 			/* since powering off a VM results in this error
 			 * we should remove the node from list
 			 */
@@ -1722,7 +1728,8 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 			curr = temp;
 		} else {
 			if (verbose)
-				printf("wmasterd: sent %d bytes to node: %11d room: %s\n", bytes, curr->cid, curr->room);
+				printf("wmasterd: sent %d bytes to node: %11d room: %s\n",
+						bytes, curr->cid, curr->room);
 
 			curr = curr->next;
 		}
