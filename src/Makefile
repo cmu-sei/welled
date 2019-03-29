@@ -405,6 +405,7 @@ debian:
 	cp ../scripts/welled.path welled-$(VERSION)/lib/systemd/system/
 	cp ../scripts/welled.service welled-$(VERSION)/lib/systemd/system/
 	cp ../scripts/gelled.service welled-$(VERSION)/lib/systemd/system/gelled.service
+	cp ../scripts/gelled.path welled-$(VERSION)/lib/systemd/system/gelled.path
 	cp ../doc/welled.conf welled-$(VERSION)/etc/
 	cp ../man/welled.8.gz welled-$(VERSION)/usr/share/man/man8/
 	cp ../man/gelled.8.gz welled-$(VERSION)/usr/share/man/man8/
@@ -455,9 +456,11 @@ rpm:
 	install -m 755 ../bin/welled welled-$(VERSION)/bin/
 	install -m 755 ../bin/gelled welled-$(VERSION)/bin/
 	install -m 755 ../bin/gelled-ctrl welled-$(VERSION)/bin/
+	install -m 755 ../bin/gelled-gui welled-$(VERSION)/bin/
 	install -m 755 ../scripts/welled.path welled-$(VERSION)/lib/systemd/system/
 	install -m 755 ../scripts/welled.service welled-$(VERSION)/lib/systemd/system/
 	install -m 755 ../scripts/gelled.service welled-$(VERSION)/lib/systemd/system/gelled.service
+	install -m 755 ../scripts/gelled.path welled-$(VERSION)/lib/systemd/system/gelled.path
 	install -m 644 ../doc/welled.conf welled-$(VERSION)/etc/
 	install -m 444 ../man/welled.8.gz welled-$(VERSION)/usr/local/share/man/man8/
 	install -m 444 ../man/gelled.8.gz welled-$(VERSION)/usr/local/share/man/man8/
