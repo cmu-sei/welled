@@ -484,10 +484,6 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if (data->heading != -1)
 			node->loc.heading = data->heading;
 
-		/* update altitude */
-		if (data->altitude != -1)
-			node->loc.altitude = data->altitude;
-
 		/* update climb angle */
 		if (data->climb != -1)
 			node->loc.climb = data->climb;
@@ -505,6 +501,13 @@ void update_node_location(struct client *node, struct update_2 *data)
 		else
 			printf("wmasterd: invalid longitude: %f\n",
 				data->longitude);
+
+		/* update altitude */
+                if (data->altitude != -1)
+                        node->loc.altitude = data->altitude;
+                else
+                        printf("wmasterd: invalid altitude: %f\n",
+                                data->altitude);
 
 		/* correct bad values */
 		if (isnan(node->loc.heading)) {

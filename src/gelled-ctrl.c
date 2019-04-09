@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
 	#endif
 
 options:
-	while ((opt = getopt_long(argc, argv, "hVv:y:x:a:k:d:f:n:",
+	while ((opt = getopt_long(argc, argv, "hVvy:x:a:k:d:f:n:",
 			long_options, &long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -346,6 +346,7 @@ options:
 		if (verbose) {
 			printf("latitude:  %f\n", data.latitude);
 			printf("longitude: %f\n", data.longitude);
+			printf("altitude:  %f\n", data.altitude);
 			printf("velocity:  %f\n", data.velocity);
 			printf("heading:   %f\n", data.heading);
 			printf("climb:     %f\n", data.climb);
