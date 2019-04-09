@@ -119,62 +119,18 @@ define Package/welled/install
 	$(INSTALL_DIR) $(1)/etc/init.d/
 	$(INSTALL_BIN) ./scripts/init-welled-openwrt $(1)/etc/init.d/welled
 	$(INSTALL_DIR) $(1)/etc/config/
-	$(INSTALL_DATA) ./doc/wireless $(1)/etc/config/
-	#$(INSTALL_DATA) ./doc/network $(1)/etc/config/
-	#$(INSTALL_DATA) ./doc/dhcp $(1)/etc/config/
-	#$(INSTALL_DATA) ./doc/firewall $(1)/etc/config/
-	$(INSTALL_DATA) ./doc/welled.conf $(1)/etc/
-	$(INSTALL_DIR) $(1)/etc/modules.d/
-	$(INSTALL_DATA) ./doc/mac80211-hwsim $(1)/etc/modules.d/
+	$(INSTALL_DATA) ./doc/wireless $(1)/etc/config/wireless-example
+	$(INSTALL_DATA) ./doc/network $(1)/etc/config/network-example
+	$(INSTALL_DATA) ./doc/dhcp $(1)/etc/config/dhcp-example
+	$(INSTALL_DATA) ./doc/firewall $(1)/etc/config/firewall-example
+	$(INSTALL_DATA) ./doc/welled.conf $(1)/etc/welled.conf-example
+	#$(INSTALL_DIR) $(1)/etc/modules.d/
+	#$(INSTALL_DATA) ./doc/mac80211-hwsim $(1)/etc/modules.d/
 endef
 
 # Configure the package after install
-define Package/welled/postinst
-#!/bin/sh
-if [ -z "$${IPKG_INSTROOT}" ]; then
-	echo "Updating network settings"
-	cat <<EOF>> /etc/config/network
-config interface 'wlan'
-	option _orig_ifname 'radio0.network1'
-	option _orig_bridge 'false'
-	option proto 'static'
-	option ipaddr '192.168.2.1'
-	option netmask '255.255.255.0'
-EOF
-	echo "Updating firewall settings"
-	cat <<EOF>> /etc/config/firewall
-config zone
-	option name		wlan
-	option input		ACCEPT
-	option output		ACCEPT
-	option network		wlan
-	option forward		ACCEPT
-
-config forwarding
-	option dest		lan
-	option src		wlan
-
-config forwarding
-	option dest		wan
-	option src		wlan
-
-config forwarding
-	option dest		wlan
-	option src		lan
-EOF
-        echo "Updating dhcp settings"
-        cat <<EOF>> /etc/config/dhcp
-config dhcp 'wlan'
-	option start '100'
-	option leasetime '12h'
-	option interface 'wlan'
-	option limit '50'
-EOF
-	echo "Enabling rc.d symlink for welled"
-	/etc/init.d/welled enable
-fi
-exit 0
-endef
+#define Package/welled/postinst
+#endef
 
 # Clean up prior to package removal
 define Package/welled/prerm
