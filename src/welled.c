@@ -104,10 +104,6 @@ int nlmsg_end;
 struct nl_sock *sock;
 /** pointer for netlink callback function */
 struct nl_cb *cb;
-/** pointer for netlink cache */
-struct nl_cache *cache;
-/** pointer for netlink family */
-struct genl_family *family;
 /** For the family ID used by hwsim */
 int family_id;
 /** FD for vmci send */
@@ -227,11 +223,9 @@ void free_mem(void)
 	free_list();
 	pthread_mutex_unlock(&list_mutex);
 
-	nl_cache_free(cache);
 	nl_close(sock);
 	nl_socket_free(sock);
 	nl_cb_put(cb);
-	free(family);
 }
 
 /**
@@ -301,8 +295,10 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 		printf("Error allocating new message MSG!\n");
 		goto out;
 	}
+	if (family_id < 0)
+		goto out;
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, genl_family_get_id(family),
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER,
@@ -414,8 +410,10 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 		printf("Error allocating new message MSG!\n");
 		goto out;
 	}
+	if (family_id < 0)
+		goto out;
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, genl_family_get_id(family),
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_TX_INFO_FRAME, VERSION_NR);
 
 	/* i have to ack the src the driver expects
@@ -873,24 +871,14 @@ int init_netlink(void)
 	/* disable auto-ack from kernel to reduce load */
 	nl_socket_disable_auto_ack(sock);
 	genl_connect(sock);
-	genl_ctrl_alloc_cache(sock, &cache);
-	if (!cache) {
-		printf("Error allocationg netlink cache");
-		running = 0;
-		return 0;
-	}
 
-	family = genl_ctrl_search_by_name(cache, "MAC80211_HWSIM");
+	family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 
-	if (!family)
-		printf("Family MAC80211_HWSIM not registered\n");
-
-	while (!family && running) {
-		nl_cache_free(cache);
-		genl_ctrl_alloc_cache(sock, &cache);
-		if (!cache)
-			perror("null cache\n");
-		family = genl_ctrl_search_by_name(cache, "MAC80211_HWSIM");
+	while ((family_id < 0) && running) {
+		if (verbose)
+			printf("Family MAC80211_HWSIM not registered\n");
+		sleep(1);
+		family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 	}
 
 	nl_cb_set(cb, NL_CB_MSG_IN, NL_CB_CUSTOM, process_messages_cb, NULL);
@@ -916,7 +904,6 @@ int send_register_msg(void)
 {
 	struct nl_msg *msg;
 
-	family_id = 0;
 	msg = nlmsg_alloc();
 
 	if (!msg) {
@@ -924,7 +911,10 @@ int send_register_msg(void)
 		return -1;
 	}
 
-	family_id = genl_family_get_id(family);
+	if (family_id < 0) {
+		nlmsg_free(msg);
+		return -1;
+	}
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
@@ -983,7 +973,10 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	 * the hwsim driver on another system? maybe not as long as it
 	 * shows up in a tcpdump
 	 */
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, genl_family_get_id(family),
+	if (family_id < 0)
+		goto out;
+
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	/* set source address */
@@ -1357,6 +1350,7 @@ void *process_master(void *arg)
 	while (running) {
 		recv_from_master();
 	}
+	printf("process_master returning\n");
 	return ((void *)0);
 }
 
@@ -1563,6 +1557,8 @@ void *monitor_devices(void *arg)
 		else
 			continue;
 	}
+
+	printf("monitor_devices returning\n");
 	return ((void *)0);
 }
 
@@ -1617,6 +1613,7 @@ void *send_status(void *arg)
 
 	free(msg);
 
+	printf("send_status returning\n");
 	return ((void *)0);
 }
 
@@ -1627,9 +1624,7 @@ void *send_status(void *arg)
  */
 void *monitor_hwsim(void *arg)
 {
-	struct nl_cache *cache2;
 	struct nl_sock *sock2;
-	struct genl_family *family2;
 
 	sock2 = nl_socket_alloc();
 	genl_connect(sock2);
@@ -1637,16 +1632,11 @@ void *monitor_hwsim(void *arg)
 	while (running) {
 
 		sleep(1);
+		family_id = genl_ctrl_resolve(sock2, "MAC80211_HWSIM");
 
-		/* do we need to update the cache? */
-		genl_ctrl_alloc_cache(sock2, &cache2);
-		if (!cache2)
-			perror("null cache\n");
+		if (family_id < 0) {
+			printf("Driver has been unloaded\n");
 
-		family2 = genl_ctrl_search_by_name(cache2, "MAC80211_HWSIM");
-
-		if (!family2) {
-			/* driver has been unloaded */
 			/*  we call init_netlink which returns when back up */
 			pthread_mutex_lock(&hwsim_mutex);
 			if (!init_netlink())
@@ -1655,15 +1645,12 @@ void *monitor_hwsim(void *arg)
 			if (send_register_msg() == 0)
 				printf("Registered with family MAC80211_HWSIM\n");
 			pthread_mutex_unlock(&hwsim_mutex);
-		} else {
-			/* driver still active */
-			free(family2);
-		}/*
-		nl_cache_free(cache2);
-		nl_close(sock2);
-		nl_socket_free(sock2);
-*/
+		}
 	}
+	nl_close(sock2);
+	nl_socket_free(sock2);
+
+	printf("monitor_hwsim returning\n");
 	return ((void *)0);
 }
 
@@ -1933,6 +1920,8 @@ int main(int argc, char *argv[])
 	long_index = 0;
 	err = 0;
 	ioctl_fd = 0;
+	cid = 0;
+	family_id = -1;
 
 	/* TODO: Send syslog message indicating start time */
 
@@ -2110,8 +2099,6 @@ int main(int argc, char *argv[])
 	}
 
 	/* code below here executes after signal */
-
-	printf("Shutting down...\n");
 
 	pthread_join(dev_tid, NULL);
 	pthread_join(hwsim_tid, NULL);
