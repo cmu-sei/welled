@@ -352,6 +352,12 @@ cd src
 make esx
 ```
 
+## Building wmasterd for ESXi VIB
+```
+make offline-bundle
+```
+
+
 ## Installing wmasterd on ESXi
 Once you have placed the tarball on the ESXi host, unpack it and run the 
 installation script. This will enable but not start the service. Note that you
@@ -484,13 +490,23 @@ relaying wireless frames.
 When in cache file mode, `wmasterd` will attempt to look up old location and
 info about the VM from the cache file.
 
+`wmasterd` can log messages to syslog. By default the ESXi init script will set
+the log level to 5, LOG_NOTICE. This will log NOTICE, WARNING and ERROR message
+output from `wmasterd`. On ESXi this logs to `/scratch/log/syslog.log`. To set
+this option on the command line, use the `-D` option. Example:
+```
+wmasterd -D 7
+```
+This examle sets the level to DEBUG and you will receive thhe most verbose level
+of logging.
 
 ## Building gelled
 `gelled`, the GPS emulation link layer exchange daemon, can be compiled when a 
 simulated GPS feed (NMEA sentences) us desired. It is designed to receive these
-NMEA sentences from `wmasterd` and write them to a serial device provided by
-`tty0tty` or our recompiled copy of the driver named `gpstty`, currently located
-under the `gelled` project. On Windows, you may use a similar program called
+NMEA sentences from `wmasterd` and write them to an emulated serial device. This
+can be provided by `tty0tty`, our recompiled copy of the driver named `gpstty`,
+currently located under the `gelled` project, or a `socat` command which could
+be installed as a service. On Windows, you may use a similar program called
 `com0com` as a null modem emulator to provide a pair of fake serial devices.
 The 2.2.0 version of `com0com` has been tested with `gelled` on Windows 7.
 
@@ -506,6 +522,11 @@ To setup the map server so that it does not need to access the internet, you
 will need to download the javascript libraries listed in `slippymap.html` as
 well as the theme's icons. The `slippymap.html` file should also be updated to
 reflect the appropriate hostname for your map server.
+
+## Example command to create serial devices
+```
+socat PTY,link=/dev/ttyUSB0 PTY,link=/dev/ttyUSB1
+```
 
 ## Using gelled over VMCI with verbosity
 ```
