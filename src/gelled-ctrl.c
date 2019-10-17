@@ -350,6 +350,7 @@ options:
 			printf("velocity:  %f\n", data.velocity);
 			printf("heading:   %f\n", data.heading);
 			printf("climb:     %f\n", data.climb);
+			printf("follow:    %s\n", data.follow);
 		}
 	}
 

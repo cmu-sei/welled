@@ -300,6 +300,22 @@ sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=48/CONFIG_TARGET_ROOTFS_PARTSIZE=4096/" 
 make target/linux/{clean,prepare} V=s QUILT=1 
 make -j 8 # number of cpus * 1.5
 ```
+## 18.06 Development notes
+git clone --single-branch --branch openwrt-18.06 https://github.com/openwrt/openwrt.git
+cd openwrt/package
+git clone https://github.com/cmu-sei/welled.git
+git clone https://github.com/cmu-sei/vtunnel.git
+git clone https://github.com/fangli/openwrt-vm-tools package/open-vm-tools
+cd ..
+./scripts/feeds update
+./scripts/feeds install luci-ssl
+./scripts/feeds install glib2
+./scripts/feeds install softflowd
+./scripts/feeds install libtirpc
+cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
+touch target/linux/x86/Makefile
+make menuconfig #select arch x86_64, enable welled and open-vm-tools and softflowd and kmod-scsi-cdrom and vsock modules and wireless-tools and vtunnel
+make -j 12
 
 Steps to rebuild `welled` package if making modifications.
 ```

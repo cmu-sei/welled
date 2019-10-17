@@ -28,8 +28,8 @@
 #
 # 	DM17-0952
 
-VERSION_STR="\"2.3.2\""
-VERSION=2.3.2
+VERSION_STR="\"2.4.2\""
+VERSION=2.4.2
 
 # check whether we are cross compiling for openwrt
 ifdef CROSS
@@ -68,7 +68,7 @@ NL3FOUND := $(shell $(PKG_CONFIG) --atleast-version=3 libnl-3.0 && echo Y)
 NL31FOUND := $(shell $(PKG_CONFIG) --exact-version=3.1 libnl-3.1 && echo Y)
 NL3xFOUND := $(shell $(PKG_CONFIG) --atleast-version=3.2 libnl-3.0 && echo Y)
 
-CFLAGS = -g -Wall -O2
+CFLAGS = -g -Wall -O2 -Wformat -Wformat-security
 LDFLAGS =
 
 ifeq ($(NL3xFOUND),Y)
@@ -110,9 +110,9 @@ LDFLAGS += -lpthread
 .PHONY: all wireless gps openwrt dist clean doc esx source install-wireless install-gps uninstall-wireless uninstall-gps install-driver uninstall-driver rpm debian
 
 # does not include openwrt
-all: esx linux windows vyos
+all: esx linux windows vyos offline-bundle
 
-linux: i386-Linux x86_64-Linux
+linux: x86_64-Linux #i386-Linux
 
 i386-Linux: welled-i386-Linux gelled-i386-Linux gelled-ctrl-i386-Linux wmasterd-i386-Linux
 
@@ -285,7 +285,7 @@ wmasterd-i386-Linux:
 wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
-	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32 ../dist/x86_64-w64-mingw32/
+	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32* ../dist/x86_64-w64-mingw32/
 
 wmasterd-i686-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-i686-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/i686-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
@@ -340,10 +340,13 @@ vib: vib0
 	cp ../metadata/vibs/wmasterd.xml ../metadata/vibs/wmasterd.tmp
 	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../metadata/vibs/wmasterd.tmp
 
+
+offline-bundle: RELEASEDATE=$(shell date -u +%FT%T.000000%:z)
 offline-bundle: DATE=$(shell date +%s)
 offline-bundle: vib
 	cp ../metadata/bulletins/wmasterd.xml ../metadata/bulletins/wmasterd-$(VERSION).xml
 	sed -i "s/VERSION/$(VERSION)/g" ../metadata/bulletins/wmasterd-$(VERSION).xml
+	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../metadata/bulletins/wmasterd-$(VERSION).xml
 	mv ../metadata/vibs/wmasterd.tmp ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
 	sed -i "s/VERSION/$(VERSION)/g" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
 	sed -i "s/VIBSIZE/$(shell stat --format %s VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib)/g" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
@@ -352,6 +355,7 @@ offline-bundle: vib
 	sed -i "s/SHA256/$(shell sha256sum ../wmasterd | cut -f 1 -d ' ')/" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
 	sed -i "s/SHA1/$(shell sha1sum ../stage.vtar | cut -f 1 -d ' ')/" ../metadata/vibs/wmasterd-$(VERSION)-$(DATE).xml
 	cp ../metadata/vmware.tmp ../metadata/vmware.xml
+	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../metadata/vmware.xml
 	sed -i "s/VERSION/$(VERSION)/g" ../metadata/vmware.xml
 	sed -i "s/VIBSIZE/$(shell stat --format %s VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib)/g" ../metadata/vmware.xml
 	sed -i "s/VIBSHA256/$(shell sha256sum VIB/vib20/wmasterd/CMU_bootbank_wmasterd_$(VERSION).vib | cut -f 1 -d ' ')/g" ../metadata/vmware.xml

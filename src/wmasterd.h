@@ -39,6 +39,17 @@
 #define NAME_LEN	1024
 #define UUID_LEN	37
 
+#ifdef _WIN32
+#define LOG_EMERG       0       /* system is unusable */
+#define LOG_ALERT       1       /* action must be taken immediately */
+#define LOG_CRIT        2       /* critical conditions */
+#define LOG_ERR         3       /* error conditions */
+#define LOG_WARNING     4       /* warning conditions */
+#define LOG_NOTICE      5       /* normal but significant condition */
+#define LOG_INFO        6       /* informational */
+#define LOG_DEBUG       7       /* debug-level messages */
+#endif
+
 /**
  *      Structure for tracking welled node locations
  *	latitude and longitude are stored in degrees decimal
@@ -152,6 +163,7 @@ void create_new_sentences(struct client *);
 double rad2deg(double);
 double deg2rad(double);
 void dec_deg_to_dec_min(float, char *, int);
+void print_debug(int, char *, ...);
 
 #endif  /* WMASTERD_H_ */
 

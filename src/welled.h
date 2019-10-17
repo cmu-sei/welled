@@ -209,7 +209,8 @@ int send_register_msg(void);
 void recv_from_master(void);
 void dellink(struct nlmsghdr *);
 void newlink(struct nlmsghdr *);
-void process_event(int);
+static int process_nl_route_event(struct nl_msg *, void *);
+//void process_event(int);
 void *monitor_devices(void *);
 void *monitor_hwsim(void *);
 static int finish_handler(struct nl_msg *, void *);
@@ -217,5 +218,6 @@ static int list_interface_handler(struct nl_msg *, void *);
 int nl80211_get_interface(int);
 static void generate_ack_frame(uint32_t, struct ether_addr*, struct ether_addr*);
 void mac_address_to_string(char *, struct ether_addr *);
+void print_debug(int, char *, ...);
 
 #endif /* WELLED_H_ */

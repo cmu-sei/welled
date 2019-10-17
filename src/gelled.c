@@ -47,6 +47,8 @@
   #include <winbase.h>
   WSADATA wsa_data;
 #else
+  #include <syslog.h>
+  #include <stdarg.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
@@ -124,6 +126,8 @@ double lon;
 double velocity;
 /** thread ID for keepalive thread */
 pthread_t status_tid;
+/** for the desired log level */
+int loglevel;
 
 #ifdef _WIN32
 #ifndef HAVE_STRSEP
@@ -166,6 +170,7 @@ void show_usage(int exval)
 	printf("  -h, --help		print this help and exit\n");
 	printf("  -V, --version		print version and exit\n");
 	printf("  -v, --verbose		verbose output\n");
+	printf("  -D, --debug           debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -s, --sea		gps should only travel on water\n");
 	printf("  -d, --device		use this device as GPS\n");
@@ -181,13 +186,34 @@ void show_usage(int exval)
 	_exit(exval);
 }
 
+void print_debug(int level, char *format, ...)
+{
+        char buffer[1024];
+
+        if (loglevel < 0)
+                return;
+
+        if (level > loglevel)
+                return;
+
+        va_list args;
+        va_start(args, format);
+        vsprintf(buffer, format, args);
+	va_end(args);
+	#ifndef _WIN32
+        syslog(level, buffer);
+        #else
+        printf("gelled: %s\n", buffer);
+        #endif
+}
+
 /**
  *      @brief Signal handler which causes program to exit
  *      @return void - calls exit()
  */
 void signal_handler(void)
 {
-	printf("signal handler invoked\n");
+	print_debug(LOG_INFO, "signal handler invoked\n");
 
 	running = 0;
 }
@@ -215,14 +241,13 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 	if (curl) {
 		png_write = fopen(filename, "wb");
 		if (png_write == NULL) {
-			printf("Failed to open %s for writing\n", filename);
+			print_debug(LOG_ERR, "Error: failed to open %s for writing\n", filename);
 			return -1;
 		}
 		snprintf(url, 1024, "http://%s/%d/%d/%d.png",
 			mapserver, zoom, x, y);
 
-		if (verbose)
-			printf("%s\n", url);
+		print_debug(LOG_DEBUG, "downloading tile from %s\n", url);
 
 		curl_easy_setopt(curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -231,11 +256,11 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 		curl_easy_cleanup(curl);
 		fclose(png_write);
 		if (res) {
-			printf("curl failed to retrieve tile\n");
+			print_debug(LOG_ERR, "Error: curl failed to retrieve tile\n");
 			return -1;
 		}
 	} else {
-		printf("Failed to initialize curl.\n");
+		print_debug(LOG_ERR, "Error: failed to initialize curl.\n");
 		return -1;
 	}
 
@@ -260,27 +285,27 @@ int read_png(png_data *pixels, char *filename)
 
 	png_read = fopen(filename, "r");
 	if (png_read == NULL) {
-		printf("Failed to open %s for reading\n", filename);
+		print_debug(LOG_ERR, "Error: failed to open %s for reading\n", filename);
 		return -1;
 	}
 
 	png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	if (!png) {
-		printf("Failed to create read struct for png\n");
+		print_debug(LOG_ERR, "Error: failed to create read struct for png\n");
 		fclose(png_read);
 		return -1;
 	}
 
 	info = png_create_info_struct(png);
 	if (!info) {
-		printf("Failed to create info struct for png\n");
+		print_debug(LOG_ERR, "Error: failed to create info struct for png\n");
 		png_destroy_read_struct(&png, NULL, NULL);
 		fclose(png_read);
 		return -1;
 	}
 
 	if (setjmp(png_jmpbuf(png))) {
-		printf("A png function failed\n");
+		print_debug(LOG_ERR, "Error: a png function failed\n");
 		png_destroy_read_struct(&png, &info, NULL);
 		fclose(png_read);
 		return -1;
@@ -350,7 +375,7 @@ int land_or_sea_check_color(int red, int green, int blue)
 
 	if (red == 181 && green == 208 && blue == 208) {
 		/* sea, blue */
-		printf("Sea\n");
+		print_debug(LOG_DEBUG, "This tile is Sea\n");
 		return 1;
 	} else if (red == 181 && green == 253 && blue == 253) {
 		/* boundary, purple, shade 1 */
@@ -384,15 +409,15 @@ int land_or_sea_check_color(int red, int green, int blue)
 		return -1;
 	} else if (red == 181 && green == 238 && blue == 232) {
 		/* land */
-		printf("Land\n");
+		print_debug(LOG_DEBUG, "This is tile is Land\n");
 		return 0;
 	} else if (red == 242 && green == 239 && blue == 233) {
 		/* land */
-		printf("Land\n");
+		print_debug(LOG_DEBUG, "This tile is Land\n");
 		return 0;
 	}
 
-	printf("Red: %d, Green: %d, Blue: %d\n", red, green, blue);
+	print_debug(LOG_DEBUG, "Tile Red: %d, Green: %d, Blue: %d\n", red, green, blue);
 	return -1;
 }
 
@@ -521,7 +546,7 @@ void send_stop(void)
 	if (bytes != msg_len) {
 		perror("sendto");
 	} else {
-		printf("sent %d bytes to wmasterd\n", bytes);
+		print_debug(LOG_INFO, "sent %d bytes to wmasterd\n", bytes);
 		if (verbose) {
 			printf("latitude:  %f\n", loc.latitude);
 			printf("longitude: %f\n", loc.longitude);
@@ -567,6 +592,7 @@ void recv_from_master(void)
 	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
+		print_debug(LOG_ERR, "Error: could not set server socket timeout");
 	}
 	#endif
 
@@ -580,16 +606,16 @@ void recv_from_master(void)
 			printf("setsockopt: %ld\n", WSAGetLastError());
 			#else
 			perror("recvfrom");
+			print_debug(LOG_ERR, "Error: recvfrom failed");
 			#endif
 		}
 		goto out;
 	}
 
-	printf("received %d bytes packet from src host: %u\n",
+	print_debug(LOG_INFO, "received %d bytes packet from src host: %u\n",
 			bytes, cliaddr_vmci.svm_cid);
 
-	if (verbose)
-		printf("%s\n", buf);
+	print_debug(LOG_DEBUG, "Received NMEA: '%s'\n", buf);
 
 	/* write to device */
 	if (stat(dev_path, &buf_stat) < 0) {
@@ -631,8 +657,10 @@ void recv_from_master(void)
 		goto out;
 	} else {
 		ret = fprintf(fp, "%s\n", buf);
-		if (ret == EOF)
+		if (ret == EOF) {
 			perror("fprintf");
+			print_debug(LOG_ERR, "Error: couldnt open %s\n", dev_path);
+		}
 		fclose(fp);
 	}
 	#endif
@@ -645,7 +673,7 @@ void recv_from_master(void)
 				printf("velocity: %f\n", velocity);
 			ret = check_if_sea(lat, lon);
 			if (ret < 0)
-				printf("could not check position\n");
+				print_debug(LOG_ERR, "Error: check_if_sea failed\n");
 			else if (land && ret)
 				send_stop();
 			else if (sea && !ret)
@@ -687,11 +715,12 @@ void *send_status(void *arg)
 				sizeof(struct sockaddr));
 
 		/* this should be 8 bytes */
-		if (bytes != msg_len)
+		if (bytes != msg_len) {
 			perror("sendto");
-		else if (verbose)
-			printf("Up notification sent to wmasterd\n");
-
+			print_debug(LOG_ERR, "Up notification failed");
+		} else {
+			print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+		}
 		sleep(10);
 	}
 
@@ -729,18 +758,20 @@ int main(int argc, char *argv[])
 	land = 0;
 	err = 0;
 	ioctl_fd = 0;
+	loglevel = -1;
 
 	static struct option long_options[] = {
 		{"help",	no_argument, 0, 'h'},
 		{"version",     no_argument, 0, 'V'},
 		{"verbose",     no_argument, 0, 'v'},
+		{"debug",       required_argument, 0, 'D'},
 		{"device",	required_argument, 0, 'd'},
 		{"land",	no_argument, 0, 'l'},
 		{"sea",		no_argument, 0, 's'},
 		{"mapserver",	required_argument, 0, 'm'},
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvls:m:d:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvls:m:d:D:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -758,6 +789,10 @@ int main(int argc, char *argv[])
 		case 'v':
 			verbose = 1;
 			break;
+                case 'D':
+                        loglevel = atoi(optarg);
+                        printf("gelled: syslog level set to %d\n", loglevel);
+                        break;
 		case 's':
 			sea = 1;
 			break;
@@ -778,6 +813,11 @@ int main(int argc, char *argv[])
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
+        #ifndef _WIN32
+        if (loglevel >= 0)
+                openlog("gelled", LOG_PID, LOG_USER);
+        #endif
+
 	#ifdef _WIN32
 	/* old code for vmci_sockets.h */
 	af = VMCISock_GetAFValue();
@@ -790,13 +830,16 @@ int main(int argc, char *argv[])
 	ioctl_fd = open("/dev/vsock", 0);
 	if (ioctl_fd < 0) {
 		perror("open");
+                print_debug(LOG_ERR, "could not open /dev/vsock\n");
 		_exit(EXIT_FAILURE);
 	}
 	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
-	if (err < 0)
+	if (err < 0) {
 		perror("ioctl: Cannot get local CID");
-	else
+                print_debug(LOG_ERR, "could not get local CID");
+	} else {
 		printf("CID: %u\n", cid);
+	}
 	#endif
 
 	if (sea || land)
@@ -823,6 +866,7 @@ int main(int argc, char *argv[])
 	servaddr_vmci.svm_family = af;
 	if (sockfd < 0) {
 		perror("socket");
+		print_debug(LOG_ERR, "failed to bind client socket");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -840,6 +884,7 @@ int main(int argc, char *argv[])
 	if (ret < 0) {
 		perror("bind");
 		close(sockfd);
+		print_debug(LOG_ERR, "failed to bind server socket");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -856,10 +901,12 @@ int main(int argc, char *argv[])
 	free(msg);
 
 	/* this should be 2 bytes */
-	if (bytes != msg_len)
+	if (bytes != msg_len) {
 		perror("sendto");
-	else if (verbose)
-		printf("Up notification sent to wmasterd\n");
+		print_debug(LOG_ERR, "Up notification failed");
+	} else {
+		print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+	}
 
 	if (verbose)
 		printf("################################################################################\n");
@@ -868,6 +915,7 @@ int main(int argc, char *argv[])
 	ret = pthread_create(&status_tid, NULL, send_status, NULL);
 	if (ret < 0) {
 		perror("pthread_create");
+		print_debug(LOG_ERR, "error: pthread_create send_status");
 		running = 0;
 	}
 
@@ -878,23 +926,22 @@ int main(int argc, char *argv[])
 
 	/* code below here executes after signal */
 
-	printf("Shutting down...\n");
+	print_debug(LOG_DEBUG, "Shutting down...\n");
 
 	pthread_cancel(status_tid);
 	
 	pthread_join(status_tid, NULL);
 
-	if (verbose)
-		printf("Threads have been cancelled\n");
+	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
 
 	close(sockfd);
 	close(myservfd);
 
-	if (verbose)
-		printf("Sockets have been closed\n");
+	print_debug(LOG_DEBUG, "Sockets have been closed\n");
 
-	if (verbose)
-		printf("Memory has been cleared\n");
+	print_debug(LOG_DEBUG, "Memory has been cleared\n");
+
+	print_debug(LOG_NOTICE, "Exiting");
 
 	_exit(EXIT_SUCCESS);
 }

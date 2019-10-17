@@ -1,5 +1,11 @@
-2.3.2 - welled: removes genl cach
-2.3.1 - wmasterd: performs better checking on null name and null room from update struct version 1
+2.4.2 - wmasterd: fixes bug in following nodes
+2.4.1 - wmasterd: update_node_location logs to syslog
+2.4.0 - welled: Uses syslog for both wmasterd  and welled
+2.3.3 - wmasterd: The esxi init script sleeps after signaling for new data
+    from the process to prevent reading of stale data.
+2.3.2 - welled: Removes genl cache.
+2.3.1 - wmasterd: Performs better checking on null name and null room from
+    update struct version 1.
 2.3.0 - wmasterd: Accepts update struct with climb. Removes UDP from all
     applications since it has never been used. Pulls guestinfo.isolationTag
     from the VMX file.

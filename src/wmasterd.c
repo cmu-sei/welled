@@ -42,6 +42,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdarg.h>
 #ifdef _WIN32
   #ifndef _WIN32_WINNT
     #define _WIN32_WINNT 0x0501  /* Windows XP. */
@@ -50,13 +51,14 @@
   #include <ws2tcpip.h>
   #include "vmci_sockets.h"
   #include "windows_error.h"
-  SERVICE_STATUS          g_ServiceStatus = {0};
+  SERVICE_STATUS	  g_ServiceStatus = {0};
   SERVICE_STATUS_HANDLE   g_StatusHandle = NULL;
-  HANDLE                  g_ServiceStopEvent = INVALID_HANDLE_VALUE;
+  HANDLE		  g_ServiceStopEvent = INVALID_HANDLE_VALUE;
   HANDLE hThread;
   #define SERVICE_NAME  "wmasterd"
   #define sock_error windows_error
 #else
+  #include <syslog.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <arpa/inet.h>
@@ -123,6 +125,8 @@ int cache;
 char *cache_filename;
 /** file pointer for cache file */
 FILE *cache_fp;
+/** for the desired log level */
+int loglevel;
 
 int af;
 int sockfd;
@@ -150,7 +154,7 @@ void show_usage(int exval)
 
 	printf("wmasterd - wireless master daemon\n\n");
 
-	printf("Usage: wmasterd [-hVvr]\n\n");
+	printf("Usage: wmasterd [-hVvbrud] [-D <level>] [-c <file>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
@@ -160,6 +164,7 @@ void show_usage(int exval)
 	printf("  -r, --no-room-check	do not check room id\n");
 	printf("  -u, --update-room     update room on receipt\n");
 	printf("  -d, --distance	prepend distance to frames\n");
+	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -c, --cache		file to save location data\n\n");
 
 	printf("Copyright (C) 2015 Carnegie Mellon University\n\n");
@@ -170,6 +175,27 @@ void show_usage(int exval)
 	printf("Report bugs to <arwelle@cert.org>\n\n");
 
 	exit(exval);
+}
+
+void print_debug(int level, char *format, ...)
+{
+	char buffer[1024];
+
+	if (loglevel < 0)
+		return;
+
+	if (level > loglevel)
+		return;
+
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
+	va_end(args);
+	#ifndef _WIN32
+	syslog(level, buffer);
+	#else
+	printf("wmasterd: %s\n", buffer);
+	#endif
 }
 
 /**
@@ -263,8 +289,7 @@ void update_cache_file_info(struct client *node)
 		ret = sscanf(buf, "%d ", &cid);
 
 		if (ret != 1) {
-			if (verbose)
-				printf("wmasterd: error: did not parseline for '%s'\n", buf);
+			print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
 		} else if (cid == node->cid) {
 			matched = 1;
 			break;
@@ -286,8 +311,7 @@ void update_cache_file_info(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		printf("wmasterd: error no match for node %d in cache file\n",
-				node->cid);
+		print_debug(LOG_ERR, "error: no match for node %d in cache file\n", node->cid);
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -311,8 +335,7 @@ void update_cache_file_location(struct client *node)
 	if (node == NULL)
 		return;
 
-	if (verbose)
-		printf("wmasterd: updating cache file for node location\n");
+	print_debug(LOG_DEBUG, "updating cache file for node location\n");
 
 	pthread_mutex_lock(&file_mutex);
 
@@ -325,8 +348,7 @@ void update_cache_file_location(struct client *node)
 		ret = sscanf(buf, "%d ", &cid);
 
 		if (ret != 1) {
-			if (verbose)
-				printf("wmasterd: error: did not parseline for '%s'\n", buf);
+			print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
 		} else if (cid == node->cid) {
 			matched = 1;
 			break;
@@ -348,7 +370,7 @@ void update_cache_file_location(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		printf("wmasterd: error no match for node %d in cache file\n",
+		print_debug(LOG_WARNING, "no match for node %d in cache file\n",
 				node->cid);
 	}
 
@@ -385,10 +407,7 @@ void update_followers(struct client *node)
 				NMEA_LEN);
 
 			update_cache_file_location(curr);
-			if (verbose) {
-				printf("wmasterd: updated follower %s to %s\n",
-					curr->name, curr->loc.follow);
-			}
+			print_debug(LOG_NOTICE, "follower %s synced to master %s\n", curr->name, curr->loc.follow);
 		}
 		curr = curr->next;
 	}
@@ -431,40 +450,43 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* a passed location means update data */
 	if (data) {
-		if (verbose) {
-			printf("wmasterd: updating location by request\n");
-		}
+		print_debug(LOG_DEBUG, "processing update");
+
 		/* check for follow and set in node */
 		if (strnlen(data->follow, FOLLOW_LEN) > 0) {
+			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
-				printf("wmasterd: clearing follow\n");
-				memset(node->loc.follow, 0, FOLLOW_LEN);
+				print_debug(LOG_NOTICE, "clearing follow on %d\n", node->cid);
+				memset(node->loc.follow, 0, sizeof(node->loc.follow));
+			} else if (strncmp(data->follow, node->loc.follow,
+						FOLLOW_LEN) == 0) {
+				print_debug(LOG_DEBUG, "node following self");
 			} else {
-				strncpy(node->loc.follow,
-					data->follow, FOLLOW_LEN - 1);
-				printf("wmasterd: set follow to %s\n",
-					node->loc.follow);
+				memcpy(node->loc.follow,
+					data->follow, sizeof(node->loc.follow));
+				print_debug(LOG_NOTICE, "set follow to %s on %d\n", node->loc.follow, node->cid);
 			}
 		}
 
 		if (strnlen(node->loc.follow, FOLLOW_LEN) > 0) {
-			if (verbose)
-				printf("wmasterd: updating the master\n");
-			node = search_node_name(node->loc.follow);
+			print_debug(LOG_DEBUG, "we need to update a master instead of this node");
+			struct client *master = search_node_name(node->loc.follow);
+			//node = search_node_name(node->loc.follow);
 
 			/*
 			 * TODO: check windows
 			 * it will fail name check unless set
 			 */
 
-			if (!node) {
-				printf("wmasterd: could not find master\n");
-				return;
+			if (!master) {
+				print_debug(LOG_INFO, "no master for follow on %d\n", node->cid);
+			} else {
+				print_debug(LOG_DEBUG, "node set to follow %s", node->loc.follow);
+				print_debug(LOG_DEBUG, "update master instead");
+				node = master;
 			}
-			if (verbose) {
-				printf("wmasterd: the master is %s\n",
-					node->name);
-				}
+		} else {
+			print_debug(LOG_DEBUG, "no follow set");
 		}
 
 		if (verbose) {
@@ -492,89 +514,68 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if ((data->latitude >= -90) &&
 				(data->latitude <= 90))
 			node->loc.latitude = data->latitude;
-		else
-			printf("wmasterd: invalid latitude: %f\n",
-				data->latitude);
 		if ((data->longitude >= -180) &&
 				(data->longitude <= 180))
 			node->loc.longitude = data->longitude;
-		else
-			printf("wmasterd: invalid longitude: %f\n",
-				data->longitude);
 
 		/* update altitude */
-                if (data->altitude != -1)
-                        node->loc.altitude = data->altitude;
-                else
-                        printf("wmasterd: invalid altitude: %f\n",
-                                data->altitude);
+		if (data->altitude != -1)
+			node->loc.altitude = data->altitude;
 
 		/* correct bad values */
 		if (isnan(node->loc.heading)) {
-			printf("wmasterd: heading isnan\n");
 			node->loc.heading = 0;
 		}
 		if (isnan(node->loc.velocity)) {
-			printf("wmasterd: velocity isnan\n");
 			node->loc.velocity = 0;
 		}
 		if (isnan(node->loc.altitude)) {
-			printf("wmasterd: altitude isnan\n");
 			node->loc.altitude = 0;
 		}
 		if (isnan(node->loc.climb)) {
-			printf("wmasterd: climb isnan\n");
 			node->loc.climb = 0;
 		}
 
-		if (verbose) {
-			printf("new postition: %.8f %.8f\n",
-				node->loc.latitude, node->loc.longitude);
-			printf("new heading:   %f\n", node->loc.heading);
-			printf("new velocity:  %f\n", node->loc.velocity);
-			printf("new altitude:  %f\n", node->loc.altitude);
-			printf("new climb:     %f\n", node->loc.climb);
-		}
+		int age = time(NULL) - node->time;
+
+		print_debug(LOG_NOTICE,
+			"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+			node->cid, node->room, age,
+			node->loc.latitude, node->loc.longitude, node->loc.altitude,
+			node->loc.velocity, node->loc.heading, node->loc.climb,
+			node->name);
 
 		update_cache_file_location(node);
 		update_followers(node);
 
-		if (verbose)
-			printf("done performing update\n");
-
 		return;
 	}
 
-	/* followers get updated after master node */
+	/* followers get updated after master node, skip it here */
 	if (strnlen(node->loc.follow, FOLLOW_LEN) > 0) {
-		if (verbose) {
-			printf("wmasterd: not updating follower %s\n",
+		print_debug(LOG_DEBUG, "skipping update of follower %s",
 				node->name);
-		}
 		return;
 	}
 
 	/* do not update location if device is not moving */
-	if ((node->loc.velocity != 0) && verbose) {
-		printf("wmasterd: updating location due to velocity %f\n",
-			node->loc.velocity);
+	if (node->loc.velocity == 0) {
+		print_debug(LOG_DEBUG, "skipping update with no velocity %s",
+				node->name);
+		return;
 	}
 
 	/* correct bad values */
 	if (isnan(node->loc.heading)) {
-		printf("wmasterd: heading isnan\n");
 		node->loc.heading = 0;
 	}
 	if (isnan(node->loc.velocity)) {
-		printf("wmasterd: velocity isnan\n");
 		node->loc.velocity = 0;
 	}
 	if (isnan(node->loc.altitude)) {
-		printf("wmasterd: altitude isnan\n");
 		node->loc.altitude = 0;
 	}
 	if (isnan(node->loc.climb)) {
-		printf("wmasterd: climb isnan\n");
 		node->loc.climb = 0;
 	}
 
@@ -596,8 +597,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* adjust heading, lat and lon as we cross north pole */
 	if (node->loc.latitude > 90) {
-		if (verbose)
-			printf("wmasterd: crossing north pole\n");
+		/* printf("wmasterd: crossing north pole\n"); */
 		overage = node->loc.latitude - 90;
 		node->loc.latitude = 90 - overage;
 		if (node->loc.heading < 90)
@@ -612,8 +612,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* adjust heading, lat and lon as we cross south pole */
 	if (node->loc.latitude < -90) {
-		if (verbose)
-			printf("wmasterd: crossing sourth pole\n");
+		/* printf("wmasterd: crossing south pole\n"); */
 		overage = node->loc.latitude + 90;
 		node->loc.latitude = -90 - overage;
 		if (node->loc.heading > 90)
@@ -649,17 +648,16 @@ void update_node_location(struct client *node, struct update_2 *data)
 		node->loc.altitude += dv;
 	}
 
+	int age = time(NULL) - node->time;
+	print_debug(LOG_NOTICE,
+		"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+		node->cid, node->room, age,
+		node->loc.latitude, node->loc.longitude, node->loc.altitude,
+		node->loc.velocity, node->loc.heading, node->loc.climb,
+		node->name);
+
 	update_cache_file_location(node);
 	update_followers(node);
-
-	/*
-	if (verbose) {
-		printf("new pos: %.8f %.8f\n",
-				node->loc.latitude, node->loc.longitude);
-		printf("heading: %f\n", node->loc.heading);
-		printf("climb:   %f\n", node->loc.climb);
-	}
-	*/
 
 	return;
 }
@@ -867,16 +865,6 @@ void send_gps_to_nodes(void)
 	bytes = 0;
 
 	while (curr != NULL) {
-		/* identify bad values */
-		if (isnan(curr->loc.latitude)) {
-			printf("wmasterd: latitude isnan\n");
-		} else if (isnan(curr->loc.longitude)) {
-			printf("wmasterd: longitude isnan\n");
-		} else if (isnan(curr->loc.heading)) {
-			printf("wmasterd: heading isnan\n");
-		} else if (isnan(curr->loc.velocity)) {
-			printf("wmasterd: velocity isnan\n");
-		}
 
 		/* update coordinates */
 		create_new_sentences(curr);
@@ -897,7 +885,9 @@ void send_gps_to_nodes(void)
 				sizeof(struct sockaddr)) < 0) {
 			if (verbose)
 				sock_error("wmasterd: sendto");
-			printf("wmasterd: removing gelled node\n");
+
+			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n", curr->cid, curr->room, curr->time, curr->name);
+
 			/*
 			 * since powering off a VM results in this error
 			 * we remove the node from list
@@ -937,10 +927,6 @@ int get_distance(struct client *node1, struct client *node2)
 	double a;
 	double c;
 
-	if (verbose)
-		printf("wmasterd: distance between %s and %s: ",
-			node1->name, node2->name);
-
 	lat1 = node1->loc.latitude;
 	lon1 = node1->loc.longitude;
 	lat2 = node2->loc.latitude;
@@ -959,8 +945,9 @@ int get_distance(struct client *node1, struct client *node2)
 
 	distance = dist;
 
-	if (verbose)
-		printf("distance in meters: %d\n", distance);
+	print_debug(LOG_DEBUG, "%d meters between %s and %s \n",
+			distance, node1->name, node2->name);
+
 
 	return distance;
 }
@@ -1075,7 +1062,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	if (!fp) {
 		perror("wmasterd: fopen");
-		printf("wmasterd: could not open vmx %s\n", vmx_file);
+		print_debug(LOG_ERR, "could not open vmx %s\n", vmx_file);
 		list_nodes_vmci();
 		return 0;
 	}
@@ -1111,10 +1098,8 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	/* find the room id */
 	if (cid == srchost) {
-		if (verbose) {
-			printf("wmasterd: cid is a match: %11d\n", cid);
-			printf("wmasterd: name is: %s\n", name);
-		}
+		print_debug(LOG_DEBUG, "cid %11d is a match for name %s\n",
+				cid, name);
 		/* guestinfo variables not found (they override annotation */
 		if (!room_found) {
 			/* parse the room id out of the annotation line */
@@ -1123,8 +1108,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 				strncpy(room, "0", 1);
 			}
 		}
-		if (verbose)
-			printf("wmasterd: room is: %s\n", room);
+		print_debug(LOG_DEBUG, "cid %11d is in room %s\n", cid, room);
 		return 1;
 	}
 
@@ -1164,7 +1148,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 		pipe = popen("/bin/esxcli vm process list", "r");
 	} else {
 		if (verbose)
-			printf("wmasterd: not running on esx\n");
+			printf("wmasterd: does not open vmx on linux\n");
 		/* TODO: implement check for linux host
 		 * this would be a machine running workstation
 		 */
@@ -1174,16 +1158,16 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 
 	if (!pipe) {
 		perror("wmasterd: pipe");
-		printf("wmasterd: error for node: %d\n", srchost);
+		print_debug(LOG_ERR, "error: popen failed to produce pipe\n");
 		memset(room, 0, UUID_LEN);
 		return;
 	}
 
 	while (fgets(line, 1024, pipe)) {
-                memset(vmx, 0, 1024);
-                memset(name, 0, NAME_LEN);
-                memset(uuid, 0, UUID_LEN);
-                memset(room, 0, UUID_LEN);
+		memset(vmx, 0, 1024);
+		memset(name, 0, NAME_LEN);
+		memset(uuid, 0, UUID_LEN);
+		memset(room, 0, UUID_LEN);
 #ifdef _WIN32
 
 		/* continue if room found or first line of output */
@@ -1207,8 +1191,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	}
 	if (!room_found) {
 		strncpy(room, "0", 2);
-		if (verbose)
-			printf("wmasterd: no room found for %d\n", srchost);
+		print_debug(LOG_ERR, "error: no room found for %d\n", srchost);
 	}
 
 #ifdef _WIN32
@@ -1282,7 +1265,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 			ret = sscanf(buf, "%d %s %lf %lf %lf %lf %lf %lf %s",
 				&cid, room, &lat, &lon, &alt, &sog, &cog, &clm, name);
 			if ((ret != 8) && (ret != 9)) {
-				printf("wmasterd: error did not parseline for '%s'\n", buf);
+				print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
 				printf("only matched %d variables:\n", ret);
 				printf("cid:  %d\n", cid);
 				printf("room: %s\n", room);
@@ -1312,7 +1295,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 		}
 	
 		if (!matched) {
-			printf("wmasterd: adding node to the cache file\n");
+			print_debug(LOG_DEBUG, "adding node to the cache file\n");
 			fseek(cache_fp, 0, SEEK_END);
 			fprintf(cache_fp,
 				"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
@@ -1330,8 +1313,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 	if (head == NULL) {
 		/* add first node */
 		head = node;
-		printf("wmasterd: add: %11d room: %36s time: %d name: %s\n",
-			srchost, node->room, node->time, node->name);
+		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s\n", srchost, node->room, node->time, node->name);
 	} else {
 		/* traverse to end of list */
 		curr = head;
@@ -1339,8 +1321,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 			curr = curr->next;
 		/* add to node to end of list */
 		curr->next = node;
-		printf("wmasterd: add: %11d room: %36s time: %d name: %s\n",
-			srchost, node->room, node->time, node->name);
+		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s\n", srchost, node->room, node->time, node->name);
 	}
 }
 
@@ -1363,19 +1344,18 @@ void clear_inactive_nodes(void)
 	while (curr != NULL) {
 		age = now - curr->time;
 		if (age > 300) {
-			if (verbose) {
-				printf("wmasterd: node: %11d stale at %d sec\n",
+			print_debug(LOG_INFO, "node: %11d stale at %d sec\n",
 					curr->cid, age);
-				list_nodes_vmci();
-			}
 			/* delete node */
 			if (prev == NULL)
 				head = curr->next;
 			else
 				prev->next = curr->next;
 
-			printf("wmasterd: del: %11d room: %36s time: %d name: %s\n", curr->cid, curr->room, curr->time, curr->name);
+			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n", curr->cid, curr->room, curr->time, curr->name);
 			free(curr);
+			print_debug(LOG_DEBUG, "removed stale node");
+			return;
 		}
 		prev = curr;
 		curr = curr->next;
@@ -1413,12 +1393,16 @@ struct client *search_node_name(char *name)
 
 	curr = head;
 
+	print_debug(LOG_DEBUG, "searching for node with name %s", name);
+
 	while (curr != NULL) {
 		if (strncmp(curr->name, name, NAME_LEN - 1) == 0) {
 			return curr;
 		}
 		curr = curr->next;
 	}
+
+	print_debug(LOG_DEBUG, "no node found with name %s", name);
 
 	return NULL;
 }
@@ -1452,13 +1436,13 @@ void list_nodes_vmci(void)
 
 	if (!fp && esx) {
 		perror("wmasterd: fopen");
-		printf("wmasterd: could not open /tmp/wmasterd.status\n");
+		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status\n");
 	}
 
-	printf("node:       room:                                age: lat:      lon:       alt:   sog:       cog: climb: name:\n");
+	printf("node:       room:				age: lat:      lon:       alt:   sog:       cog: climb: name:\n");
 
 	if (fp)
-		fprintf(fp, "node:       room:                                age: lat:      lon:       alt:   sog:     cog:   climb: name:\n");
+		fprintf(fp, "node:       room:				age: lat:      lon:       alt:   sog:     cog:   climb: name:\n");
 
 	while (curr != NULL) {
 		age = time(NULL) - curr->time;
@@ -1508,7 +1492,7 @@ void remove_node_vmci(unsigned int dsthost)
 
 	/* exit if we hit the end of the list */
 	if (curr == NULL) {
-		printf("wmasterd: node not found: %11d\n", dsthost);
+		print_debug(LOG_INFO, "node not found: %11d\n", dsthost);
 		return;
 	}
 
@@ -1524,7 +1508,7 @@ void remove_node_vmci(unsigned int dsthost)
 
 	free(curr);
 
-	printf("wmasterd: del: %11d room: %36s time: %d name: %s\n",
+	print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n",
 		dsthost, room, time, name);
 }
 
@@ -1608,7 +1592,8 @@ void send_to_hosts(char *buf, int bytes, char *room)
 		(const char *)&sock_opts, sizeof(int));
 	if (sockfd < 0) {
 		sock_error("wmasterd: socket");
-		printf("wmasterd: could not create udp socket\n");
+		print_debug(LOG_ERR, "error: could not create udp socket\n");
+		free(buffer);
 		return;
 	}
 
@@ -1618,8 +1603,8 @@ void send_to_hosts(char *buf, int bytes, char *room)
 			sizeof(dest_addr));
 	if (bytes_sent < 0)
 		sock_error("wmasterd: sendto\n");
-	else if	(verbose)
-		printf("wmasterd: sent %d bytes to %s\n",
+	else
+		print_debug(LOG_DEBUG, "sent %d bytes to %s\n",
 				bytes_sent, broadcast_addr);
 
 	/* cleanup */
@@ -1650,8 +1635,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 	age = 0;
 	now = time(NULL);
 
-	if (verbose)
-		printf("wmasterd: sending to nodes in room %s\n", node->room);
+	print_debug(LOG_DEBUG, "sending to nodes in room %s\n", node->room);
 
 	while (curr != NULL) {
 		age = now - curr->time;
@@ -1659,10 +1643,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 		/* skip node if room differs */
 		if (check_room && (strncmp(
 				curr->room, node->room, UUID_LEN - 1) != 0)) {
-			if (verbose) {
-				printf("wmasterd: skipped: %11d room: %36s\n",
-					curr->cid, curr->room);
-			}
+			print_debug(LOG_INFO, "skipped: %11d room: %36s\n", curr->cid, curr->room);
 			curr = curr->next;
 			continue;
 		} else if (age > 300) {
@@ -1670,8 +1651,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 			temp = curr->next;
 
 			/* remove stale node */
-			if (verbose)
-				printf("wmasterd: stale node found\n");
+			print_debug(LOG_DEBUG, "stale node found\n");
 			remove_node_vmci(curr->cid);
 
 			/* go to next node */
@@ -1719,8 +1699,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 		if (bytes_sent < 0) {
 			if (verbose) {
 				sock_error("wmasterd: sendto");
-				printf("wmasterd: name %s cid %d bytes %d\n",
-						curr->name, curr->cid, bytes + 12);
+				print_debug(LOG_ERR, "error: name %s cid %d bytes %d\n", curr->name, curr->cid, bytes + 12);
 				print_node(curr);
 			}
 			/* since powering off a VM results in this error
@@ -1730,9 +1709,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 			remove_node_vmci(curr->cid);
 			curr = temp;
 		} else {
-			if (verbose)
-				printf("wmasterd: sent %d bytes to node: %11d room: %s\n",
-						bytes, curr->cid, curr->room);
+			print_debug(LOG_DEBUG, "sent %d bytes to node: %11d room: %s\n", bytes, curr->cid, curr->room);
 
 			curr = curr->next;
 		}
@@ -1794,16 +1771,20 @@ void update_node_info(struct client *node, struct update_2 *data)
 			(strnlen(data->name, NAME_LEN) > 0)) {
 		strncpy(node->name, data->name, NAME_LEN - 1);
 		update_file = 1;
+	} else {
+		print_debug(LOG_DEBUG, "no name in update");
 	}
 
 	if ((strnlen(data->room, UUID_LEN) > 0) &&
 			(strncmp(node->room, data->room, UUID_LEN - 1) != 0)) {
 		strncpy(node->room, data->room, UUID_LEN - 1);
 		update_file = 1;
+	} else {
+		print_debug(LOG_DEBUG, "no room in update");
 	}
 
 	if (update_file) {
-		printf("node name %s room %s\n", node->name, node->room);
+		print_debug(LOG_INFO, "node name %s room %s\n", node->name, node->room);
 		update_cache_file_info(node);
 	}
 }
@@ -1898,8 +1879,7 @@ void recv_from_welled_vmci(void)
 	if (bytes < 0)
 		return;
 	src_cid = (unsigned int)cliaddr_vmci.svm_cid;
-	if (verbose)
-		printf("wmasterd: received %d bytes from src host: %d\n",
+	print_debug(LOG_DEBUG, "received %d bytes from src host: %d\n",
 			bytes, src_cid);
 
 	memset(room, 0, UUID_LEN);
@@ -1909,19 +1889,18 @@ void recv_from_welled_vmci(void)
 
 	node = search_node_vmci(src_cid);
 	if (!node) {
-		if (verbose)
-			printf("wmasterd: node %11d does not exist\n", src_cid);
+		print_debug(LOG_DEBUG, "node %11d does not exist\n", src_cid);
 		get_vm_info(src_cid, room, name, uuid);
 		add_node_vmci(src_cid, room, name, uuid);
 		/* make sure we added the node */
 		node = search_node_vmci(src_cid);
 		if (!node) {
-			printf("wmasterd: error adding node\n");
+			print_debug(LOG_ERR, "error: adding node %11d\n",
+					src_cid);
 			return;
 		}
 	} else if (update_room && check_room) {
-		if (verbose)
-			printf("wmasterd: checking for room update\n");
+		print_debug(LOG_DEBUG, "checking vmx for room update\n");
 		/* check for room change if room enforced */
 		strncpy(old_room, node->room, UUID_LEN - 1);
 		get_vm_info(src_cid, room, name, uuid);
@@ -1931,15 +1910,14 @@ void recv_from_welled_vmci(void)
 			/* make sure we updated the node */
 			node = search_node_vmci(src_cid);
 			if (!node) {
-				printf("wmasterd: error updating node\n");
+				print_debug(LOG_ERR, "error: updating node %11d\n", src_cid);
 				return;
 			}
 		}
 	}
 
 	if ((bytes == 2) || (bytes == 5)) {
-		if (verbose)
-			printf("wmasterd: node %11d has sent status\n",
+		print_debug(LOG_INFO, "node %11d has sent status\n",
 					src_cid);
 		return;
 	}
@@ -1957,8 +1935,8 @@ void recv_from_welled_vmci(void)
 		 *	from the old into the new buf
 		 */
 
-		if (verbose)
-			printf("wmasterd: gelled update received\n");
+		print_debug(LOG_INFO, "gelled update received from %11d\n",
+				src_cid);
 
 		struct update_2 data_2;
 
@@ -1968,7 +1946,7 @@ void recv_from_welled_vmci(void)
 		 */
 
 		if (bytes == (sizeof(struct update) + 7)) {
-			printf("wmasterd: update version 1\n");
+			print_debug(LOG_INFO, "update version 1 from %11d\n", src_cid);
 			struct update data_1;
 			/* pull loc from the buffer */
 			memcpy(&data_1, buf + 7, sizeof(struct update));
@@ -1984,11 +1962,12 @@ void recv_from_welled_vmci(void)
 			strncpy(data_2.name, data_1.name, NAME_LEN - 1);
 			data_2.cid = data_1.cid;
 		} else if (bytes == (sizeof(struct update_2) + 7)) {
-			printf("wmasterd: update version 2\n");
+			print_debug(LOG_INFO, "update version 2 from %11d\n", src_cid);
+			print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d", sizeof(struct update_2), sizeof(data_2)); 
 			/* pull loc from the buffer */
 			memcpy(&data_2, buf + 7, sizeof(struct update_2));
 		} else {
-			printf("wmasterd: update version unknown\n");
+			print_debug(LOG_ERR, "update version unknown from %11d\n", src_cid);
 			return;
 		}
 		update_node_info(node, &data_2);
@@ -2034,6 +2013,7 @@ int main(int argc, char *argv[])
 	print_status = 0;
 	send_distance = 0;
 	broadcast = 0;
+	loglevel = -1;
 
 	static struct option long_options[] = {
 		{"help",		no_argument, 0, 'h'},
@@ -2042,10 +2022,11 @@ int main(int argc, char *argv[])
 		{"no-check-room",	no_argument, 0, 'r'},
 		{"update-room", 	no_argument, 0, 'u'},
 		{"distance",		no_argument, 0, 'd'},
+		{"debug",		required_argument, 0, 'D'},
 		{"cache",		required_argument, 0, 'c'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvbrudc:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvbrudD:c:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2071,6 +2052,10 @@ int main(int argc, char *argv[])
 			break;
 		case 'd':
 			send_distance = 1;
+			break;
+		case 'D':
+			loglevel = atoi(optarg);
+			printf("wmasterd: syslog level set to %d\n", loglevel);
 			break;
 		case 'c':
 			cache_filename = optarg;
@@ -2107,15 +2092,23 @@ int main(int argc, char *argv[])
 
 	#else
 	uname(&uts_buf);
-	if (strncmp(uts_buf.sysname, "VMkernel", 8) == 0)
+	if (strncmp(uts_buf.sysname, "VMkernel", 8) == 0) {
 		esx = 1;
+	}
+
+	#ifndef _WIN32
+	if (loglevel >= 0)
+		openlog("wmasterd", LOG_PID, LOG_USER);
+	#endif
+
+	print_debug(LOG_NOTICE, "Starting, version %s\n", VERSION_STR);
 
 	/* TODO: add check for other hypervisors */
 
 	vsock_dev_fd = open("/dev/vsock", 0);
 	if (vsock_dev_fd < 0) {
 		sock_error("wmasterd: open");
-		printf("wmasterd: could not open /dev/vsock\n");
+		print_debug(LOG_ERR, "could not open /dev/vsock\n");
 		_exit(EXIT_FAILURE);
 	}
 	if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0)
@@ -2127,9 +2120,6 @@ int main(int argc, char *argv[])
 	}
 
 	if (af == -1) {
-		if (verbose)
-			printf("wmasterd: could not get af_vsock via ioctl\n");
-
 		/* take a guess */
 		if (esx)
 			af = 53;
@@ -2137,7 +2127,7 @@ int main(int argc, char *argv[])
 			af = 40;
 	}
 	#endif
-        printf("wmasterd: CID: %u\n", cid);
+	printf("wmasterd: CID: %u\n", cid);
 
 	/*Handle kill signals*/
 	running = 1;
@@ -2171,7 +2161,7 @@ int main(int argc, char *argv[])
 
 		/* display result */
 		strncpy(broadcast_addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr), 15);
-		printf("broadcast address: %s\n", broadcast_addr);
+		print_debug(LOG_NOTICE, "relay to broadcast address: %s\n", broadcast_addr);
 	}
 #endif
 
@@ -2179,6 +2169,7 @@ int main(int argc, char *argv[])
 	sockfd = socket(af, SOCK_DGRAM, 0);
 	if (sockfd < 0) {
 		sock_error("wmasterd: socket");
+		print_debug(LOG_ERR, "error: cannot open SOCK_DGRAM client");
 		return EXIT_FAILURE;
 	}
 
@@ -2186,6 +2177,11 @@ int main(int argc, char *argv[])
 
 	/* create vmci server socket */
 	myservfd = socket(af, SOCK_DGRAM, 0);
+	if (myservfd < 0) {
+		sock_error("wmasterd: socket");
+		print_debug(LOG_ERR, "error: cannot open SOCK_DGRAM server");
+		return EXIT_FAILURE;
+	}
 
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
@@ -2197,6 +2193,7 @@ int main(int argc, char *argv[])
 
 	if (ret < 0) {
 		sock_error("wmasterd: myservaddr");
+		print_debug(LOG_ERR, "error: invalid address");
 		return EXIT_FAILURE;
 	}
 
@@ -2207,6 +2204,7 @@ int main(int argc, char *argv[])
 	ret = pthread_create(&nmea_tid, NULL, produce_nmea, NULL);
 	if (ret < 0) {
 		sock_error("wmasterd: pthread_create produce_nmea");
+		print_debug(LOG_ERR, "error: pthread_create produce_nmea");
 		exit(EXIT_FAILURE);
 	}
 
@@ -2216,6 +2214,7 @@ int main(int argc, char *argv[])
 		ret = pthread_create(&hosts_tid, NULL, recv_from_hosts, NULL);
 		if (ret < 0) {
 			perror("wmasterd: pthread_create recv_from_hosts");
+			print_debug(LOG_ERR, "error: pthread_create recv_from_hosts");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -2278,21 +2277,20 @@ int main(int argc, char *argv[])
 		/* print status is requested by usr1 signal */
 		if (print_status) {
 			pthread_mutex_lock(&list_mutex);
-			if (verbose)
-				printf("wmasterd: print status requested\n");
+			print_debug(LOG_INFO, "Status requested\n");
 			list_nodes_vmci();
 			pthread_mutex_unlock(&list_mutex);
 			print_status = 0;
 		}
 	}
 
-	printf("wmasterd: Shutting down...\n");
+	print_debug(LOG_INFO, "Shutting down...\n");
 
 	pthread_cancel(nmea_tid);
 	pthread_join(nmea_tid, NULL);
 
-	if (verbose)
-		printf("wmasterd: Threads have been cancelled\n");
+	
+	print_debug(LOG_INFO, "Threads have been cancelled\n");
 
 	/* cleanup */
 	free_list();
@@ -2300,8 +2298,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_destroy(&list_mutex);
 	pthread_mutex_destroy(&file_mutex);
 
-	if (verbose)
-		printf("wmasterd: Mutices have been destroyed\n");
+	print_debug(LOG_INFO, "Mutices have been destroyed\n");
 
 	if (cache_fp)
 		fclose(cache_fp);
@@ -2312,8 +2309,7 @@ int main(int argc, char *argv[])
 	close(vsock_dev_fd);
 	#endif
 
-	if (verbose)
-		printf("wmasterd: Exiting\n");
+	print_debug(LOG_NOTICE, "Exiting\n");
 
 	return EXIT_SUCCESS;
 }
