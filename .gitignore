@@ -4,4 +4,4 @@ bin/
 html/
 latex/
 .*swp
-dist/
+dist/*
