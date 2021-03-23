@@ -119,7 +119,7 @@ open:
                         continue;
 
                 /* read data */
-                rc = gps_read(&gps_data);
+                rc = gps_read(&gps_data, NULL, 0);
                 if (rc == -1) {
                         if (verbose)
                                 g_print("gpsd connection died\n");
