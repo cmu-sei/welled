@@ -620,6 +620,8 @@ void recv_from_master(void)
 	/* write to device */
 	if (stat(dev_path, &buf_stat) < 0) {
 		perror("stat");
+		print_debug(LOG_ERR, "Error: stat failed: %s does not exist",
+				dev_path);
 		goto out;
 	}
 
@@ -669,15 +671,17 @@ void recv_from_master(void)
 	if (check_position && strncmp(buf, "$GPRMC", 6) == 0) {
 		process_rmc(buf);
 		if (velocity != 0) {
-			if (verbose)
+			if (verbose) {
 				printf("velocity: %f\n", velocity);
+			}
 			ret = check_if_sea(lat, lon);
-			if (ret < 0)
+			if (ret < 0) {
 				print_debug(LOG_ERR, "Error: check_if_sea failed\n");
-			else if (land && ret)
+			} else if (land && ret) {
 				send_stop();
-			else if (sea && !ret)
+			} else if (sea && !ret) {
 				send_stop();
+			}
 		}
 	}
 	/* TODO: check for crash if altitude < elevation */
@@ -771,7 +775,7 @@ int main(int argc, char *argv[])
 		{"mapserver",	required_argument, 0, 'm'},
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvls:m:d:D", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvls:m:d:D:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
