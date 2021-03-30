@@ -188,7 +188,6 @@ welled-x86_64-openwrt-linux-musl:
 # default is 64 bit
 gelled-gui:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	#$(CC) -o $(OUTDIR)/gelled-gui gelled-gui.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0 glib` -I /usr//lib/glib-2.0/include/ -I /usr/include/gtk-3.0/ -I /usr/include/pango-1.0/pango/ -I /usr/include/osmgpsmap-1.0/ -I /usr/include/glib-2.0/
 	$(CC) -o $(OUTDIR)/$@ $@.c $(CFLAGS) `pkg-config --cflags --libs osmgpsmap-1.0 gtk+-3.0` -lpthread -lm -lgps
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled-gui ../dist/x86_64-Linux/

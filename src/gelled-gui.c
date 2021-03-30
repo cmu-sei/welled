@@ -59,35 +59,35 @@ int zoom;
  */
 void dec_deg_to_dec_min(float orig, char *dest, int len)
 {
-        int deg;
-        float min;
-        char ch;
+	int deg;
+	float min;
+	char ch;
 
-        deg = (int)orig;
-        min = (orig - deg) * 60;
+	deg = (int)orig;
+	min = (orig - deg) * 60;
 
-        switch (len) {
-        case 17:
-                if (deg < 0) {
-                        ch = 'S';
-                        min *= -1;
-                } else {
-                        ch = 'N';
-                }
-                g_snprintf(dest, len, "%02d\u00B0 %07.4f' %c",
-                        abs(deg), min, ch);
-                break;
-        case 18:
-                if (deg < 0) {
-                        ch = 'W';
-                        min *= -1;
-                } else {
-                        ch = 'E';
-                }
-                g_snprintf(dest, len, "%03d\u00B0 %07.4f' %c",
-                        abs(deg), min, ch);
-                break;
-        }
+	switch (len) {
+	case 17:
+		if (deg < 0) {
+			ch = 'S';
+			min *= -1;
+		} else {
+			ch = 'N';
+		}
+		g_snprintf(dest, len, "%02d\u00B0 %07.4f' %c",
+			abs(deg), min, ch);
+		break;
+	case 18:
+		if (deg < 0) {
+			ch = 'W';
+			min *= -1;
+		} else {
+			ch = 'E';
+		}
+		g_snprintf(dest, len, "%03d\u00B0 %07.4f' %c",
+			abs(deg), min, ch);
+		break;
+	}
 }
 
 /**
@@ -96,54 +96,54 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
  */
 void *gps(void *arg)
 {
-        /* check gps */
-        int rc;
-        struct gps_data_t gps_data;
+	/* check gps */
+	int rc;
+	struct gps_data_t gps_data;
 
 open:
-        rc = gps_open(gpsd_address, gpsd_port, &gps_data);
-        if (rc  == -1) {
-                if (verbose)
+	rc = gps_open(gpsd_address, gpsd_port, &gps_data);
+	if (rc  == -1) {
+		if (verbose)
 			g_print("could not connect to gpsd\n");
-                sleep(1);
-                goto open;
-        } else if (verbose) {
-                g_print("gpsd connection opened\n");
-        }
+		sleep(1);
+		goto open;
+	} else if (verbose) {
+		g_print("gpsd connection opened\n");
+	}
 
-        gps_stream(&gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
+	gps_stream(&gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
 
-        while (running) {
-                /* 1 second wait */
-                if (!gps_waiting(&gps_data, 1000000))
-                        continue;
+	while (running) {
+		/* 1 second wait */
+		if (!gps_waiting(&gps_data, 1000000))
+			continue;
 
-                /* read data */
-                rc = gps_read(&gps_data, NULL, 0);
-                if (rc == -1) {
-                        if (verbose)
-                                g_print("gpsd connection died\n");
-                        sleep(1);
-                        goto open;
-                }
+		/* read data */
+		rc = gps_read(&gps_data, NULL, 0);
+		if (rc == -1) {
+			if (verbose)
+				g_print("gpsd connection died\n");
+			sleep(1);
+			goto open;
+		}
 
 		/* Display data from the GPS receiver. */
-                if (!isnan(gps_data.fix.latitude) &&
-                                !isnan(gps_data.fix.longitude)) {
+		if (!isnan(gps_data.fix.latitude) &&
+				!isnan(gps_data.fix.longitude)) {
 			if (verbose) {
 				printf("got update from gpsd\n");
 			}
-                        pthread_mutex_lock(&gps_mutex);
-                        latitude = gps_data.fix.latitude;
-                        longitude = gps_data.fix.longitude;
-                        g_snprintf(latitude_string, 30, "%f", latitude);
-                        g_snprintf(longitude_string, 30, "%f", longitude);
-                        pthread_mutex_unlock(&gps_mutex);
-                }
-        }
-        gps_close(&gps_data);
+			pthread_mutex_lock(&gps_mutex);
+			latitude = gps_data.fix.latitude;
+			longitude = gps_data.fix.longitude;
+			g_snprintf(latitude_string, 30, "%f", latitude);
+			g_snprintf(longitude_string, 30, "%f", longitude);
+			pthread_mutex_unlock(&gps_mutex);
+		}
+	}
+	gps_close(&gps_data);
 
-        return ((void *)0);
+	return ((void *)0);
 }
 
 /*
@@ -151,65 +151,65 @@ open:
  */
 static void send_location(void)
 {
-        pid_t pid;
-        struct stat buf_stat;
+	pid_t pid;
+	struct stat buf_stat;
 
-        if (verbose) {
-                printf("sending %s %s\n", latitude_string_new,
+	if (verbose) {
+		printf("sending %s %s\n", latitude_string_new,
 				longitude_string_new);
 	}
 
-        /* fork */
-        pid = fork();
+	/* fork */
+	pid = fork();
 
-        if (pid == -1) {
-                perror("fork");
-        } else if (pid == 0) {
-                /* child */
-                if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
-                        if (verbose) {
-                                execl("/bin/gelled-ctrl", "gelled-ctrl",
-                                        "-v", "-y", latitude_string_new,
+	if (pid == -1) {
+		perror("fork");
+	} else if (pid == 0) {
+		/* child */
+		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
+			if (verbose) {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-v", "-y", latitude_string_new,
 					"-x", longitude_string_new, NULL);
-                        } else {
-                                execl("/bin/gelled-ctrl", "gelled-ctrl",
-                                        "-y", latitude_string_new,
+			} else {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-y", latitude_string_new,
 					"-x", longitude_string_new, NULL);
-                        }
-                } else {
-                        g_print("could not find gelled-ctrl\n");
-                        _exit(EXIT_FAILURE);
-                }
-        } else {
-                /* parent - wait on child */
-                waitpid(pid, NULL, 0);
-        }
+			}
+		} else {
+			g_print("could not find gelled-ctrl\n");
+			_exit(EXIT_FAILURE);
+		}
+	} else {
+		/* parent - wait on child */
+		waitpid(pid, NULL, 0);
+	}
 }
 
 static void get_new_location(GtkWidget *widget, gpointer user_data)
 {
 	OsmGpsMapPoint *location;
-        location = osm_gps_map_get_event_location((OsmGpsMap *)map,
-                        user_data);
+	location = osm_gps_map_get_event_location((OsmGpsMap *)map,
+			user_data);
 
 	osm_gps_map_point_get_degrees(location, &latitude_new, &longitude_new);
 
 	g_snprintf(latitude_string_new, 30, "%f", latitude_new);
-        g_snprintf(longitude_string_new, 30, "%f", longitude_new);
+	g_snprintf(longitude_string_new, 30, "%f", longitude_new);
 
 	gtk_text_buffer_set_text(buffer_lat_new, latitude_string_new, -1);
-        gtk_text_buffer_set_text(buffer_lon_new, longitude_string_new, -1);
-        pthread_mutex_unlock(&gps_mutex);
+	gtk_text_buffer_set_text(buffer_lon_new, longitude_string_new, -1);
+	pthread_mutex_unlock(&gps_mutex);
 
-        gtk_widget_queue_draw(view_lat_new);
-        gtk_widget_queue_draw(view_lon_new);
+	gtk_widget_queue_draw(view_lat_new);
+	gtk_widget_queue_draw(view_lon_new);
 }
 
 static void zoom_to_current_location(GtkWidget *widget, gpointer user_data)
 {
-        zoom = 20;
+	zoom = 20;
 
-        osm_gps_map_set_center_and_zoom((OsmGpsMap *)map, latitude, longitude, zoom);
+	osm_gps_map_set_center_and_zoom((OsmGpsMap *)map, latitude, longitude, zoom);
 }
 
 /**
@@ -217,7 +217,7 @@ static void zoom_to_current_location(GtkWidget *widget, gpointer user_data)
  */
 static void quit_click(GtkWidget *f)
 {
-        gtk_widget_destroy(window);
+	gtk_widget_destroy(window);
 }
 
 /**
@@ -225,40 +225,40 @@ static void quit_click(GtkWidget *f)
  */
 static void show_about(GtkWidget *f)
 {
-        static GtkWidget *dialog;
-        GtkAboutDialog *about;
-        const gchar *auth[] = {"Adam Welle <arwelle@cert.org>", NULL};
-        const gchar *osm[] = {
+	static GtkWidget *dialog;
+	GtkAboutDialog *about;
+	const gchar *auth[] = {"Adam Welle <arwelle@cert.org>", NULL};
+	const gchar *osm[] = {
 		"http://www.openstreetmaps.org",
 		"Map data is available under the Open Database Licence.",
 		"Copyright © OpenStreetMap contributors",
 	       	"License and Terms at www.openstreetmap.org/copyright",
 		"or www.opendatacommons.org/licenses/odbl.", NULL};
 
-        /* Create dialog */
-        dialog = gtk_about_dialog_new();
-        gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
-        about = GTK_ABOUT_DIALOG(dialog);
+	/* Create dialog */
+	dialog = gtk_about_dialog_new();
+	gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
+	about = GTK_ABOUT_DIALOG(dialog);
 
-        /* Set it's properties */
-        gtk_about_dialog_set_program_name(about,
-                "GELLED-GUI");
-        gtk_about_dialog_set_version(about, VERSION_STR);
-        gtk_about_dialog_set_copyright(about,
-                "Copyright 2019 © Carnegie Mellon University");
-        gtk_about_dialog_set_website(about, "http://www.cert.org");
-        gtk_about_dialog_set_authors(about, auth);
-        gtk_about_dialog_set_license_type(about,  GTK_LICENSE_LGPL_2_1);
+	/* Set it's properties */
+	gtk_about_dialog_set_program_name(about,
+		"GELLED-GUI");
+	gtk_about_dialog_set_version(about, VERSION_STR);
+	gtk_about_dialog_set_copyright(about,
+		"Copyright 2019 © Carnegie Mellon University");
+	gtk_about_dialog_set_website(about, "http://www.cert.org");
+	gtk_about_dialog_set_authors(about, auth);
+	gtk_about_dialog_set_license_type(about,  GTK_LICENSE_LGPL_2_1);
 
-        /* TODO: set logo */
-        gtk_about_dialog_set_logo_icon_name(about, "sscs");
+	/* TODO: set logo */
+	gtk_about_dialog_set_logo_icon_name(about, "sscs");
 
 	/* cite the DEM source */
-        gtk_about_dialog_add_credit_section(about, "Map tiles courtesy of",
+	gtk_about_dialog_add_credit_section(about, "Map tiles courtesy of",
 			osm);
 
-        /* Show dialog */
-        gtk_widget_show_all(dialog);
+	/* Show dialog */
+	gtk_widget_show_all(dialog);
 }
 
 /**
@@ -266,23 +266,23 @@ static void show_about(GtkWidget *f)
  */
 void save_gpsd_address(GtkWidget *f, gpointer data)
 {
-        int ret;
+	int ret;
 
-        g_strlcpy(gpsd_address,
-                gtk_entry_get_text(GTK_ENTRY(entry_address)), 16);
-        g_strlcpy(gpsd_port, gtk_entry_get_text(GTK_ENTRY(entry_port)), 6);
+	g_strlcpy(gpsd_address,
+		gtk_entry_get_text(GTK_ENTRY(entry_address)), 16);
+	g_strlcpy(gpsd_port, gtk_entry_get_text(GTK_ENTRY(entry_port)), 6);
 
-        if (verbose)
-                g_print("%s:%s\n", gpsd_address, gpsd_port);
+	if (verbose)
+		g_print("%s:%s\n", gpsd_address, gpsd_port);
 
-        pthread_cancel(gps_tid);
-        pthread_join(gps_tid, NULL);
+	pthread_cancel(gps_tid);
+	pthread_join(gps_tid, NULL);
 
-        ret = pthread_create(&gps_tid, NULL, gps, NULL);
-        if (ret < 0) {
-                perror("pthread_create");
-                running = 0;
-        }
+	ret = pthread_create(&gps_tid, NULL, gps, NULL);
+	if (ret < 0) {
+		perror("pthread_create");
+		running = 0;
+	}
 }
 
 /**
@@ -290,56 +290,56 @@ void save_gpsd_address(GtkWidget *f, gpointer data)
  */
 void set_gpsd_address(GtkWidget *f)
 {
-        GtkWidget *dialog;
-        GtkWidget *grid;
-        GtkWidget *button;
-        GtkWidget *label;
+	GtkWidget *dialog;
+	GtkWidget *grid;
+	GtkWidget *button;
+	GtkWidget *label;
 
-        dialog = gtk_window_new(GTK_WINDOW_POPUP);
-        gtk_window_set_title(GTK_WINDOW(dialog), "GPSD Address");
-        gtk_window_set_default_size(GTK_WINDOW(dialog), 200, 100);
-        gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER);
-        gtk_container_set_border_width(GTK_CONTAINER(dialog), 10);
-        gtk_window_set_modal(GTK_WINDOW(dialog), true);
+	dialog = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	gtk_window_set_title(GTK_WINDOW(dialog), "GPSD Address");
+	gtk_window_set_default_size(GTK_WINDOW(dialog), 200, 100);
+	gtk_window_set_position(GTK_WINDOW(dialog), GTK_WIN_POS_CENTER);
+	gtk_container_set_border_width(GTK_CONTAINER(dialog), 10);
+	gtk_window_set_modal(GTK_WINDOW(dialog), true);
 
-        /* create grid */
-        grid = gtk_grid_new();
-        gtk_grid_set_row_spacing((GtkGrid *)grid, 10);
-        gtk_grid_set_column_homogeneous((GtkGrid *)grid, 1);
-        gtk_container_add(GTK_CONTAINER(dialog), grid);
+	/* create grid */
+	grid = gtk_grid_new();
+	gtk_grid_set_row_spacing((GtkGrid *)grid, 10);
+	gtk_grid_set_column_homogeneous((GtkGrid *)grid, 1);
+	gtk_container_add(GTK_CONTAINER(dialog), grid);
 
-        /* set gpsd ip address in row 0 */
-        label = gtk_label_new("IP:");
-        entry_address = gtk_entry_new();
-        gtk_entry_set_max_length(GTK_ENTRY(entry_address), 16);
-        gtk_entry_set_text(GTK_ENTRY(entry_address), gpsd_address);
-        gtk_widget_grab_focus(entry_address);
-        gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
-        gtk_grid_attach(GTK_GRID(grid), entry_address, 1, 0, 1, 1);
+	/* set gpsd ip address in row 0 */
+	label = gtk_label_new("IP:");
+	entry_address = gtk_entry_new();
+	gtk_entry_set_max_length(GTK_ENTRY(entry_address), 16);
+	gtk_entry_set_text(GTK_ENTRY(entry_address), gpsd_address);
+	gtk_widget_grab_focus(entry_address);
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
+	gtk_grid_attach(GTK_GRID(grid), entry_address, 1, 0, 1, 1);
 
-        /* set www gpsd port in row 1 */
-        label = gtk_label_new("Port:");
-        entry_port = gtk_entry_new();
-        gtk_entry_set_max_length(GTK_ENTRY(entry_port), 6);
-        gtk_entry_set_text(GTK_ENTRY(entry_port), gpsd_port);
-        gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
-        gtk_grid_attach(GTK_GRID(grid), entry_port, 1, 1, 1, 1);
+	/* set www gpsd port in row 1 */
+	label = gtk_label_new("Port:");
+	entry_port = gtk_entry_new();
+	gtk_entry_set_max_length(GTK_ENTRY(entry_port), 6);
+	gtk_entry_set_text(GTK_ENTRY(entry_port), gpsd_port);
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
+	gtk_grid_attach(GTK_GRID(grid), entry_port, 1, 1, 1, 1);
 
-        /* add buttons to row 2 */
-        button = gtk_button_new_with_label("Close");
-        g_signal_connect_swapped(button, "clicked",
-                G_CALLBACK(gtk_widget_destroy), dialog);
-        gtk_grid_attach(GTK_GRID(grid), button, 0, 2, 1, 1);
-        button = gtk_button_new_with_label("Save and Apply");
-        g_signal_connect(button, "clicked", G_CALLBACK(save_gpsd_address),
-                NULL);
-        gtk_grid_attach(GTK_GRID(grid), button, 1, 2, 1, 1);
+	/* add buttons to row 2 */
+	button = gtk_button_new_with_label("Close");
+	g_signal_connect_swapped(button, "clicked",
+		G_CALLBACK(gtk_widget_destroy), dialog);
+	gtk_grid_attach(GTK_GRID(grid), button, 0, 2, 1, 1);
+	button = gtk_button_new_with_label("Save and Apply");
+	g_signal_connect(button, "clicked", G_CALLBACK(save_gpsd_address),
+		NULL);
+	gtk_grid_attach(GTK_GRID(grid), button, 1, 2, 1, 1);
 
-        /* Create dialog */
-        gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
+	/* Create dialog */
+	gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(window));
 
-        /* Show dialog */
-        gtk_widget_show_all(dialog);
+	/* Show dialog */
+	gtk_widget_show_all(dialog);
 }
 
 /**
@@ -347,83 +347,83 @@ void set_gpsd_address(GtkWidget *f)
  */
 gboolean update_display(void)
 {
-        pthread_mutex_lock(&gps_mutex);
-        gtk_text_buffer_set_text(buffer_lat, latitude_string, -1);
-        gtk_text_buffer_set_text(buffer_lon, longitude_string, -1);
-        pthread_mutex_unlock(&gps_mutex);
+	pthread_mutex_lock(&gps_mutex);
+	gtk_text_buffer_set_text(buffer_lat, latitude_string, -1);
+	gtk_text_buffer_set_text(buffer_lon, longitude_string, -1);
+	pthread_mutex_unlock(&gps_mutex);
 
-        gtk_widget_queue_draw(view_lat);
-        gtk_widget_queue_draw(view_lon);
+	gtk_widget_queue_draw(view_lat);
+	gtk_widget_queue_draw(view_lon);
 
-        return true;
+	return true;
 }
 
 static void activate(GtkApplication *app, gpointer user_data)
 {
-        GtkWidget *grid;
+	GtkWidget *grid;
 	GtkWidget *button;
-        GtkWidget *menubar;
-        GtkWidget *filemenu;
-        GtkWidget *file;
-        GtkWidget *quit;
-        GtkWidget *settingsmenu;
-        GtkWidget *settings;
-        GtkWidget *gpsd;
-        GtkWidget *helpmenu;
-        GtkWidget *help;
-        GtkWidget *about;
+	GtkWidget *menubar;
+	GtkWidget *filemenu;
+	GtkWidget *file;
+	GtkWidget *quit;
+	GtkWidget *settingsmenu;
+	GtkWidget *settings;
+	GtkWidget *gpsd;
+	GtkWidget *helpmenu;
+	GtkWidget *help;
+	GtkWidget *about;
 	GtkWidget *label;
 
 	/* create window */
-        window = gtk_application_window_new(app);
-        gtk_window_set_default_size(GTK_WINDOW(window), 600, 350);
-        gtk_window_set_title(GTK_WINDOW(window),
-                "GELLED-GUI");
-        gtk_container_set_border_width(GTK_CONTAINER(window), 10);
+	window = gtk_application_window_new(app);
+	gtk_window_set_default_size(GTK_WINDOW(window), 600, 350);
+	gtk_window_set_title(GTK_WINDOW(window),
+		"GELLED-GUI");
+	gtk_container_set_border_width(GTK_CONTAINER(window), 10);
 
 	/* create grid */
-        grid = gtk_grid_new();
-        gtk_grid_set_row_spacing((GtkGrid *)grid, 10);
-        gtk_grid_set_column_homogeneous((GtkGrid *)grid, 1);
-        gtk_container_add(GTK_CONTAINER(window), grid);
+	grid = gtk_grid_new();
+	gtk_grid_set_row_spacing((GtkGrid *)grid, 10);
+	gtk_grid_set_column_homogeneous((GtkGrid *)grid, 1);
+	gtk_container_add(GTK_CONTAINER(window), grid);
 
-        menubar = gtk_menu_bar_new();
-        filemenu = gtk_menu_new();
-        settingsmenu = gtk_menu_new();
-        helpmenu = gtk_menu_new();
+	menubar = gtk_menu_bar_new();
+	filemenu = gtk_menu_new();
+	settingsmenu = gtk_menu_new();
+	helpmenu = gtk_menu_new();
 
-        /* setup labels */
-        file = gtk_menu_item_new_with_label("File");
-        help = gtk_menu_item_new_with_label("Help");
-        quit = gtk_menu_item_new_with_label("Quit");
-        about = gtk_menu_item_new_with_label("About");
-        settings = gtk_menu_item_new_with_label("Settings");
-        gpsd = gtk_menu_item_new_with_label("GPSD Address");
+	/* setup labels */
+	file = gtk_menu_item_new_with_label("File");
+	help = gtk_menu_item_new_with_label("Help");
+	quit = gtk_menu_item_new_with_label("Quit");
+	about = gtk_menu_item_new_with_label("About");
+	settings = gtk_menu_item_new_with_label("Settings");
+	gpsd = gtk_menu_item_new_with_label("GPSD Address");
 
-        /* setup file menu */
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), filemenu);
-        gtk_menu_shell_append(GTK_MENU_SHELL(filemenu), quit);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menubar), file);
+	/* setup file menu */
+	gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), filemenu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(filemenu), quit);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menubar), file);
 
-        /* setup settings menu */
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(settings), settingsmenu);
-        gtk_menu_shell_append(GTK_MENU_SHELL(settingsmenu), gpsd);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menubar), settings);
+	/* setup settings menu */
+	gtk_menu_item_set_submenu(GTK_MENU_ITEM(settings), settingsmenu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(settingsmenu), gpsd);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menubar), settings);
 
-        /* setup help menu */
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(help), helpmenu);
-        gtk_menu_shell_append(GTK_MENU_SHELL(helpmenu), about);
-        gtk_menu_shell_append(GTK_MENU_SHELL(menubar), help);
+	/* setup help menu */
+	gtk_menu_item_set_submenu(GTK_MENU_ITEM(help), helpmenu);
+	gtk_menu_shell_append(GTK_MENU_SHELL(helpmenu), about);
+	gtk_menu_shell_append(GTK_MENU_SHELL(menubar), help);
 
-        g_signal_connect(G_OBJECT(quit), "activate",
-                G_CALLBACK(quit_click), NULL);
-        g_signal_connect(G_OBJECT(about), "activate",
-                G_CALLBACK(show_about), NULL);
-        g_signal_connect(G_OBJECT(gpsd), "activate",
-                G_CALLBACK(set_gpsd_address), NULL);
+	g_signal_connect(G_OBJECT(quit), "activate",
+		G_CALLBACK(quit_click), NULL);
+	g_signal_connect(G_OBJECT(about), "activate",
+		G_CALLBACK(show_about), NULL);
+	g_signal_connect(G_OBJECT(gpsd), "activate",
+		G_CALLBACK(set_gpsd_address), NULL);
 
-        /* attach menubar */
-        gtk_grid_attach(GTK_GRID(grid), menubar, 0, 0, 4, 1);
+	/* attach menubar */
+	gtk_grid_attach(GTK_GRID(grid), menubar, 0, 0, 4, 1);
 
 	/* create map */
 	map = osm_gps_map_new();
@@ -432,62 +432,62 @@ static void activate(GtkApplication *app, gpointer user_data)
 	/* add map in row 1 */
 	gtk_grid_attach(GTK_GRID(grid), map, 0, 1, 5, 20);
 
-        /* create current location in row 2 */
+	/* create current location in row 2 */
 	label = gtk_label_new("Current Location: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 0, 21, 1, 1);
-        label = gtk_label_new("Latitude: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 1, 21, 1, 1);
-        view_lat = gtk_text_view_new();
-        buffer_lat = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lat));
-        gtk_text_buffer_set_text(buffer_lat, "0.0000000", -1);
-        gtk_grid_attach(GTK_GRID(grid), view_lat, 2, 21, 1, 1);
-        label = gtk_label_new("Longitude: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 3, 21, 1, 1);
-        view_lon = gtk_text_view_new();
-        buffer_lon = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lon));
-        gtk_text_buffer_set_text(buffer_lon, "0.0000000", -1);
-        gtk_grid_attach(GTK_GRID(grid), view_lon, 4, 21, 1, 1);
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 21, 1, 1);
+	label = gtk_label_new("Latitude: ");
+	gtk_grid_attach(GTK_GRID(grid), label, 1, 21, 1, 1);
+	view_lat = gtk_text_view_new();
+	buffer_lat = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lat));
+	gtk_text_buffer_set_text(buffer_lat, "0.0000000", -1);
+	gtk_grid_attach(GTK_GRID(grid), view_lat, 2, 21, 1, 1);
+	label = gtk_label_new("Longitude: ");
+	gtk_grid_attach(GTK_GRID(grid), label, 3, 21, 1, 1);
+	view_lon = gtk_text_view_new();
+	buffer_lon = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lon));
+	gtk_text_buffer_set_text(buffer_lon, "0.0000000", -1);
+	gtk_grid_attach(GTK_GRID(grid), view_lon, 4, 21, 1, 1);
 
 	/* create new location in row 3 */
-        label = gtk_label_new("New Location: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 0, 22, 1, 1);
-        label = gtk_label_new("Latitude: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 1, 22, 1, 1);
-        view_lat_new = gtk_text_view_new();
-        buffer_lat_new = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lat_new));
-        gtk_text_buffer_set_text(buffer_lat_new, "0.0000000", -1);
-        gtk_grid_attach(GTK_GRID(grid), view_lat_new, 2, 22, 1, 1);
-        label = gtk_label_new("Longitude: ");
-        gtk_grid_attach(GTK_GRID(grid), label, 3, 22, 1, 1);
-        view_lon_new = gtk_text_view_new();
-        buffer_lon_new = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lon_new));
-        gtk_text_buffer_set_text(buffer_lon_new, "0.0000000", -1);
-        gtk_grid_attach(GTK_GRID(grid), view_lon_new, 4, 22, 1, 1);
-
-        /* create reset button in row 4 */
-        button = gtk_button_new_with_label("Center Map");
-        g_signal_connect(button, "clicked",
-                G_CALLBACK(zoom_to_current_location), NULL);
-        gtk_grid_attach(GTK_GRID(grid), button, 0, 23, 1, 1);
+	label = gtk_label_new("New Location: ");
+	gtk_grid_attach(GTK_GRID(grid), label, 0, 22, 1, 1);
+	label = gtk_label_new("Latitude: ");
+	gtk_grid_attach(GTK_GRID(grid), label, 1, 22, 1, 1);
+	view_lat_new = gtk_text_view_new();
+	buffer_lat_new = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lat_new));
+	gtk_text_buffer_set_text(buffer_lat_new, "0.0000000", -1);
+	gtk_grid_attach(GTK_GRID(grid), view_lat_new, 2, 22, 1, 1);
+	label = gtk_label_new("Longitude: ");
+	gtk_grid_attach(GTK_GRID(grid), label, 3, 22, 1, 1);
+	view_lon_new = gtk_text_view_new();
+	buffer_lon_new = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_lon_new));
+	gtk_text_buffer_set_text(buffer_lon_new, "0.0000000", -1);
+	gtk_grid_attach(GTK_GRID(grid), view_lon_new, 4, 22, 1, 1);
 
 	/* create reset button in row 4 */
-        button = gtk_button_new_with_label("Update Location");
-        g_signal_connect(button, "clicked",
-                G_CALLBACK(send_location), NULL);
-        gtk_grid_attach(GTK_GRID(grid), button, 1, 23, 3, 1);
+	button = gtk_button_new_with_label("Center Map");
+	g_signal_connect(button, "clicked",
+		G_CALLBACK(zoom_to_current_location), NULL);
+	gtk_grid_attach(GTK_GRID(grid), button, 0, 23, 1, 1);
 
-        /* create exit button in row 4 */
-        button = gtk_button_new_with_label("Exit");
-        g_signal_connect_swapped(button, "clicked",
-                G_CALLBACK(gtk_widget_destroy), window);
-        gtk_grid_attach(GTK_GRID(grid), button, 4, 23, 1, 1);
+	/* create reset button in row 4 */
+	button = gtk_button_new_with_label("Update Location");
+	g_signal_connect(button, "clicked",
+		G_CALLBACK(send_location), NULL);
+	gtk_grid_attach(GTK_GRID(grid), button, 1, 23, 3, 1);
+
+	/* create exit button in row 4 */
+	button = gtk_button_new_with_label("Exit");
+	g_signal_connect_swapped(button, "clicked",
+		G_CALLBACK(gtk_widget_destroy), window);
+	gtk_grid_attach(GTK_GRID(grid), button, 4, 23, 1, 1);
 
 
 	/* set default locaiton */
 	osm_gps_map_set_center_and_zoom((OsmGpsMap *)map, 0, 0, 1);
 
-        /* draw window */
-        gtk_widget_show_all(window);
+	/* draw window */
+	gtk_widget_show_all(window);
 
 	g_timeout_add(1000, (GSourceFunc)update_display, NULL);
 
@@ -495,82 +495,82 @@ static void activate(GtkApplication *app, gpointer user_data)
 
 int main (int argc, char **argv)
 {
-        GtkApplication *app;
-        int status;
+	GtkApplication *app;
+	int status;
 	int ret;
-        GKeyFile* gkf;
-        gchar *key_value;
-        static int show_version;
-        GError *error;
-        GOptionContext *context;
+	GKeyFile* gkf;
+	gchar *key_value;
+	static int show_version;
+	GError *error;
+	GOptionContext *context;
 
-        static GOptionEntry entries[] = {
-                { "version", 'V', 0, G_OPTION_ARG_NONE, &show_version,
-                        "Show version", NULL},
-                { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose,
-                        "Be verbose", NULL },
-                { NULL }
-        };
+	static GOptionEntry entries[] = {
+		{ "version", 'V', 0, G_OPTION_ARG_NONE, &show_version,
+			"Show version", NULL},
+		{ "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose,
+			"Be verbose", NULL },
+		{ NULL }
+	};
 
 	error = NULL;
-        show_version = 0;
+	show_version = 0;
 
-        context = g_option_context_new("arguments");
-        g_option_context_add_main_entries(context, entries, NULL);
-        g_option_context_add_group(context, gtk_get_option_group(TRUE));
+	context = g_option_context_new("arguments");
+	g_option_context_add_main_entries(context, entries, NULL);
+	g_option_context_add_group(context, gtk_get_option_group(TRUE));
 
-        if (!g_option_context_parse(context, &argc, &argv, &error)) {
-                g_print ("option parsing failed: %s\n", error->message);
-                return EXIT_FAILURE;
-        }
-        if (show_version) {
-                printf("gelled-gui version %s\n", VERSION_STR);
-                return EXIT_SUCCESS;
-        }
+	if (!g_option_context_parse(context, &argc, &argv, &error)) {
+		g_print ("option parsing failed: %s\n", error->message);
+		return EXIT_FAILURE;
+	}
+	if (show_version) {
+		printf("gelled-gui version %s\n", VERSION_STR);
+		return EXIT_SUCCESS;
+	}
 
-        if (verbose)
-                printf("entering verbose mode\n");
+	if (verbose)
+		printf("entering verbose mode\n");
 
-        running = 1;
+	running = 1;
 
-        gkf = g_key_file_new();
-        if (!g_key_file_load_from_file(
-                        gkf, CONFIG_FILE, G_KEY_FILE_NONE, NULL)) {
-                g_print("Could not read config file %s\n", CONFIG_FILE);
+	gkf = g_key_file_new();
+	if (!g_key_file_load_from_file(
+			gkf, CONFIG_FILE, G_KEY_FILE_NONE, NULL)) {
+		g_print("Could not read config file %s\n", CONFIG_FILE);
 
-                return EXIT_FAILURE;
-        }
+		return EXIT_FAILURE;
+	}
 
-        /* get gpsd options */
-        key_value = g_key_file_get_string(gkf, "sibs", "gpsd_address", NULL);
-        if (key_value)
-                g_snprintf(gpsd_address, 16, "%s", key_value);
-        else
-                g_snprintf(gpsd_address, 16, "127.0.0.1");
+	/* get gpsd options */
+	key_value = g_key_file_get_string(gkf, "sibs", "gpsd_address", NULL);
+	if (key_value)
+		g_snprintf(gpsd_address, 16, "%s", key_value);
+	else
+		g_snprintf(gpsd_address, 16, "127.0.0.1");
 
-        key_value = g_key_file_get_string(gkf, "sibs", "gpsd_port", NULL);
-        if (key_value)
-                g_snprintf(gpsd_port, 6, "%s", key_value);
-        else
-                g_snprintf(gpsd_port, 6, "2947");
+	key_value = g_key_file_get_string(gkf, "sibs", "gpsd_port", NULL);
+	if (key_value)
+		g_snprintf(gpsd_port, 6, "%s", key_value);
+	else
+		g_snprintf(gpsd_port, 6, "2947");
 
-        /* initialize mutex */
-        pthread_mutex_init(&gps_mutex, NULL);
+	/* initialize mutex */
+	pthread_mutex_init(&gps_mutex, NULL);
 
-        /* start gps thread */
-        ret = pthread_create(&gps_tid, NULL, gps, NULL);
-        if (ret < 0) {
-                perror("pthread_create");
-                running = 0;
-        }
+	/* start gps thread */
+	ret = pthread_create(&gps_tid, NULL, gps, NULL);
+	if (ret < 0) {
+		perror("pthread_create");
+		running = 0;
+	}
 
 	app = gtk_application_new("org.cert.cwd.welled.gelled-gui",
-        		G_APPLICATION_FLAGS_NONE);
+			G_APPLICATION_FLAGS_NONE);
 	g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
-        status = g_application_run(G_APPLICATION(app), argc, argv);
-        g_object_unref(app);
+	status = g_application_run(G_APPLICATION(app), argc, argv);
+	g_object_unref(app);
 
-        pthread_mutex_destroy(&gps_mutex);
+	pthread_mutex_destroy(&gps_mutex);
 
 	return status;
 }
