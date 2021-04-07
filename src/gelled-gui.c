@@ -16,6 +16,7 @@ OsmGpsMapLayer *osd;
 OsmGpsMapImage *image;
 GdkPixbuf *pixbuf;
 gchar gps_icon[256];
+gchar map_server[256];
 
 /** for controlling gps thread */
 pthread_t gps_tid;
@@ -452,8 +453,10 @@ static void activate(GtkApplication *app, gpointer user_data)
 	gtk_grid_attach(GTK_GRID(grid), menubar, 0, 0, 4, 1);
 
 	/* create map */
+	//int map_source = OSM_GPS_MAP_SOURCE_VIRTUAL_EARTH_SATELLITE;
 	map = g_object_new (OSM_TYPE_GPS_MAP,
-			//"map-source", opt_map_provider,
+			//"map-source", map_source,
+			//"repo-uri", map_server,
 			//"tile-cache", cachedir,
 			//"tile-cache-base", cachebasedir,
 			"proxy-uri", g_getenv("http_proxy"),
@@ -612,6 +615,17 @@ int main (int argc, char **argv)
 		pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
 	} else {
 		pixbuf = NULL;
+	}
+
+	key_value = g_key_file_get_string(gkf, "sibs", "map_server", NULL);
+	if (key_value)
+		g_snprintf(map_server, 256, "%s", key_value);
+	else
+		g_snprintf(map_server, 256,
+				"https://tile.openstreetmap.org/#Z/#X/#Y.png");
+
+	if (verbose) {
+		g_print("map server %s\n", map_server);
 	}
 
 	/* initialize mutex */
