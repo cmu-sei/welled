@@ -372,9 +372,11 @@ gboolean update_display(void)
 	}
 
 	/* draw current location */
-	osm_gps_map_image_remove_all((OsmGpsMap *)map);
-	image = osm_gps_map_image_add((OsmGpsMap *)map,
-			latitude, longitude, pixbuf);
+	if (pixbuf) {
+		osm_gps_map_image_remove_all((OsmGpsMap *)map);
+		image = osm_gps_map_image_add((OsmGpsMap *)map,
+				latitude, longitude, pixbuf);
+	}
 
 	/* update crosshair location */
 	get_new_location(NULL, NULL);
@@ -471,8 +473,6 @@ static void activate(GtkApplication *app, gpointer user_data)
 	osm_gps_map_layer_add(OSM_GPS_MAP(map), osd);
 	g_object_unref(G_OBJECT(osd));
 
-	pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
-
 	g_signal_connect(G_OBJECT(map), "button-press-event",
 			G_CALLBACK(get_new_location), NULL);
 	
@@ -550,6 +550,7 @@ int main (int argc, char **argv)
 	static int show_version;
 	GError *error;
 	GOptionContext *context;
+	struct stat buf_stat;
 
 	static GOptionEntry entries[] = {
 		{ "version", 'V', 0, G_OPTION_ARG_NONE, &show_version,
@@ -607,8 +608,11 @@ int main (int argc, char **argv)
 	else
 		g_snprintf(gps_icon, 256, "/usr/share/welled/pix/gps.png");
 
-	g_print("%s\n", gps_icon);
-	pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
+	if (stat(gps_icon, &buf_stat) == 0) {
+		pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
+	} else {
+		pixbuf = NULL;
+	}
 
 	/* initialize mutex */
 	pthread_mutex_init(&gps_mutex, NULL);
