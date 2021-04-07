@@ -12,6 +12,10 @@
 
 GtkWidget *map;
 GtkWidget *window;
+OsmGpsMapLayer *osd;
+OsmGpsMapImage *image;
+GdkPixbuf *pixbuf;
+gchar gps_icon[256];
 
 /** for controlling gps thread */
 pthread_t gps_tid;
@@ -188,21 +192,28 @@ static void send_location(void)
 
 static void get_new_location(GtkWidget *widget, gpointer user_data)
 {
-	OsmGpsMapPoint *location;
-	location = osm_gps_map_get_event_location((OsmGpsMap *)map,
-			user_data);
+	g_object_get((OsmGpsMap *)map, "latitude", &latitude_new, "longitude", &longitude_new, NULL);
+	if (verbose) {
+		g_print("crosshair: %f %f\n", latitude_new, longitude_new);
+	}
 
-	osm_gps_map_point_get_degrees(location, &latitude_new, &longitude_new);
+//	OsmGpsMapPoint *location;
+//	location = osm_gps_map_get_event_location((OsmGpsMap *)map,
+//			user_data);
+
+//	osm_gps_map_point_get_degrees(location, &latitude_new, &longitude_new);
 
 	g_snprintf(latitude_string_new, 30, "%f", latitude_new);
 	g_snprintf(longitude_string_new, 30, "%f", longitude_new);
 
 	gtk_text_buffer_set_text(buffer_lat_new, latitude_string_new, -1);
 	gtk_text_buffer_set_text(buffer_lon_new, longitude_string_new, -1);
+
 	pthread_mutex_unlock(&gps_mutex);
 
 	gtk_widget_queue_draw(view_lat_new);
 	gtk_widget_queue_draw(view_lon_new);
+
 }
 
 static void zoom_to_current_location(GtkWidget *widget, gpointer user_data)
@@ -210,6 +221,7 @@ static void zoom_to_current_location(GtkWidget *widget, gpointer user_data)
 	zoom = 20;
 
 	osm_gps_map_set_center_and_zoom((OsmGpsMap *)map, latitude, longitude, zoom);
+
 }
 
 /**
@@ -355,6 +367,18 @@ gboolean update_display(void)
 	gtk_widget_queue_draw(view_lat);
 	gtk_widget_queue_draw(view_lon);
 
+	if (verbose) {
+		g_print("current: %f %f\n", latitude, longitude);
+	}
+
+	/* draw current location */
+	osm_gps_map_image_remove_all((OsmGpsMap *)map);
+	image = osm_gps_map_image_add((OsmGpsMap *)map,
+			latitude, longitude, pixbuf);
+
+	/* update crosshair location */
+	get_new_location(NULL, NULL);
+
 	return true;
 }
 
@@ -426,9 +450,32 @@ static void activate(GtkApplication *app, gpointer user_data)
 	gtk_grid_attach(GTK_GRID(grid), menubar, 0, 0, 4, 1);
 
 	/* create map */
-	map = osm_gps_map_new();
+	map = g_object_new (OSM_TYPE_GPS_MAP,
+			//"map-source", opt_map_provider,
+			//"tile-cache", cachedir,
+			//"tile-cache-base", cachebasedir,
+			"proxy-uri", g_getenv("http_proxy"),
+			NULL);
+
+	osd = g_object_new (OSM_TYPE_GPS_MAP_OSD,
+			"show-scale", TRUE,
+			"show-coordinates", TRUE,
+			"show-crosshair", TRUE,
+			"show-dpad", TRUE,
+			"show-zoom", TRUE,
+			"show-gps-in-dpad", FALSE,
+			"show-gps-in-zoom", FALSE,
+			"dpad-radius", 30,
+			NULL);
+
+	osm_gps_map_layer_add(OSM_GPS_MAP(map), osd);
+	g_object_unref(G_OBJECT(osd));
+
+	pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
+
 	g_signal_connect(G_OBJECT(map), "button-press-event",
 			G_CALLBACK(get_new_location), NULL);
+	
 	/* add map in row 1 */
 	gtk_grid_attach(GTK_GRID(grid), map, 0, 1, 5, 20);
 
@@ -553,6 +600,15 @@ int main (int argc, char **argv)
 		g_snprintf(gpsd_port, 6, "%s", key_value);
 	else
 		g_snprintf(gpsd_port, 6, "2947");
+
+	key_value = g_key_file_get_string(gkf, "sibs", "gps_icon", NULL);
+	if (key_value)
+		g_snprintf(gps_icon, 256, "%s", key_value);
+	else
+		g_snprintf(gps_icon, 256, "/usr/share/welled/pix/gps.png");
+
+	g_print("%s\n", gps_icon);
+	pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
 
 	/* initialize mutex */
 	pthread_mutex_init(&gps_mutex, NULL);
