@@ -775,7 +775,7 @@ int main(int argc, char *argv[])
 		{"mapserver",	required_argument, 0, 'm'},
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvls:m:d:D:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvlsm:d:D:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
