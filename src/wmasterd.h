@@ -63,10 +63,11 @@ struct location {
 	float altitude;
 	float velocity;
 	float heading;
-	float climb;
+	float pitch;
 	char nmea_zda[NMEA_LEN];
 	char nmea_gga[NMEA_LEN];
 	char nmea_rmc[NMEA_LEN];
+	char nmea_pashr[NMEA_LEN];
 /*
 	char nmea_gsa[NMEA_LEN];
 	char nmea_gbs[NMEA_LEN];
@@ -97,7 +98,7 @@ struct update_2 {
 	float altitude;
 	float velocity;
 	float heading;
-	float climb;
+	float pitch;
 	char room[UUID_LEN];
 	char name[NAME_LEN];
 	char isolation_tag[UUID_LEN];

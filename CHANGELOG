@@ -1,3 +1,5 @@
+2.4.3 - gelled-ctrl: updates to wmasterd, gelled, and gelled-ctrl to rename
+    climb to pitch
 2.4.2 - wmasterd: fixes bug in following nodes
 2.4.1 - wmasterd: update_node_location logs to syslog
 2.4.0 - welled: Uses syslog for both wmasterd  and welled

@@ -89,7 +89,7 @@ void show_usage(int exval)
 
 	printf("gelled-ctrl - control program for GPS emulation\n\n");
 
-	printf("Usage: gelled-ctrl [-hVv] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-c<climb>] [-f<vm_name>] [-n <name>]\n\n");
+	printf("Usage: gelled-ctrl [-hVv] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-p<pitch>] [-f<vm_name>] [-n <name>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help       print this help and exit\n");
@@ -100,12 +100,12 @@ void show_usage(int exval)
 	printf("  -a, --altitude   new altitude in meters\n");
 	printf("  -k, --knots      new velocity in knots\n");
 	printf("  -d, --degrees    new heading in degrees\n");
-	printf("  -c, --climb      new climb angle in degrees\n");
+	printf("  -p, --pitch      new pitch angle in degrees\n");
 	printf("  -f, --follow     follow gps feed of this vm ip/name\n");
 	printf("  -n, --name       name for this this machine\n");
 
 	printf("\n");
-	printf("Copyright (C) 2017 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2021 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
 		{"altitude",	required_argument, 0, 'a'},
 		{"knots",       required_argument, 0, 'k'},
 		{"degrees",     required_argument, 0, 'd'},
-		{"climb",       required_argument, 0, 'c'},
+		{"pitch",       required_argument, 0, 'p'},
 		{"follow",      required_argument, 0, 'f'},
 		{"name",	required_argument, 0, 'n'},
 		{0, 0, 0, 0}
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
 	data.heading = -1;
 	data.altitude = -1;
 	data.velocity = -1;
-	data.climb = -1;
+	data.pitch = -1;
 
 	#ifdef ANDROID
 	goto options;
@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
 	#endif
 
 options:
-	while ((opt = getopt_long(argc, argv, "hVvy:x:a:k:d:f:n:",
+	while ((opt = getopt_long(argc, argv, "hVvy:x:a:k:d:f:n:p:",
 			long_options, &long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -280,9 +280,10 @@ options:
 			data.heading = strtof(optarg, NULL);
 			// check bounds
 			break;
-		case 'c':
-			data.climb = strtof(optarg, NULL);
+		case 'p':
+			data.pitch = strtof(optarg, NULL);
 			// check bounds
+			break;
 		case 'f':
 			/* sync to another vm's gps feed */
 			strncpy(data.follow, optarg, FOLLOW_LEN);
@@ -349,7 +350,7 @@ options:
 			printf("altitude:  %f\n", data.altitude);
 			printf("velocity:  %f\n", data.velocity);
 			printf("heading:   %f\n", data.heading);
-			printf("climb:     %f\n", data.climb);
+			printf("pitch:     %f\n", data.pitch);
 			printf("follow:    %s\n", data.follow);
 		}
 	}

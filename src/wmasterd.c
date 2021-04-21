@@ -306,8 +306,11 @@ void update_cache_file_info(struct client *node)
 		fprintf(cache_fp,
 			"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
 			node->cid, node->room,
-			node->loc.latitude, node->loc.longitude, node->loc.altitude,
-			node->loc.velocity, node->loc.heading, node->loc.climb,
+			node->loc.latitude, node->loc.longitude,
+			node->loc.altitude,
+			node->loc.velocity,
+			node->loc.heading,
+			node->loc.pitch,
 			node->name);
 		fflush(cache_fp);
 	} else {
@@ -365,8 +368,11 @@ void update_cache_file_location(struct client *node)
 		fprintf(cache_fp,
 			"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
 			node->cid, node->room,
-			node->loc.latitude, node->loc.longitude, node->loc.altitude,
-			node->loc.velocity, node->loc.heading, node->loc.climb,
+			node->loc.latitude, node->loc.longitude,
+			node->loc.altitude,
+			node->loc.velocity,
+			node->loc.heading,
+			node->loc.pitch,
 			node->name);
 		fflush(cache_fp);
 	} else {
@@ -404,6 +410,8 @@ void update_followers(struct client *node)
 			strncpy(curr->loc.nmea_gga, node->loc.nmea_gga,
 				NMEA_LEN);
 			strncpy(curr->loc.nmea_rmc, node->loc.nmea_rmc,
+				NMEA_LEN);
+			strncpy(curr->loc.nmea_pashr, node->loc.nmea_rmc,
 				NMEA_LEN);
 
 			update_cache_file_location(curr);
@@ -495,7 +503,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 			printf("old heading:  %f\n", node->loc.heading);
 			printf("old velocity: %f\n", node->loc.velocity);
 			printf("old altitude: %f\n", node->loc.altitude);
-			printf("old climb:    %f\n", node->loc.climb);
+			printf("old pitch:    %f\n", node->loc.pitch);
 		}
 
 		/* update velocity */
@@ -506,9 +514,9 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if (data->heading != -1)
 			node->loc.heading = data->heading;
 
-		/* update climb angle */
-		if (data->climb != -1)
-			node->loc.climb = data->climb;
+		/* update pitch angle */
+		if (data->pitch != -1)
+			node->loc.pitch = data->pitch;
 
 		/* update coordinates */
 		if ((data->latitude >= -90) &&
@@ -532,8 +540,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if (isnan(node->loc.altitude)) {
 			node->loc.altitude = 0;
 		}
-		if (isnan(node->loc.climb)) {
-			node->loc.climb = 0;
+		if (isnan(node->loc.pitch)) {
+			node->loc.pitch = 0;
 		}
 
 		int age = time(NULL) - node->time;
@@ -541,8 +549,11 @@ void update_node_location(struct client *node, struct update_2 *data)
 		print_debug(LOG_NOTICE,
 			"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
 			node->cid, node->room, age,
-			node->loc.latitude, node->loc.longitude, node->loc.altitude,
-			node->loc.velocity, node->loc.heading, node->loc.climb,
+			node->loc.latitude, node->loc.longitude,
+			node->loc.altitude,
+			node->loc.velocity,
+			node->loc.heading,
+			node->loc.pitch,
 			node->name);
 
 		update_cache_file_location(node);
@@ -575,8 +586,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 	if (isnan(node->loc.altitude)) {
 		node->loc.altitude = 0;
 	}
-	if (isnan(node->loc.climb)) {
-		node->loc.climb = 0;
+	if (isnan(node->loc.pitch)) {
+		node->loc.pitch = 0;
 	}
 
 	/* move location */
@@ -641,8 +652,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 		node->loc.heading -= 360;
 
 	/* update altitude */
-	if (node->loc.climb) {
-		angle = node->loc.climb;
+	if (node->loc.pitch) {
+		angle = node->loc.pitch;
 		angle *= M_PI / 180;
 		dv = ms * sinf(angle);
 		node->loc.altitude += dv;
@@ -653,7 +664,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 		"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
 		node->cid, node->room, age,
 		node->loc.latitude, node->loc.longitude, node->loc.altitude,
-		node->loc.velocity, node->loc.heading, node->loc.climb,
+		node->loc.velocity, node->loc.heading, node->loc.pitch,
 		node->name);
 
 	update_cache_file_location(node);
@@ -705,6 +716,8 @@ void create_new_sentences(struct client *node)
 	memset(node->loc.nmea_zda, 0, NMEA_LEN);
 	memset(node->loc.nmea_gga, 0, NMEA_LEN);
 	memset(node->loc.nmea_rmc, 0, NMEA_LEN);
+	memset(node->loc.nmea_pashr, 0, NMEA_LEN);
+
 /*
 	memset(node->loc.nmea_gsa, 0, NMEA_LEN);
 	memset(node->loc.nmea_gsv1, 0, NMEA_LEN);
@@ -806,6 +819,41 @@ where:
 	yy	local zone minutes 0..59
 	*CC       checksum
 
+PASHR
+	https://docs.novatel.com/OEM7/Content/SPAN_Logs/PASHR.htm
+$PASHR,123816.80,312.95,T, -0.83,-0.42, -0.01,0.234,0.224,0.298,2,1*0B
+$PASHR,135920.00,  0.00,T,000.00, 0.00,000.00,0.000,0.000,0.000,0,0*2C
+
+where
+$PASHR Proprietary Heading, Roll, Pitch and Heave
+HHMMSS.SSS UTC Time encoded as HH (hours, 24 hour format), MM (minutes) and SS.SSS
+(seconds with 3 decimal places). This field will be blank until UTC time is
+known. GPS time may be known before UTC time is known.
+HHH.HH True Heading of the navigation system, from 0 to 359.99 degrees, using 2
+decimal places.
+T The character ‘T’ is output by the navigation system to represent that the
+heading is to true north. Grid north and magnetic north are not output.
+RRR.RR Roll of the navigation system, measured in degrees, with leading sign, leading
+0’s where needed and 2 decimal places. Positive values mean that the left side
+is up.
+PPP.PP Pitch of the navigation system, measured in degrees, with leading sign, leading
+0’s where needed and 2 decimal places. Positive values mean that the front is
+up.
+aaa.aa Heave of the navigation system, measured in metres, with leading sign, leading
+0’s where needed and 2 decimal places. This is not output by the navigation
+system.
+r.rrr Roll accuracy in degrees and with 3 decimal places.
+p.ppp Pitch accuracy in degrees and with 3 decimal places.
+h.hhh Heading accuracy in degrees and with 3 decimal places.
+Q1 GPS Position mode.
+0 – No GPS position fix
+1 – All GPS position fixes apart from “2”
+2 – RTK Integer position fix
+Q2 IMU Status
+0 – IMU is OK
+1 – IMU error
+*CS Checksum separator and checksum
+
 */
 /*
 	snprintf(node->loc.nmea_gsa, NMEA_LEN, "$GPGSA,M,3,21,18,15,24,10,14,27,13,46,,,,1.7,1.0,1.4*35");
@@ -831,9 +879,15 @@ where:
 
 	/* GGA */
 	memset(temp, 0, NMEA_LEN);
-	snprintf(temp, NMEA_LEN, "GPGGA,%s,%s,%s,2,09,1.0,%5.2f,M,0,M,0,0", timestamp, lat, lon, node->loc.altitude);
+	snprintf(temp, NMEA_LEN, "GPGGA,%s,%s,%s,2,09,1.0,%05.2f,M,0,M,0,0", timestamp, lat, lon, node->loc.altitude);
 	checksum = nmea_checksum(temp);
 	snprintf(node->loc.nmea_gga, NMEA_LEN, "$%s*%2X", temp, checksum);
+
+	/* PASHR */
+	memset(temp, 0, NMEA_LEN);
+	snprintf(temp, NMEA_LEN, "PASHR,%s,%.2f,T,000.00,%03.2f,000.00,0.000,0.000,0.000,0,0", timestamp, node->loc.heading, node->loc.pitch);
+	checksum = nmea_checksum(temp);
+	snprintf(node->loc.nmea_pashr, NMEA_LEN, "$%s*%2X", temp, checksum);
 
 	return;
 }
@@ -899,6 +953,13 @@ void send_gps_to_nodes(void)
 			/* transmission successful, send gga */
 			/* gga provides altitude */
 			buf = curr->loc.nmea_gga;
+			bytes = strlen(buf);
+			sendto(sockfd, (char *)buf, bytes, 0,
+				(struct sockaddr *)&servaddr_vm,
+				sizeof(struct sockaddr));
+
+			/* send the PASHR message with pitch */
+			buf = curr->loc.nmea_pashr;
 			bytes = strlen(buf);
 			sendto(sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
@@ -1223,7 +1284,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 	double alt;
 	double sog;
 	double cog;
-	double clm;
+	double pit;
 	int ret;
 	int matched;
 	char name[NAME_LEN];
@@ -1251,7 +1312,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 	node->loc.velocity = 0;		/* knots */
 	node->loc.heading = 0;		/* degrees */
 	node->loc.altitude = 0;		/* meters */
-	node->loc.climb = 0;		/* degrees */
+	node->loc.pitch = 0;		/* degrees */
 
 	/* add node to cache file */
 	if (cache) {
@@ -1259,11 +1320,12 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 
 		fseek(cache_fp, 0, SEEK_SET);
 
-		/* TODO: update the cache file to include alt and climb */
+		/* TODO: update the cache file to include alt and pitch */
 
 		while (((fgets(buf, 1024, cache_fp)) != NULL) && (!matched)) {
 			ret = sscanf(buf, "%d %s %lf %lf %lf %lf %lf %lf %s",
-				&cid, room, &lat, &lon, &alt, &sog, &cog, &clm, name);
+				&cid, room, &lat, &lon, &alt, &sog, &cog,
+				&pit, name);
 			if ((ret != 8) && (ret != 9)) {
 				print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
 				printf("only matched %d variables:\n", ret);
@@ -1274,7 +1336,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 				printf("alt:  %f\n", alt);
 				printf("sog:  %f\n", sog);
 				printf("cog:  %f\n", cog);
-				printf("clm:  %f\n", clm);
+				printf("pit:  %f\n", pit);
 				printf("name: %s\n", name);
 				continue;
 			} else if (cid == srchost) {
@@ -1285,7 +1347,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 				node->loc.altitude = alt;	/* meters */
 				node->loc.velocity = sog;	/* knots */
 				node->loc.heading = cog;	/* degrees */
-				node->loc.climb = clm;		/* degress */
+				node->loc.pitch = pit;		/* degrees */
 				if (strnlen(vm_name, NAME_LEN) == 0) {
 					strncpy(node->name, name,
 						strnlen(name, NAME_LEN - 1));
@@ -1295,13 +1357,17 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 		}
 	
 		if (!matched) {
-			print_debug(LOG_DEBUG, "adding node to the cache file\n");
+			print_debug(LOG_DEBUG,
+					"adding node to the cache file\n");
 			fseek(cache_fp, 0, SEEK_END);
 			fprintf(cache_fp,
 				"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
 				node->cid, node->room,
-				node->loc.latitude, node->loc.longitude, node->loc.altitude,
-				node->loc.velocity, node->loc.heading, node->loc.climb,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude,
+				node->loc.velocity,
+				node->loc.heading,
+				node->loc.pitch,
 				node->name);
 			fflush(cache_fp);
 		}
@@ -1418,7 +1484,7 @@ void print_node(struct client *node)
 	printf("%f\n", node->loc.altitude);
 	printf("%f\n", node->loc.velocity);
 	printf("%f\n", node->loc.heading);
-	printf("%f\n", node->loc.climb);
+	printf("%f\n", node->loc.pitch);
 }
 
 /**
@@ -1439,23 +1505,29 @@ void list_nodes_vmci(void)
 		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status\n");
 	}
 
-	printf("node:       room:				age: lat:      lon:       alt:   sog:       cog: climb: name:\n");
+	printf("node:       room:				age: lat:      lon:       alt:   sog:       cog: pitch: name:\n");
 
 	if (fp)
-		fprintf(fp, "node:       room:				age: lat:      lon:       alt:   sog:     cog:   climb: name:\n");
+		fprintf(fp, "node:       room:				age: lat:      lon:       alt:   sog:     cog:   pitch: name:\n");
 
 	while (curr != NULL) {
 		age = time(NULL) - curr->time;
 		printf("%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
 			curr->cid, curr->room, age,
-			curr->loc.latitude, curr->loc.longitude, curr->loc.altitude,
-			curr->loc.velocity, curr->loc.heading, curr->loc.climb,
+			curr->loc.latitude, curr->loc.longitude,
+			curr->loc.altitude,
+			curr->loc.velocity,
+			curr->loc.heading,
+			curr->loc.pitch,
 			curr->name);
 		if (fp) {
 			fprintf(fp, "%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
 				curr->cid, curr->room, age,
-				curr->loc.latitude, curr->loc.longitude, curr->loc.altitude,
-				curr->loc.velocity, curr->loc.heading, curr->loc.climb,
+				curr->loc.latitude, curr->loc.longitude,
+				curr->loc.altitude,
+				curr->loc.velocity,
+				curr->loc.heading,
+				curr->loc.pitch,
 				curr->name);
 		}
 		curr = curr->next;
