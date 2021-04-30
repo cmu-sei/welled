@@ -170,7 +170,7 @@ void show_usage(int exval)
 	printf("  -h, --help		print this help and exit\n");
 	printf("  -V, --version		print version and exit\n");
 	printf("  -v, --verbose		verbose output\n");
-	printf("  -D, --debug           debug level for syslog\n");
+	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -s, --sea		gps should only travel on water\n");
 	printf("  -d, --device		use this device as GPS\n");
@@ -188,23 +188,23 @@ void show_usage(int exval)
 
 void print_debug(int level, char *format, ...)
 {
-        char buffer[1024];
+	char buffer[1024];
 
-        if (loglevel < 0)
-                return;
+	if (loglevel < 0)
+		return;
 
-        if (level > loglevel)
-                return;
+	if (level > loglevel)
+		return;
 
-        va_list args;
-        va_start(args, format);
-        vsprintf(buffer, format, args);
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
 	va_end(args);
 	#ifndef _WIN32
-        syslog(level, buffer);
-        #else
-        printf("gelled: %s\n", buffer);
-        #endif
+	syslog(level, buffer);
+	#else
+	printf("gelled: %s\n", buffer);
+	#endif
 }
 
 /**
@@ -407,6 +407,14 @@ int land_or_sea_check_color(int red, int green, int blue)
 	} else if (red == 181 && green == 102 && blue == 253) {
 		/* boundary? */
 		return -1;
+	} else if (red == 197 && green == 216 && blue == 214) {
+		/* boundary with land? */
+		print_debug(LOG_DEBUG, "This tile is Land\n");
+		return 0;
+	} else if (red == 241 && green == 238 && blue == 232) {
+		/* boundary with land? */
+		print_debug(LOG_DEBUG, "This tile is Land\n");
+		return 0;
 	} else if (red == 181 && green == 238 && blue == 232) {
 		/* land */
 		print_debug(LOG_DEBUG, "This is tile is Land\n");
@@ -522,40 +530,38 @@ void process_rmc(char *line)
  */
 void send_stop(void)
 {
-	char *msg;
-	int msg_len;
-	int bytes;
-	struct location loc;
-
-	memset(&loc, 0, sizeof(struct location));
-	loc.latitude = 9999;
-	loc.longitude = 9999;
-	loc.velocity = 0;
-	loc.heading = -1;
-
-	msg_len = 8 + sizeof(struct location) + sizeof(cid);
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "gelled:%d:", cid);
-	memcpy(msg + 8 + sizeof(cid), &loc, sizeof(struct location));
-
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vmci,
-			sizeof(struct sockaddr));
-
-	if (bytes != msg_len) {
-		perror("sendto");
-	} else {
-		print_debug(LOG_INFO, "sent %d bytes to wmasterd\n", bytes);
-		if (verbose) {
-			printf("latitude:  %f\n", loc.latitude);
-			printf("longitude: %f\n", loc.longitude);
-			printf("velocity:  %f\n", loc.velocity);
-			printf("heading:   %f\n", loc.heading);
-		}
+	if (verbose) {
+		printf("stopping the vm\n");
 	}
 
-	free(msg);
+	pid_t pid;
+	struct stat buf_stat;
+
+	/* fork */
+	pid = fork();
+
+	if (pid == -1) {
+		perror("fork");
+	} else if (pid == 0) {
+		/* child */
+		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
+			if (verbose) {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-v", "-k", "0", NULL);
+			} else {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-k", "0", NULL);
+			}
+		} else {
+			printf("couldnt find gelled-ctrl\n");
+			_exit(EXIT_FAILURE);
+		}
+	} else {
+		/* parent - wait on child */
+		waitpid(pid, NULL, 0);
+	}
+
+	return;
 }
 
 /**
@@ -676,7 +682,8 @@ void recv_from_master(void)
 			}
 			ret = check_if_sea(lat, lon);
 			if (ret < 0) {
-				print_debug(LOG_ERR, "Error: check_if_sea failed\n");
+				print_debug(LOG_ERR,
+						"Error: check_if_sea failed\n");
 			} else if (land && ret) {
 				send_stop();
 			} else if (sea && !ret) {
@@ -793,10 +800,10 @@ int main(int argc, char *argv[])
 		case 'v':
 			verbose = 1;
 			break;
-                case 'D':
-                        loglevel = atoi(optarg);
-                        printf("gelled: syslog level set to %d\n", loglevel);
-                        break;
+		case 'D':
+			loglevel = atoi(optarg);
+			printf("gelled: syslog level set to %d\n", loglevel);
+			break;
 		case 's':
 			sea = 1;
 			break;
@@ -817,10 +824,10 @@ int main(int argc, char *argv[])
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-        #ifndef _WIN32
-        if (loglevel >= 0)
-                openlog("gelled", LOG_PID, LOG_USER);
-        #endif
+	#ifndef _WIN32
+	if (loglevel >= 0)
+		openlog("gelled", LOG_PID, LOG_USER);
+	#endif
 
 	#ifdef _WIN32
 	/* old code for vmci_sockets.h */
@@ -834,13 +841,13 @@ int main(int argc, char *argv[])
 	ioctl_fd = open("/dev/vsock", 0);
 	if (ioctl_fd < 0) {
 		perror("open");
-                print_debug(LOG_ERR, "could not open /dev/vsock\n");
+		print_debug(LOG_ERR, "could not open /dev/vsock\n");
 		_exit(EXIT_FAILURE);
 	}
 	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
 	if (err < 0) {
 		perror("ioctl: Cannot get local CID");
-                print_debug(LOG_ERR, "could not get local CID");
+		print_debug(LOG_ERR, "could not get local CID");
 	} else {
 		printf("CID: %u\n", cid);
 	}
