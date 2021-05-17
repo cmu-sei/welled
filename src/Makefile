@@ -28,8 +28,8 @@
 #
 # 	DM17-0952
 
-VERSION_STR="\"2.4.3\""
-VERSION=2.4.3
+VERSION_STR="\"2.4.4\""
+VERSION=2.4.4
 
 # check whether we are cross compiling for openwrt
 ifdef CROSS
@@ -477,11 +477,11 @@ rpm:
 	rpmbuild -bb --target $(ARCH) SPECS/welled.spec
 
 rpm-x86_64-Linux: x86_64-Linux rpm
-	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc27.x86_64.rpm ../dist/x86_64-Linux/
+	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc30.x86_64.rpm ../dist/x86_64-Linux/
 	rm -rf ../rpmbuild
 
 rpm-i386-Linux: i386-Linux rpm
-	cp ../rpmbuild/RPMS/i386/welled-$(VERSION)-1.fc27.i386.rpm ../dist/i386-Linux/
+	cp ../rpmbuild/RPMS/i386/welled-$(VERSION)-1.fc30.i386.rpm ../dist/i386-Linux/
 	rm -rf ../rpmbuild
 
 

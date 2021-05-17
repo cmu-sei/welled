@@ -415,7 +415,8 @@ void update_followers(struct client *node)
 				NMEA_LEN);
 
 			update_cache_file_location(curr);
-			print_debug(LOG_NOTICE, "follower %s synced to master %s\n", curr->name, curr->loc.follow);
+			print_debug(LOG_NOTICE, "follower %s synced to master %s\n",
+					curr->name, curr->loc.follow);
 		}
 		curr = curr->next;
 	}
@@ -471,8 +472,9 @@ void update_node_location(struct client *node, struct update_2 *data)
 				print_debug(LOG_DEBUG, "node following self");
 			} else {
 				memcpy(node->loc.follow,
-					data->follow, sizeof(node->loc.follow));
-				print_debug(LOG_NOTICE, "set follow to %s on %d\n", node->loc.follow, node->cid);
+					data->follow, FOLLOW_LEN);
+				print_debug(LOG_NOTICE, "set follow to %s on %d\n",
+						node->loc.follow, node->cid);
 			}
 		}
 

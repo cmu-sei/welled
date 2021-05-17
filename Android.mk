@@ -33,7 +33,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := eng debug
 LOCAL_MODULE := welled
-welled_version := 2.4.3
+welled_version := 2.4.4
 VERSION_STR := $(welled_version)
 LOCAL_SRC_FILES := \
 	src/welled.c \
