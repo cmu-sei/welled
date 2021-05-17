@@ -466,13 +466,15 @@ void update_node_location(struct client *node, struct update_2 *data)
 			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
 				print_debug(LOG_NOTICE, "clearing follow on %d\n", node->cid);
-				memset(node->loc.follow, 0, sizeof(node->loc.follow));
+				memset(node->loc.follow, 0, FOLLOW_LEN);
 			} else if (strncmp(data->follow, node->loc.follow,
 						FOLLOW_LEN) == 0) {
 				print_debug(LOG_DEBUG, "node following self");
 			} else {
-				memcpy(node->loc.follow,
-					data->follow, FOLLOW_LEN);
+				print_debug(LOG_NOTICE, "follow requested: %s",
+						data->follow);
+				strncpy(node->loc.follow,
+						data->follow, FOLLOW_LEN - 1);
 				print_debug(LOG_NOTICE, "set follow to %s on %d\n",
 						node->loc.follow, node->cid);
 			}
@@ -1277,6 +1279,8 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
  */
 void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uuid)
 {
+	print_debug(LOG_NOTICE, "adding node");
+
 	struct client *node;
 	struct client *curr;
 	char buf[1024];
@@ -2037,7 +2041,8 @@ void recv_from_welled_vmci(void)
 			data_2.cid = data_1.cid;
 		} else if (bytes == (sizeof(struct update_2) + 7)) {
 			print_debug(LOG_INFO, "update version 2 from %11d\n", src_cid);
-			print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d", sizeof(struct update_2), sizeof(data_2)); 
+			print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
+					sizeof(struct update_2), sizeof(data_2)); 
 			/* pull loc from the buffer */
 			memcpy(&data_2, buf + 7, sizeof(struct update_2));
 		} else {

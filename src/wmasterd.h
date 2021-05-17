@@ -57,7 +57,7 @@
  *	heading is in degrees
  */
 struct location {
-	char follow[32];
+	char follow[FOLLOW_LEN];
 	float latitude;
 	float longitude;
 	float altitude;
@@ -78,7 +78,7 @@ struct location {
 };
 
 struct update {
-	char follow[32];
+	char follow[FOLLOW_LEN];
 	float latitude;
 	float longitude;
 	float altitude;
