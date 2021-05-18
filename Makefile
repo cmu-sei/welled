@@ -50,7 +50,7 @@ include $(TOPDIR)/rules.mk
 
 # Name and release number of this package
 PKG_NAME:=welled
-PKG_RELEASE:=2.4.4
+PKG_RELEASE:=2.4.5
 
 # This specifies the directory where we're going to build the program.
 # The root build directory, $(BUILD_DIR), is by default the build_mipsel

@@ -119,6 +119,8 @@ int check_room;
 int update_room;
 /** Whether to prepand distance to frames */
 int send_distance;
+/** Whether to send PASHR statements */
+int send_pashr;
 /** Whether to use a cache file for locations */
 int cache;
 /** Filename for caching locations */
@@ -411,9 +413,10 @@ void update_followers(struct client *node)
 				NMEA_LEN);
 			strncpy(curr->loc.nmea_rmc, node->loc.nmea_rmc,
 				NMEA_LEN);
-			strncpy(curr->loc.nmea_pashr, node->loc.nmea_rmc,
-				NMEA_LEN);
-
+			if (send_pashr) {
+				strncpy(curr->loc.nmea_pashr, node->loc.nmea_rmc,
+					NMEA_LEN);
+			}
 			update_cache_file_location(curr);
 			print_debug(LOG_NOTICE, "follower %s synced to master %s\n",
 					curr->name, curr->loc.follow);
@@ -467,12 +470,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
 				print_debug(LOG_NOTICE, "clearing follow on %d\n", node->cid);
 				memset(node->loc.follow, 0, FOLLOW_LEN);
-			} else if (strncmp(data->follow, node->loc.follow,
-						FOLLOW_LEN) == 0) {
-				print_debug(LOG_DEBUG, "node following self");
 			} else {
-				print_debug(LOG_NOTICE, "follow requested: %s",
-						data->follow);
 				strncpy(node->loc.follow,
 						data->follow, FOLLOW_LEN - 1);
 				print_debug(LOG_NOTICE, "set follow to %s on %d\n",
@@ -563,6 +561,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 		update_cache_file_location(node);
 		update_followers(node);
 
+		print_debug(LOG_DEBUG, "updates from data complete");
 		return;
 	}
 
@@ -887,11 +886,13 @@ Q2 IMU Status
 	checksum = nmea_checksum(temp);
 	snprintf(node->loc.nmea_gga, NMEA_LEN, "$%s*%2X", temp, checksum);
 
-	/* PASHR */
-	memset(temp, 0, NMEA_LEN);
-	snprintf(temp, NMEA_LEN, "PASHR,%s,%.2f,T,000.00,%03.2f,000.00,0.000,0.000,0.000,0,0", timestamp, node->loc.heading, node->loc.pitch);
-	checksum = nmea_checksum(temp);
-	snprintf(node->loc.nmea_pashr, NMEA_LEN, "$%s*%2X", temp, checksum);
+	if (send_pashr) {
+		/* PASHR */
+		memset(temp, 0, NMEA_LEN);
+		snprintf(temp, NMEA_LEN, "PASHR,%s,%.2f,T,000.00,%03.2f,000.00,0.000,0.000,0.000,0,0", timestamp, node->loc.heading, node->loc.pitch);
+		checksum = nmea_checksum(temp);
+		snprintf(node->loc.nmea_pashr, NMEA_LEN, "$%s*%2X", temp, checksum);
+	}
 
 	return;
 }
@@ -917,6 +918,7 @@ void send_gps_to_nodes(void)
 	struct client *temp;
 	int bytes;
 	char *buf;
+	int ret;
 
 	pthread_mutex_lock(&list_mutex);
 	curr = head;
@@ -938,7 +940,7 @@ void send_gps_to_nodes(void)
 		servaddr_vm.svm_family = af;
 	
 		/* send frame to this welled client */
-		if (sendto(sockfd, (char *)buf, bytes, 0,
+		if (ret = sendto(sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr)) < 0) {
 			if (verbose)
@@ -954,6 +956,7 @@ void send_gps_to_nodes(void)
 			remove_node_vmci(curr->cid);
 			curr = temp;
 		} else {
+			print_debug(LOG_DEBUG, "sent %d/%d bytes: %s", ret, bytes, buf);
 			/* transmission successful, send gga */
 			/* gga provides altitude */
 			buf = curr->loc.nmea_gga;
@@ -962,12 +965,14 @@ void send_gps_to_nodes(void)
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 
-			/* send the PASHR message with pitch */
-			buf = curr->loc.nmea_pashr;
-			bytes = strlen(buf);
-			sendto(sockfd, (char *)buf, bytes, 0,
-				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr));
+			if (send_pashr) {
+				/* send the PASHR message with pitch */
+				buf = curr->loc.nmea_pashr;
+				bytes = strlen(buf);
+				sendto(sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_vm,
+					sizeof(struct sockaddr));
+			}
 		}
 		if (curr != NULL)
 			curr = curr->next;
@@ -2093,6 +2098,7 @@ int main(int argc, char *argv[])
 	send_distance = 0;
 	broadcast = 0;
 	loglevel = -1;
+	send_pashr = 0;
 
 	static struct option long_options[] = {
 		{"help",		no_argument, 0, 'h'},
@@ -2101,11 +2107,12 @@ int main(int argc, char *argv[])
 		{"no-check-room",	no_argument, 0, 'r'},
 		{"update-room", 	no_argument, 0, 'u'},
 		{"distance",		no_argument, 0, 'd'},
+		{"pashr",		no_argument, 0, 'p'},
 		{"debug",		required_argument, 0, 'D'},
 		{"cache",		required_argument, 0, 'c'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvbrudD:c:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvbrudpD:c:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2135,6 +2142,9 @@ int main(int argc, char *argv[])
 		case 'D':
 			loglevel = atoi(optarg);
 			printf("wmasterd: syslog level set to %d\n", loglevel);
+			break;
+		case 'p':
+			send_pashr = 1;
 			break;
 		case 'c':
 			cache_filename = optarg;

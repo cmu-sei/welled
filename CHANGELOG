@@ -1,3 +1,4 @@
+2.4.5 - wmasterd: -p option send NMEA PASHR sentence
 2.4.4 - wmasterd: fixes bug copying follow from update
 2.4.3 - gelled-ctrl: updates to wmasterd, gelled, and gelled-ctrl to rename
     climb to pitch

@@ -28,8 +28,8 @@
 #
 # 	DM17-0952
 
-VERSION_STR="\"2.4.4\""
-VERSION=2.4.4
+VERSION_STR="\"2.4.5\""
+VERSION=2.4.5
 
 # check whether we are cross compiling for openwrt
 ifdef CROSS
