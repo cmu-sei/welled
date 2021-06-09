@@ -16,7 +16,7 @@ WMASTERD_TAG=wmasterd
 case "$1" in
 	start)
 		if [ -z "$(pidof -xs "${WMASTERD}")" ]; then
-			/sbin/watchdog.sh -d -s "${WMASTERD_TAG}" "${WMASTERD} -d -c /wmasterd_nodes"
+			/sbin/watchdog.sh -d -s "${WMASTERD_TAG}" "${WMASTERD} -d -c /wmasterd_nodes -D 5"
 			echo "wmasterd started"
 		else
 			echo "wmasterd already running"
