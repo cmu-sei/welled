@@ -166,23 +166,20 @@ void show_usage(int exval)
 
 void print_debug(int level, char *format, ...)
 {
-        char buffer[1024];
+	char buffer[1024];
 
-        if (loglevel < 0)
-                return;
+	if (loglevel < 0)
+		return;
 
-        if (level > loglevel)
-                return;
+	if (level > loglevel)
+		return;
 
-        va_list args;
-        va_start(args, format);
-        vsprintf(buffer, format, args);
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
 	va_end(args);
-        #ifndef _WIN32
-        syslog(level, buffer);
-        #else
-        printf("welled: %s\n", buffer);
-        #endif
+	syslog(level, "%s", buffer);
+	printf("welled: %s\n", buffer);
 }
 
 /**
@@ -404,8 +401,9 @@ void gnlh_print(struct genlmsghdr *gnlh)
 void mac_address_to_string(char *address, struct ether_addr *mac)
 {
 	sprintf(address, "%02X:%02X:%02X:%02X:%02X:%02X",
-		mac->ether_addr_octet[0], mac->ether_addr_octet[1], mac->ether_addr_octet[2],
-		mac->ether_addr_octet[3], mac->ether_addr_octet[4], mac->ether_addr_octet[5]);
+		mac->ether_addr_octet[0], mac->ether_addr_octet[1],
+		mac->ether_addr_octet[2], mac->ether_addr_octet[3],
+		mac->ether_addr_octet[4], mac->ether_addr_octet[5]);
 }
 
 /**
@@ -485,7 +483,7 @@ out:
  */
 void attrs_print(struct nlattr *attrs[])
 {
-	char addr[17];
+	char addr[18];
 	struct ether_addr *dst;
 	struct ether_addr *src;
 	unsigned int data_len;
@@ -905,7 +903,6 @@ int init_netlink(void)
 		family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 	}
 	if (!running) {
-		nl_cb_put(cb);
 		return 0;
 	}
 
@@ -973,8 +970,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	struct ieee80211_hdr *hdr11;
 	struct nlmsghdr *nlh;
 
-	/* we dont need to the full 30 bytes of struct ieee80211_hdr */
-	ack_size = 10;
+	ack_size = sizeof(struct ieee80211_hdr);
 
 	hdr11 = (struct ieee80211_hdr *) malloc(ack_size);
 	memset(hdr11, 0, ack_size);
@@ -991,7 +987,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	}
 
 	/* create my ten byte response */
-/*	
+/*
 	char data[10];
 	memset(data, 0, 10);
 	data[0] = 0xd4;
@@ -1646,7 +1642,7 @@ void *monitor_devices(void *arg)
 /***
  *	@brief send status message to wmasterd at some interval
  *	This thread tells wmasterd we are alive every ten seconds while
- 	our radio is in monitor mode.
+	 our radio is in monitor mode.
  *	@return void
  */
 void *send_status(void *arg)
@@ -1876,7 +1872,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		/* update existing node if name changed */
 		if (strncmp(node->name, ifname, strlen(ifname)) != 0) {
 			/* overwrite name */
-			strncpy(node->name, ifname, strlen(ifname) + 1);
+			strncpy(node->name, ifname, sizeof(node->name) + 1);
 			if (verbose) {
 				print_debug(LOG_DEBUG, "name changed\n");
 				list_nodes();
@@ -1905,7 +1901,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 
 /**
  *	@brief Uses nl80211 to initialize a list of wireless interfaces
- * 	Processes multiple netlink messages containing interface data
+ *	 Processes multiple netlink messages containing interface data
  *	@return error codes
  */
 int nl80211_get_interface(int ifindex)
@@ -2002,7 +1998,7 @@ int main(int argc, char *argv[])
 	ioctl_fd = 0;
 	cid = 0;
 	family_id = -1;
-        loglevel = -1;
+	loglevel = -1;
 
 	/* TODO: Send syslog message indicating start time */
 
@@ -2033,9 +2029,13 @@ int main(int argc, char *argv[])
 			verbose = 1;
 			break;
 		case 'D':
-                        loglevel = atoi(optarg);
-                        printf("welled: syslog level set to %d\n", loglevel);
-                        break;
+			loglevel = atoi(optarg);
+			if ((loglevel < 0) || (loglevel > 7)) {
+				printf("welled: syslog level must be 0-7\n");
+				_exit(EXIT_FAILURE);
+			}
+			printf("welled: syslog level set to %d\n", loglevel);
+			break;
 		case '?':
 			printf("Error - No such option: `%c'\n\n",
 				optopt);
@@ -2048,10 +2048,8 @@ int main(int argc, char *argv[])
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-        #ifndef _WIN32
-        if (loglevel >= 0)
-                openlog("welled", LOG_PID, LOG_USER);
-        #endif
+	if (loglevel >= 0)
+		openlog("welled", LOG_PID, LOG_USER);
 
 	/* old code for vmci_sockets.h */
 	//af = VMCISock_GetAFValue();
@@ -2064,7 +2062,7 @@ int main(int argc, char *argv[])
 	ioctl_fd = open("/dev/vsock", 0);
 	if (ioctl_fd < 0) {
 		perror("open");
-                print_debug(LOG_ERR, "could not open /dev/vsock\n");
+		print_debug(LOG_ERR, "could not open /dev/vsock\n");
 		_exit(EXIT_FAILURE);
 	}
 	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
@@ -2087,7 +2085,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&send_mutex, NULL);
 
 	/* init list of interfaces */
-	nl80211_get_interface(0);	
+	nl80211_get_interface(0);
 
 	/* init netlink will loop until driver is loaded */
 	pthread_mutex_lock(&hwsim_mutex);

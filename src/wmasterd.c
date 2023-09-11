@@ -263,7 +263,7 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 }
 
 /**
- *	
+ *
  */
 void update_cache_file_info(struct client *node)
 {
@@ -348,7 +348,7 @@ void update_cache_file_location(struct client *node)
 	pos = 0;
 	line_num = 0;
 	matched = 0;
-	
+
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
 		ret = sscanf(buf, "%d ", &cid);
 
@@ -634,13 +634,13 @@ void update_node_location(struct client *node, struct update_2 *data)
 		else if (node->loc.heading < 270)
 			node->loc.heading -= 180;
 		if (node->loc.longitude < 0)
-			node->loc.longitude += 180;	
-		else	
+			node->loc.longitude += 180;
+		else
 			node->loc.longitude -= 180;
 	}
 
 	/* adjust longitude as we cross east to west */
-	if (node->loc.longitude > 180) {	
+	if (node->loc.longitude > 180) {
 		/* printf("wmasterd: crossing prime meridian\n"); */
 		node->loc.longitude -= 360;
 	}
@@ -938,7 +938,7 @@ void send_gps_to_nodes(void)
 		servaddr_vm.svm_cid = curr->cid;
 		servaddr_vm.svm_port = SEND_PORT_G;
 		servaddr_vm.svm_family = af;
-	
+
 		/* send frame to this welled client */
 		if (ret = sendto(sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
@@ -1025,7 +1025,7 @@ int get_distance(struct client *node1, struct client *node2)
 #ifndef _WIN32
 /**
  *	@brief Blocks usr1 from interferring with non restartable syscalls
- *	@return void	
+ *	@return void
  */
 void block_signal(void)
 {
@@ -1261,7 +1261,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	}
 	if (!room_found) {
 		strncpy(room, "0", 2);
-		print_debug(LOG_ERR, "error: no room found for %d\n", srchost);
+		print_debug(LOG_ERR, "error: no room found for %d", srchost);
 	}
 
 #ifdef _WIN32
@@ -1366,7 +1366,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 				break;
 			}
 		}
-	
+
 		if (!matched) {
 			print_debug(LOG_DEBUG,
 					"adding node to the cache file\n");
@@ -1390,7 +1390,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 	if (head == NULL) {
 		/* add first node */
 		head = node;
-		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s\n", srchost, node->room, node->time, node->name);
+		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s", srchost, node->room, node->time, node->name);
 	} else {
 		/* traverse to end of list */
 		curr = head;
@@ -1398,7 +1398,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 			curr = curr->next;
 		/* add to node to end of list */
 		curr->next = node;
-		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s\n", srchost, node->room, node->time, node->name);
+		print_debug(LOG_NOTICE, "add: %11d room: %36s time: %d name: %s", srchost, node->room, node->time, node->name);
 	}
 }
 
@@ -1462,7 +1462,7 @@ struct client *search_node_vmci(unsigned int srchost)
 }
 
 /**
- *	
+ *
  */
 struct client *search_node_name(char *name)
 {
@@ -1840,7 +1840,7 @@ void signal_handler(void)
 #endif
 
 /**
- *	
+ *
  */
 void update_node_info(struct client *node, struct update_2 *data)
 {
@@ -1906,7 +1906,7 @@ void *recv_from_hosts(void *arg)
 	if (bind(sockfd, (struct sockaddr *)&bindaddr, sizeof(bindaddr)) < 0) {
 		sock_error("wmasterd: bind");
 	}
-	
+
 	while (running) {
 
 		// recv packet
@@ -1916,10 +1916,10 @@ void *recv_from_hosts(void *arg)
 			continue;
 
 		inet_ntop(AF_INET, &cliaddr.sin_addr, src_host, addrlen);
-		if (verbose)
-			printf("wmasterd: received %d bytes from src: %s\n",
+		if (verbose) {
+			print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
 				bytes, src_host);
-
+		}
 		/* parse out room */
 		strncpy(node.room, buf + bytes - UUID_LEN + 1, UUID_LEN);
 		buffer = malloc(bytes - UUID_LEN - 1);
@@ -1962,7 +1962,7 @@ void recv_from_welled_vmci(void)
 	if (bytes < 0)
 		return;
 	src_cid = (unsigned int)cliaddr_vmci.svm_cid;
-	print_debug(LOG_DEBUG, "received %d bytes from src host: %d\n",
+	print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
 			bytes, src_cid);
 
 	memset(room, 0, UUID_LEN);
@@ -1972,13 +1972,13 @@ void recv_from_welled_vmci(void)
 
 	node = search_node_vmci(src_cid);
 	if (!node) {
-		print_debug(LOG_DEBUG, "node %11d does not exist\n", src_cid);
+		print_debug(LOG_DEBUG, "node %11d does not exist", src_cid);
 		get_vm_info(src_cid, room, name, uuid);
 		add_node_vmci(src_cid, room, name, uuid);
 		/* make sure we added the node */
 		node = search_node_vmci(src_cid);
 		if (!node) {
-			print_debug(LOG_ERR, "error: adding node %11d\n",
+			print_debug(LOG_ERR, "error: adding node %11d",
 					src_cid);
 			return;
 		}
@@ -2000,7 +2000,7 @@ void recv_from_welled_vmci(void)
 	}
 
 	if ((bytes == 2) || (bytes == 5)) {
-		print_debug(LOG_INFO, "node %11d has sent status\n",
+		print_debug(LOG_INFO, "node %11d has sent status",
 					src_cid);
 		return;
 	}
@@ -2018,7 +2018,7 @@ void recv_from_welled_vmci(void)
 		 *	from the old into the new buf
 		 */
 
-		print_debug(LOG_INFO, "gelled update received from %11d\n",
+		print_debug(LOG_INFO, "gelled update received from %11d",
 				src_cid);
 
 		struct update_2 data_2;
@@ -2029,7 +2029,7 @@ void recv_from_welled_vmci(void)
 		 */
 
 		if (bytes == (sizeof(struct update) + 7)) {
-			print_debug(LOG_INFO, "update version 1 from %11d\n", src_cid);
+			print_debug(LOG_INFO, "update version 1 from %11d", src_cid);
 			struct update data_1;
 			/* pull loc from the buffer */
 			memcpy(&data_1, buf + 7, sizeof(struct update));
@@ -2045,13 +2045,13 @@ void recv_from_welled_vmci(void)
 			strncpy(data_2.name, data_1.name, NAME_LEN - 1);
 			data_2.cid = data_1.cid;
 		} else if (bytes == (sizeof(struct update_2) + 7)) {
-			print_debug(LOG_INFO, "update version 2 from %11d\n", src_cid);
+			print_debug(LOG_INFO, "update version 2 from %11d", src_cid);
 			print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
-					sizeof(struct update_2), sizeof(data_2)); 
+					sizeof(struct update_2), sizeof(data_2));
 			/* pull loc from the buffer */
 			memcpy(&data_2, buf + 7, sizeof(struct update_2));
 		} else {
-			print_debug(LOG_ERR, "update version unknown from %11d\n", src_cid);
+			print_debug(LOG_ERR, "update version unknown from %11d", src_cid);
 			return;
 		}
 		update_node_info(node, &data_2);
@@ -2105,7 +2105,7 @@ int main(int argc, char *argv[])
 		{"version",		no_argument, 0, 'V'},
 		{"verbose",		no_argument, 0, 'v'},
 		{"no-check-room",	no_argument, 0, 'r'},
-		{"update-room", 	no_argument, 0, 'u'},
+		{"update-room",		no_argument, 0, 'u'},
 		{"distance",		no_argument, 0, 'd'},
 		{"pashr",		no_argument, 0, 'p'},
 		{"debug",		required_argument, 0, 'D'},
@@ -2378,7 +2378,6 @@ int main(int argc, char *argv[])
 	pthread_cancel(nmea_tid);
 	pthread_join(nmea_tid, NULL);
 
-	
 	print_debug(LOG_INFO, "Threads have been cancelled\n");
 
 	/* cleanup */
