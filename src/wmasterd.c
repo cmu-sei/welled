@@ -194,7 +194,7 @@ void print_debug(int level, char *format, ...)
 	vsprintf(buffer, format, args);
 	va_end(args);
 	#ifndef _WIN32
-	syslog(level, buffer);
+	syslog(level, "%s", buffer);
 	#else
 	printf("wmasterd: %s\n", buffer);
 	#endif
@@ -227,13 +227,15 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 	int deg;
 	float min;
 	char ch;
-	char temp[1024];
+	char *temp = NULL;
 
 	deg = (int)orig;
 	min = (orig - deg) * 60;
 
 	switch (len) {
+	// lat
 	case 12:
+		temp = calloc(len + 1, 1);
 		if (deg < 0) {
 			ch = 'S';
 		} else {
@@ -241,11 +243,13 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 		}
 		if (min < 0)
 			min *= -1;
-		snprintf(temp, sizeof(temp), "%02d%07.4f,%c",
+		snprintf(temp, len, "%02d%07.4f,%c",
 				abs(deg), min, ch);
 		strncpy(dest, temp, len);
 		break;
+	// lon
 	case 13:
+		temp = calloc(len + 1, 1);
 		if (deg < 0) {
 			ch = 'W';
 		} else {
@@ -253,12 +257,12 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 		}
 		if (min < 0)
 			min *= -1;
-		snprintf(temp, sizeof(temp), "%03d%07.4f,%c",
+		snprintf(temp, len, "%03d%07.4f,%c",
 				abs(deg), min, ch);
 		strncpy(dest, temp, len);
 		break;
 	}
-
+	free(temp);
 	return;
 }
 
@@ -940,13 +944,14 @@ void send_gps_to_nodes(void)
 		servaddr_vm.svm_family = af;
 
 		/* send frame to this welled client */
-		if (ret = sendto(sockfd, (char *)buf, bytes, 0,
+		ret = sendto(sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr)) < 0) {
+				sizeof(struct sockaddr));
+		if (ret < 0) {
+			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s", curr->cid, curr->room, curr->time, curr->name);
+
 			if (verbose)
 				sock_error("wmasterd: sendto");
-
-			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n", curr->cid, curr->room, curr->time, curr->name);
 
 			/*
 			 * since powering off a VM results in this error
@@ -1175,7 +1180,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 			/* parse the room id out of the annotation line */
 			if (!parse_annotation(annotation, room)) {
 				/* set room to 0 if not found */
-				strncpy(room, "0", 1);
+				strncpy(room, "0", 2);
 			}
 		}
 		print_debug(LOG_DEBUG, "cid %11d is in room %s\n", cid, room);
@@ -1421,7 +1426,7 @@ void clear_inactive_nodes(void)
 	while (curr != NULL) {
 		age = now - curr->time;
 		if (age > 300) {
-			print_debug(LOG_INFO, "node: %11d stale at %d sec\n",
+			print_debug(LOG_INFO, "node: %11d stale at %d sec",
 					curr->cid, age);
 			/* delete node */
 			if (prev == NULL)
@@ -1429,7 +1434,7 @@ void clear_inactive_nodes(void)
 			else
 				prev->next = curr->next;
 
-			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n", curr->cid, curr->room, curr->time, curr->name);
+			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s", curr->cid, curr->room, curr->time, curr->name);
 			free(curr);
 			print_debug(LOG_DEBUG, "removed stale node");
 			return;
@@ -1591,7 +1596,7 @@ void remove_node_vmci(unsigned int dsthost)
 
 	free(curr);
 
-	print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s\n",
+	print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s",
 		dsthost, room, time, name);
 }
 
