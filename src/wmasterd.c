@@ -104,6 +104,8 @@ pthread_mutex_t file_mutex;
 pthread_t nmea_tid;
 /** thread id for receving broadcast frames */
 pthread_t hosts_tid;
+/** thread id for reading console */
+pthread_t console_tid;
 
 /** Whether to print verbose output */
 int verbose;
@@ -295,7 +297,7 @@ void update_cache_file_info(struct client *node)
 		ret = sscanf(buf, "%d ", &cid);
 
 		if (ret != 1) {
-			print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
+			print_debug(LOG_ERR, "error: did not parseline for '%s'", buf);
 		} else if (cid == node->cid) {
 			matched = 1;
 			break;
@@ -320,7 +322,7 @@ void update_cache_file_info(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		print_debug(LOG_ERR, "error: no match for node %d in cache file\n", node->cid);
+		print_debug(LOG_ERR, "error: no match for node %d in cache file", node->cid);
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -344,7 +346,7 @@ void update_cache_file_location(struct client *node)
 	if (node == NULL)
 		return;
 
-	print_debug(LOG_DEBUG, "updating cache file for node location\n");
+	print_debug(LOG_DEBUG, "updating cache file for node location");
 
 	pthread_mutex_lock(&file_mutex);
 
@@ -357,7 +359,7 @@ void update_cache_file_location(struct client *node)
 		ret = sscanf(buf, "%d ", &cid);
 
 		if (ret != 1) {
-			print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
+			print_debug(LOG_ERR, "error: did not parseline for '%s'", buf);
 		} else if (cid == node->cid) {
 			matched = 1;
 			break;
@@ -382,7 +384,7 @@ void update_cache_file_location(struct client *node)
 			node->name);
 		fflush(cache_fp);
 	} else {
-		print_debug(LOG_WARNING, "no match for node %d in cache file\n",
+		print_debug(LOG_WARNING, "no match for node %d in cache file",
 				node->cid);
 	}
 
@@ -422,7 +424,7 @@ void update_followers(struct client *node)
 					NMEA_LEN);
 			}
 			update_cache_file_location(curr);
-			print_debug(LOG_NOTICE, "follower %s synced to master %s\n",
+			print_debug(LOG_NOTICE, "follower %s synced to master %s",
 					curr->name, curr->loc.follow);
 		}
 		curr = curr->next;
@@ -472,12 +474,12 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if (strnlen(data->follow, FOLLOW_LEN) > 0) {
 			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
-				print_debug(LOG_NOTICE, "clearing follow on %d\n", node->cid);
+				print_debug(LOG_NOTICE, "clearing follow on %d", node->cid);
 				memset(node->loc.follow, 0, FOLLOW_LEN);
 			} else {
 				strncpy(node->loc.follow,
 						data->follow, FOLLOW_LEN - 1);
-				print_debug(LOG_NOTICE, "set follow to %s on %d\n",
+				print_debug(LOG_NOTICE, "set follow to %s on %d",
 						node->loc.follow, node->cid);
 			}
 		}
@@ -493,7 +495,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 			 */
 
 			if (!master) {
-				print_debug(LOG_INFO, "no master for follow on %d\n", node->cid);
+				print_debug(LOG_INFO, "no master for follow on %d", node->cid);
 			} else {
 				print_debug(LOG_DEBUG, "node set to follow %s", node->loc.follow);
 				print_debug(LOG_DEBUG, "update master instead");
@@ -553,7 +555,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 		int age = time(NULL) - node->time;
 
 		print_debug(LOG_NOTICE,
-			"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+			"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
 			node->cid, node->room, age,
 			node->loc.latitude, node->loc.longitude,
 			node->loc.altitude,
@@ -668,7 +670,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	int age = time(NULL) - node->time;
 	print_debug(LOG_NOTICE,
-		"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+		"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
 		node->cid, node->room, age,
 		node->loc.latitude, node->loc.longitude, node->loc.altitude,
 		node->loc.velocity, node->loc.heading, node->loc.pitch,
@@ -914,6 +916,23 @@ void *produce_nmea(void *arg)
 }
 
 /**
+ *	Thread for console read
+ */
+void *read_console(void *arg)
+{
+	while (running) {
+
+		/* read console */
+		char ch;
+		scanf("%c", &ch);
+		if (ch == 'p') {
+			print_status = 1;
+		}
+	}
+	return ((void *)0);
+}
+
+/**
  *	Send NMEA sentence for current location to all nodes
  */
 void send_gps_to_nodes(void)
@@ -1020,7 +1039,7 @@ int get_distance(struct client *node1, struct client *node2)
 
 	distance = dist;
 
-	print_debug(LOG_DEBUG, "%d meters between %s and %s \n",
+	print_debug(LOG_DEBUG, "%d meters between %s and %s",
 			distance, node1->name, node2->name);
 
 
@@ -1137,7 +1156,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	if (!fp) {
 		perror("wmasterd: fopen");
-		print_debug(LOG_ERR, "could not open vmx %s\n", vmx_file);
+		print_debug(LOG_ERR, "could not open vmx %s", vmx_file);
 		list_nodes_vmci();
 		return 0;
 	}
@@ -1173,7 +1192,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	/* find the room id */
 	if (cid == srchost) {
-		print_debug(LOG_DEBUG, "cid %11d is a match for name %s\n",
+		print_debug(LOG_DEBUG, "cid %11d is a match for name %s",
 				cid, name);
 		/* guestinfo variables not found (they override annotation */
 		if (!room_found) {
@@ -1183,7 +1202,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 				strncpy(room, "0", 2);
 			}
 		}
-		print_debug(LOG_DEBUG, "cid %11d is in room %s\n", cid, room);
+		print_debug(LOG_DEBUG, "cid %11d is in room %s", cid, room);
 		return 1;
 	}
 
@@ -1233,7 +1252,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 
 	if (!pipe) {
 		perror("wmasterd: pipe");
-		print_debug(LOG_ERR, "error: popen failed to produce pipe\n");
+		print_debug(LOG_ERR, "error: popen failed to produce pipe");
 		memset(room, 0, UUID_LEN);
 		return;
 	}
@@ -1343,7 +1362,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 				&cid, room, &lat, &lon, &alt, &sog, &cog,
 				&pit, name);
 			if ((ret != 8) && (ret != 9)) {
-				print_debug(LOG_ERR, "error: did not parseline for '%s'\n", buf);
+				print_debug(LOG_ERR, "error: did not parseline for '%s'", buf);
 				printf("only matched %d variables:\n", ret);
 				printf("cid:  %d\n", cid);
 				printf("room: %s\n", room);
@@ -1374,7 +1393,7 @@ void add_node_vmci(unsigned int srchost, char *vm_room, char *vm_name, char *uui
 
 		if (!matched) {
 			print_debug(LOG_DEBUG,
-					"adding node to the cache file\n");
+					"adding node to the cache file");
 			fseek(cache_fp, 0, SEEK_END);
 			fprintf(cache_fp,
 				"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
@@ -2302,6 +2321,16 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+
+	/* start thread to read console */
+	ret = pthread_create(&console_tid, NULL, read_console, NULL);
+	if (ret < 0) {
+		sock_error("wmasterd: pthread_create read_console");
+		print_debug(LOG_ERR, "error: pthread_create read_console");
+		exit(EXIT_FAILURE);
+	}
+
+
 #ifndef _WIN32
 	/* start thread to receive from other hosts */
 	if (esx && broadcast) {
@@ -2371,19 +2400,22 @@ int main(int argc, char *argv[])
 		/* print status is requested by usr1 signal */
 		if (print_status) {
 			pthread_mutex_lock(&list_mutex);
-			print_debug(LOG_INFO, "Status requested\n");
+			print_debug(LOG_INFO, "status requested");
 			list_nodes_vmci();
 			pthread_mutex_unlock(&list_mutex);
 			print_status = 0;
 		}
 	}
 
-	print_debug(LOG_INFO, "Shutting down...\n");
+	print_debug(LOG_INFO, "Shutting down...");
 
 	pthread_cancel(nmea_tid);
 	pthread_join(nmea_tid, NULL);
 
-	print_debug(LOG_INFO, "Threads have been cancelled\n");
+	pthread_cancel(console_tid);
+	pthread_join(console_tid, NULL);
+
+	print_debug(LOG_INFO, "Threads have been cancelled");
 
 	/* cleanup */
 	free_list();
