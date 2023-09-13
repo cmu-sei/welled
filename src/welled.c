@@ -240,7 +240,7 @@ void hex_dump(void *addr, int len)
 void free_mem(void)
 {
 	if (verbose)
-		print_debug(LOG_DEBUG, "Trying to free memory...\n");
+		print_debug(LOG_DEBUG, "Trying to free memory...");
 
 	pthread_mutex_lock(&list_mutex);
 	free_list();
@@ -260,7 +260,7 @@ void free_mem(void)
  */
 void signal_handler(void)
 {
-	print_debug(LOG_DEBUG, "signal handler invoked\n");
+	print_debug(LOG_DEBUG, "signal handler invoked");
 
 	running = 0;
 
@@ -315,7 +315,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	msg = nlmsg_alloc();
 
 	if (!msg) {
-		print_debug(LOG_ERR, "Error allocating new message MSG!\n");
+		print_debug(LOG_ERR, "Error allocating new message MSG!");
 		goto out;
 	}
 	if (family_id < 0)
@@ -338,7 +338,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	 */
 
 	if (rc != 0) {
-		print_debug(LOG_ERR, "Error filling payload in send_cloned_frame_msg\n");
+		print_debug(LOG_ERR, "Error filling payload in send_cloned_frame_msg");
 		goto out;
 	}
 	/*
@@ -355,7 +355,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	bytes = nl_send_auto_complete(sock, msg);
 	nlmsg_free(msg);
 	mac_address_to_string(addr, dst);
-	print_debug(LOG_INFO, "sent %d bytes to %s\n", bytes, addr);
+	print_debug(LOG_INFO, "sent %d bytes to %s", bytes, addr);
 
 	return 0;
 out:
@@ -651,7 +651,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		}
 	}
 
-	print_debug(LOG_INFO, "received %d bytes msg from hwsim\n", msg_len);
+	print_debug(LOG_INFO, "received %d bytes msg from hwsim", msg_len);
 	/*
 	if (nlh->nlmsg_type == NLMSG_NOOP)
 		printf("NLMSG_NOOP\n");
@@ -852,7 +852,7 @@ attempt idx, count: -1 0
 		perror("sendto");
 		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
 	} else {
-		print_debug(LOG_INFO, "sent %d bytes to wmasterd\n", bytes);
+		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 	}
 
 out:
@@ -1034,7 +1034,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		perror("sendto");
 		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
 	} else {
-		print_debug(LOG_INFO, "sent %d bytes to wmasterd\n", bytes);
+		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 	}
 
 	/* free stuff */
@@ -1098,7 +1098,7 @@ void recv_from_master(void)
 	if (bytes < 0)
 		return;
 
-	print_debug(LOG_INFO, "received %d bytes packet from src host: %u\n",
+	print_debug(LOG_INFO, "received %d bytes packet from src host: %u",
 			bytes, cliaddr_vmci.svm_cid);
 
 	/* netlink header */
@@ -1123,7 +1123,7 @@ void recv_from_master(void)
 
 	/* exit if the message does not contain frame data */
 	if (gnlh->cmd != HWSIM_CMD_FRAME) {
-		print_debug(LOG_ERR, "Error - received no frame data in message\n");
+		print_debug(LOG_ERR, "Error - received no frame data in message");
 		if (verbose) {
 			hex_dump(nlh, bytes);
 		}
@@ -1183,9 +1183,9 @@ void recv_from_master(void)
 
 	if (bytes > nlh->nlmsg_len) {
 		if (verbose) {
-			print_debug(LOG_DEBUG, "packet is %d bytes larger than nlmsg\n",
+			print_debug(LOG_DEBUG, "packet is %d bytes larger than nlmsg",
 				bytes - nlh->nlmsg_len);
-			print_debug(LOG_DEBUG, "nlmsg_len %d\n", nlh->nlmsg_len);
+			print_debug(LOG_DEBUG, "nlmsg_len %d", nlh->nlmsg_len);
 		}
 
 		/* check for appended distance */
@@ -1193,7 +1193,7 @@ void recv_from_master(void)
 			distance = atoi(buf + nlh->nlmsg_len + 7);
 	}
 
-	print_debug(LOG_DEBUG, "distance from rx to here: %d\n", distance);
+	print_debug(LOG_DEBUG, "distance from rx to here: %d", distance);
 
 	double loss;
 	loss = 0;
@@ -1214,7 +1214,7 @@ void recv_from_master(void)
 				20 * log10(2412) +
 				32.44 - gain_tx - gain_rx;
 		}
-		print_debug(LOG_DEBUG, "signal is loss: %f\n", loss);
+		print_debug(LOG_DEBUG, "signal is loss: %f", loss);
 
 		signal = -10 - loss;
 		rate_idx = 0;
@@ -1368,7 +1368,7 @@ void *process_master(void *arg)
 	while (running) {
 		recv_from_master();
 	}
-	print_debug(LOG_DEBUG, "process_master returning\n");
+	print_debug(LOG_DEBUG, "process_master returning");
 	return ((void *)0);
 }
 
@@ -1635,7 +1635,7 @@ void *monitor_devices(void *arg)
 	nl_close(sk);
 	nl_socket_free(sk);
 
-	print_debug(LOG_DEBUG, "monitor_devices returning\n");
+	print_debug(LOG_DEBUG, "monitor_devices returning");
 	return ((void *)0);
 }
 
@@ -1684,14 +1684,14 @@ void *send_status(void *arg)
 			perror("sendto");
 			print_debug(LOG_ERR, "Up notification failed");
 		} else {
-			print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+			print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 		}
 		sleep(9);
 	}
 
 	free(msg);
 
-	print_debug(LOG_DEBUG, "send_status returning\n");
+	print_debug(LOG_DEBUG, "send_status returning");
 	return ((void *)0);
 }
 
@@ -1713,7 +1713,7 @@ void *monitor_hwsim(void *arg)
 		family_id = genl_ctrl_resolve(sock2, "MAC80211_HWSIM");
 
 		if (family_id < 0) {
-			print_debug(LOG_INFO, "Driver has been unloaded\n");
+			print_debug(LOG_INFO, "Driver has been unloaded");
 
 			/*  we call init_netlink which returns when back up */
 			pthread_mutex_lock(&hwsim_mutex);
@@ -1721,14 +1721,14 @@ void *monitor_hwsim(void *arg)
 				continue;
 			/* Send a register msg to the kernel */
 			if (send_register_msg() == 0)
-				print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM\n");
+				print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM");
 			pthread_mutex_unlock(&hwsim_mutex);
 		}
 	}
 	nl_close(sock2);
 	nl_socket_free(sock2);
 
-	print_debug(LOG_DEBUG, "monitor_hwsim returning\n");
+	print_debug(LOG_DEBUG, "monitor_hwsim returning");
 	return ((void *)0);
 }
 
@@ -1860,34 +1860,34 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		devices++;
 
 		if (verbose) {
-			print_debug(LOG_INFO, "added node, now %d devices\n", devices);
+			print_debug(LOG_INFO, "added node, now %d devices", devices);
 			list_nodes();
 		}
 	} else {
 		/* update existing node if type changed */
 		if (node->iftype != iftype) {
 			node->iftype = iftype;
-			print_debug(LOG_DEBUG, "iftype changed\n");
+			print_debug(LOG_DEBUG, "iftype changed");
 		}
 		/* update existing node if name changed */
 		if (strncmp(node->name, ifname, strlen(ifname)) != 0) {
 			/* overwrite name */
 			strncpy(node->name, ifname, sizeof(node->name) + 1);
 			if (verbose) {
-				print_debug(LOG_DEBUG, "name changed\n");
+				print_debug(LOG_DEBUG, "name changed");
 				list_nodes();
 			}
 		}
 		/* update existing node if address changed */
 		if (memcmp(&node->address, &addr, ETH_ALEN) != 0) {
 			if (iftype == NL80211_IFTYPE_MONITOR) {
-				print_debug(LOG_DEBUG, "setting address to 00's\n");
+				print_debug(LOG_DEBUG, "setting address to 00's");
 				memset(&node->address, 0, ETH_ALEN);
 			} else {
 				memcpy(&node->address, &addr, ETH_ALEN);
 			}
 			if (verbose) {
-				print_debug(LOG_DEBUG, "address changed\n");
+				print_debug(LOG_DEBUG, "address changed");
 				list_nodes();
 			}
 		}
@@ -1913,29 +1913,29 @@ int nl80211_get_interface(int ifindex)
 
 	wifi.nls = nl_socket_alloc();
 	if (!wifi.nls) {
-		print_debug(LOG_ERR, "Error: failed to allocate netlink socket.\n");
+		print_debug(LOG_ERR, "Error: failed to allocate netlink socket.");
 		return -ENOMEM;
 	}
 	nl_socket_set_buffer_size(wifi.nls, 8192, 8192);
 	if (genl_connect(wifi.nls)) {
-		print_debug(LOG_ERR, "Error: failed to connect to generic netlink.\n");
+		print_debug(LOG_ERR, "Error: failed to connect to generic netlink.");
 		nl_socket_free(wifi.nls);
 		return -ENOLINK;
 	}
 	wifi.nl80211_id = genl_ctrl_resolve(wifi.nls, "nl80211");
 	if (wifi.nl80211_id < 0) {
-		print_debug(LOG_ERR, "Error: nl80211 not found.\n");
+		print_debug(LOG_ERR, "Error: nl80211 not found.");
 		nl_socket_free(wifi.nls);
 		return -ENOENT;
 	}
 	nlmsg = nlmsg_alloc();
 	if (!nlmsg) {
-		print_debug(LOG_ERR, "Error: failed to allocate netlink message.\n");
+		print_debug(LOG_ERR, "Error: failed to allocate netlink message.");
 		return -ENOMEM;
 	}
 	cb = nl_cb_alloc(NL_CB_DEFAULT);
 	if (!cb) {
-		print_debug(LOG_ERR, "Error: failed to allocate netlink callback.\n");
+		print_debug(LOG_ERR, "Error: failed to allocate netlink callback.");
 		nlmsg_free(nlmsg);
 		return -ENOMEM;
 	}
@@ -2062,7 +2062,7 @@ int main(int argc, char *argv[])
 	ioctl_fd = open("/dev/vsock", 0);
 	if (ioctl_fd < 0) {
 		perror("open");
-		print_debug(LOG_ERR, "could not open /dev/vsock\n");
+		print_debug(LOG_ERR, "could not open /dev/vsock");
 		_exit(EXIT_FAILURE);
 	}
 	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
@@ -2070,7 +2070,7 @@ int main(int argc, char *argv[])
 		perror("ioctl: Cannot get local CID");
 		print_debug(LOG_ERR, "could not get local CID");
 	} else {
-		printf("CID: %u\n", cid);
+		print_debug(LOG_DEBUG, "CID: %u", cid);
 	}
 
 	/* Handle signals */
@@ -2092,7 +2092,7 @@ int main(int argc, char *argv[])
 	ret = init_netlink();
 	pthread_mutex_unlock(&hwsim_mutex);
 	if (!ret) {
-		print_debug(LOG_ERR, "error: could not initialize netlink\n");
+		print_debug(LOG_ERR, "error: could not initialize netlink");
 		nl_close(sock);
 		nl_socket_free(sock);
 		nl_cb_put(cb);
@@ -2101,7 +2101,7 @@ int main(int argc, char *argv[])
 
 	/* Send a register msg to the kernel */
 	if (send_register_msg() == 0) {
-		print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM\n");
+		print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM");
 	} else {
 		nl_close(sock);
 		nl_socket_free(sock);
@@ -2157,7 +2157,7 @@ int main(int argc, char *argv[])
 		perror("sendto");
 		print_debug(LOG_ERR, "Up notification failed");
 	}
-	print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+	print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 
 	if (verbose)
 		printf("################################################################################\n");
@@ -2208,24 +2208,24 @@ int main(int argc, char *argv[])
 	pthread_join(status_tid, NULL);
 	pthread_join(master_tid, NULL);
 
-	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
+	print_debug(LOG_DEBUG, "Threads have been cancelled");
 
 	close(sockfd);
 	close(myservfd);
 	close(ioctl_fd);
 
-	print_debug(LOG_DEBUG, "Sockets have been closed\n");
+	print_debug(LOG_DEBUG, "Sockets have been closed");
 
 	/*Free all memory*/
 	free_mem();
 
-	print_debug(LOG_DEBUG, "Memory has been cleared\n");
+	print_debug(LOG_DEBUG, "Memory has been cleared");
 
 	pthread_mutex_destroy(&list_mutex);
 	pthread_mutex_destroy(&hwsim_mutex);
 	pthread_mutex_destroy(&send_mutex);
 
-	print_debug(LOG_DEBUG, "Mutices have been destroyed\n");
+	print_debug(LOG_DEBUG, "Mutices have been destroyed");
 
 	print_debug(LOG_NOTICE, "Exiting");
 

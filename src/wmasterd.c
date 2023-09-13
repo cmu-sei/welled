@@ -1723,7 +1723,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 	age = 0;
 	now = time(NULL);
 
-	print_debug(LOG_DEBUG, "sending to nodes in room %s\n", node->room);
+	print_debug(LOG_DEBUG, "sending to nodes in room %s", node->room);
 
 	while (curr != NULL) {
 		age = now - curr->time;
@@ -1797,7 +1797,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 			remove_node_vmci(curr->cid);
 			curr = temp;
 		} else {
-			print_debug(LOG_DEBUG, "sent %d bytes to node: %11d room: %s\n", bytes, curr->cid, curr->room);
+			print_debug(LOG_DEBUG, "sent %d bytes to node: %11d room: %s", bytes, curr->cid, curr->room);
 
 			curr = curr->next;
 		}
