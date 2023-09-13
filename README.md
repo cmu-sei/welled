@@ -19,13 +19,14 @@ testing tools inside of a completely virtual environment without ever
 generating any real RF signals that might interfere with the read world.
 Additionally, no hardware is required to build these virtual wireless networks.
 
-This project contains files necessary to compile four programs:
+This project contains files necessary to compile five programs:
 `wmasterd`
 `welled`
 `gelled`
 `gelled-ctrl`
+`gelled-gui`
 
-Some of these four programs can be compiled to run on multiple operating systems:
+Some of these programs can be compiled to run on multiple operating systems:
 * OpenWrt
 * Android
 * Fedora
@@ -164,7 +165,7 @@ apt-get install libpng-dev libglib2.0-dev
 ```
 
 ## Prerequisites for installing wmasterd
-None at the moment. `wmasterd` has been run on:
+The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * ESXi 5.5
 * ESXi 6.0
 * Windows 7 with VMware Workstation 12 and 14
@@ -474,13 +475,14 @@ http://boulter.com/gps/distance/?from=40.0+-80.0&to=40.0+-80.0001&units=k
 ```
 
 ## Setting the VMs name, address, or room when in non-STEP environment
+Take note that STEP is a reference to the deprecated STEPfwd Cyber Range Management tool that has been replaced by Crucible and Topomojo.
 ```
 /bin/gelled-ctrl -n kali-local -r 55
 ```
 
-Of course, all of these tools have usage statements, so RTFUS (read the fine
-usage statement). Man pages are a work in progress because `help2man` cannot
-read from STDOUT on a few of the binaries... strange. Please help fix this!!
+Of course, all of these tools have usage statements, so please read themm.
+Man pages are a work in progress because `help2man` cannot
+read from STDOUT on a few of the binaries. Please help fix this if you can.
 
 ## Using wmasterd on ESXi/Linux without installation
 If you haven't installed `wmasterd`, execute wmasterd without arguments. Just
@@ -549,6 +551,9 @@ socat PTY,link=/dev/ttyUSB0 PTY,link=/dev/ttyUSB1
 ./gelled -v -d /dev/ttyUSB0
 ```
 
+## A note on network namespaces
+While the `mac80211_hwsim` driver works when radios are placed in different network namespaces, `welled` will only see the radios in the network namespace it is run within. Usually, this will be the default network namespace. In order for `welled` to run in each network namespace the networking bewteen `welled` and `wmasterd` will need to be updated. Currently, the fixed VSOCK port numbers present an issue as only once instance of `welled` will be able to bind to it.
+
 ## Gotchas
 
 ### Allowable MAC addresses
@@ -608,5 +613,5 @@ One Kali Linux VM running `welled`
 One Fedora 23 Linux VM running `welled`
 
 
-Copyright 2015-2018 Carnegie Mellon University. See LICENSE.txt for terms.
+Copyright 2015-2023 Carnegie Mellon University. See LICENSE.txt for terms.
 
