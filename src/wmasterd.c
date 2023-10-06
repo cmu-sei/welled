@@ -85,7 +85,7 @@ char broadcast_addr[16];
 /** Whether to broadcast frames to host subnet */
 int broadcast;
 /** Port used to receive frames from welled or gelled */
-#define RECV_PORT       1111
+#define WMASTERD_PORT       1111
 /** Port used to send frames to welled */
 #define SEND_PORT       2222
 /** Port used to send frames to gelled */
@@ -2279,28 +2279,20 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	/* setup vmci client socket */
-	sockfd = socket(af, SOCK_DGRAM, 0);
-	if (sockfd < 0) {
-		sock_error("wmasterd: socket");
-		print_debug(LOG_ERR, "error: cannot open SOCK_DGRAM client");
-		return EXIT_FAILURE;
-	}
-
 	/* TODO: add a udp socket for nmea stream/coordinate input */
 
 	/* create vmci server socket */
-	myservfd = socket(af, SOCK_DGRAM, 0);
+	myservfd = socket(af, SOCK_STREAM, 0);
 	if (myservfd < 0) {
 		sock_error("wmasterd: socket");
-		print_debug(LOG_ERR, "error: cannot open SOCK_DGRAM server");
+		print_debug(LOG_ERR, "error: cannot open SOCK_STREAM server");
 		return EXIT_FAILURE;
 	}
 
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
-	myservaddr_vm.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vm.svm_port = RECV_PORT;
+	myservaddr_vm.svm_cid = cid;
+	myservaddr_vm.svm_port = WMASTERD_PORT;
 	myservaddr_vm.svm_family = af;
 	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
 		sizeof(struct sockaddr));
@@ -2310,6 +2302,16 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "error: invalid address");
 		return EXIT_FAILURE;
 	}
+
+	/* listen on vsock server for up backlog of 1000 connections */
+	ret = listen(myservfd, 1000);
+	if (ret < 0) {
+		sock_error("wmasterd: listen");
+		return EXIT_FAILURE;
+	}
+
+	printf("wmasterd: listening on vsock %u:%d\n",
+		myservaddr_vm.svm_cid, myservaddr_vm.svm_port);
 
 	pthread_mutex_init(&list_mutex, NULL);
 	pthread_mutex_init(&file_mutex, NULL);
@@ -2346,66 +2348,75 @@ int main(int argc, char *argv[])
 
 	/* We wait for incoming msg unless kill signal received */
 	while (running) {
-		FD_ZERO(&fds);
-		FD_SET(myservfd, &fds);
 
-		ret = 0;
+		print_debug(LOG_DEBUG, "accepting connections");
 
-		/* we need a timer to break us out of the recvfrom function */
-		tv.tv_sec = 0; /* seconds */
-		tv.tv_usec = 500000; /* microseconds */
+		fd_set rfds;
+		struct timeval tv;
+		int nfds;
 
-		ret = select(myservfd + 1, &fds, NULL, NULL, &tv);
+		nfds = myservfd + 1;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+
+		FD_ZERO(&rfds);
+		FD_SET(myservfd, &rfds);
+		ret = select(nfds, &rfds, NULL, NULL, &tv);
+
 		if (ret < 0) {
-			/* timer error */
+			perror("wmasterd: select");
 			continue;
-		} else if (ret == 0) {
-			/*
-			 * timer expired
-			 * only check for stale nodes when timer expires
-			 * which is after .5 seconds of inactivity. when an
-			 * AP is broadcasting, this should never happen.
-			 */
-
-			#ifndef _WIN32
-			/* block signals while we perform node identification */
-			block_signal();
-			#endif
-
-			pthread_mutex_lock(&list_mutex);
-			clear_inactive_nodes();
-			pthread_mutex_unlock(&list_mutex);
-
-			#ifndef _WIN32
-			/* unblock signal */
-			unblock_signal();
-			#endif
+		} else if (ret > 0) {
+			if (!FD_ISSET(myservfd, &rfds)) {
+				continue;
+			} else if (verbose) {
+				print_debug(LOG_INFO, "connection attempt");
+			}
 		} else {
-			/* data recived */
-
-			#ifndef _WIN32
-			/* block signals while we perform node identification */
-			block_signal();
-			#endif
-
-			pthread_mutex_lock(&list_mutex);
-			recv_from_welled_vmci();
-			pthread_mutex_unlock(&list_mutex);
-
-			#ifndef _WIN32
-			/* unblock signal */
-			unblock_signal();
-			#endif
+			print_debug(LOG_DEBUG, "timeout awaiting connection");
+			continue;
 		}
 
+
+
+		int vsock_client_fd;
+		/** sockaddr_vm for vmci client connecting to here */
+		struct sockaddr_vm client_vm;
+
+		int client_len = sizeof(client_vm);
+
+		/* clear/reset client address information */
+		memset(&client_vm, 0, sizeof(client_vm));
+		vsock_client_fd = -1;
+
+		/* accept vsock connection */
+		vsock_client_fd = accept(myservfd,
+			(struct sockaddr *)&client_vm, &client_len);
+
+		if (vsock_client_fd < 0) {
+			print_debug(LOG_ERR, "vsock accept failed\n");
+			sock_error("vtunnel: accept");
+			continue;
+		} else if (verbose) {
+			print_debug(LOG_INFO, "vsock connection accepted\n");
+		}
+
+		// TODO start thread to process data on connection
+
+
+
+
+		#ifndef _WIN32
 		/* print status is requested by usr1 signal */
 		if (print_status) {
 			pthread_mutex_lock(&list_mutex);
 			print_debug(LOG_INFO, "status requested");
 			list_nodes_vmci();
 			pthread_mutex_unlock(&list_mutex);
+
 			print_status = 0;
 		}
+		#endif
 	}
 
 	print_debug(LOG_INFO, "Shutting down...");
