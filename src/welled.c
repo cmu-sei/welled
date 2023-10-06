@@ -78,9 +78,7 @@
 #include "nodes.h"
 
 /** Port used to send frames to wmasterd */
-#define SEND_PORT		1111
-/** Port used to receive frames from wmasterd */
-#define RECV_PORT		2222
+#define WMASTERD_PORT		1111
 /** Address used to send frames to wmasterd */
 #ifndef VMADDR_CID_HOST
 	#define VMADDR_CID_HOST		2
@@ -108,14 +106,10 @@ struct nl_sock *sock;
 struct nl_cb *cb;
 /** For the family ID used by hwsim */
 int family_id;
-/** FD for vmci send */
+/** FD for vmci */
 int sockfd;
-/** FD for vmci receive */
-int myservfd;
-/** sockaddr_vm for vmci send */
+/** sockaddr_vm for vmci */
 struct sockaddr_vm servaddr_vm;
-/** sockaddr_vm for vmci receive */
-struct sockaddr_vm myservaddr_vm;
 /** mutex for linked list access */
 pthread_mutex_t list_mutex;
 /** mutex for driver unload/load checking */
@@ -842,14 +836,12 @@ attempt idx, count: -1 0
 	}
 
 	pthread_mutex_lock(&send_mutex);
-	bytes = sendto(sockfd, (char *)nlh, msg_len, 0,
-			(struct sockaddr *)&servaddr_vm,
-			sizeof(struct sockaddr));
+	bytes = send(sockfd, (char *)nlh, msg_len, 0);
 	pthread_mutex_unlock(&send_mutex);
 
 	if (bytes < 0) {
 		/* wmasterd probably down */
-		perror("sendto");
+		perror("send");
 		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
@@ -1024,14 +1016,12 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 
 	/* send frame to wmasterd */
 	pthread_mutex_lock(&send_mutex);
-	bytes = sendto(sockfd, (char *)nlh, msg_len, 0,
-			(struct sockaddr *)&servaddr_vm,
-			sizeof(struct sockaddr));
+	bytes = send(sockfd, (char *)nlh, msg_len, 0);
 	pthread_mutex_unlock(&send_mutex);
 
 	if (bytes < 0) {
 		/* wmasterd probably down */
-		perror("sendto");
+		perror("send");
 		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
@@ -1054,10 +1044,10 @@ out:
 void recv_from_master(void)
 {
 	char buf[VMCI_BUFF_LEN];
-	struct sockaddr_vm cliaddr_vmci;
-	struct sockaddr_in cliaddr;
-	socklen_t addrlen;
-	struct timeval tv; /* timer to break out of recvfrom function */
+	//struct sockaddr_vm cliaddr_vmci;
+	//struct sockaddr_in cliaddr;
+	//socklen_t addrlen;
+	//struct timeval tv; /* timer to break out of recvfrom function */
 	int bytes;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *gnlh;
@@ -1078,28 +1068,30 @@ void recv_from_master(void)
 	int retval;
 	int distance;
 
-	addrlen = sizeof(struct sockaddr);
-	memset(addr, 0, sizeof(addr));
-	memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
-	memset(&cliaddr, 0, sizeof(cliaddr));
+	//addrlen = sizeof(struct sockaddr);
+	//memset(addr, 0, sizeof(addr));
+	//memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
+	//memset(&cliaddr, 0, sizeof(cliaddr));
 
+	/*
+	no longer need timeout
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
-	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
 	}
+	*/
 
 	/* receive packets from wmasterd */
-	bytes = recvfrom(myservfd, (char *)buf, VMCI_BUFF_LEN, 0,
-			(struct sockaddr *)&cliaddr_vmci, &addrlen);
+	bytes = recv(sockfd, (char *)buf, VMCI_BUFF_LEN, 0);
 
 	if (bytes < 0)
 		return;
 
-	print_debug(LOG_INFO, "received %d bytes packet from src host: %u",
-			bytes, cliaddr_vmci.svm_cid);
+	print_debug(LOG_INFO, "received %d bytes packet from wmasterd",
+			bytes);
 
 	/* netlink header */
 	nlh = (struct nlmsghdr *)buf;
@@ -1674,14 +1666,12 @@ void *send_status(void *arg)
 			continue;
 
 		pthread_mutex_lock(&send_mutex);
-		bytes = sendto(sockfd, msg, msg_len, 0,
-				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr));
+		bytes = send(sockfd, msg, msg_len, 0);
 		pthread_mutex_unlock(&send_mutex);
 
 		/* this should be 8 bytes */
 		if (bytes != msg_len) {
-			perror("sendto");
+			perror("send");
 			print_debug(LOG_ERR, "Up notification failed");
 		} else {
 			print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
@@ -2051,11 +2041,6 @@ int main(int argc, char *argv[])
 	if (loglevel >= 0)
 		openlog("welled", LOG_PID, LOG_USER);
 
-	/* old code for vmci_sockets.h */
-	//af = VMCISock_GetAFValue();
-	//cid = VMCISock_GetLocalCID();
-	//printf("CID: %d\n", cid);
-
 	/* new code for vm_sockets */
 	af = AF_VSOCK;
 
@@ -2108,36 +2093,30 @@ int main(int argc, char *argv[])
 		nl_cb_put(cb);
 		_exit(EXIT_FAILURE);
 	}
-	/* setup vmci client socket */
-	sockfd = socket(af, SOCK_DGRAM, 0);
-	/* we can initalize this struct because it never changes */
+
+	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 	servaddr_vm.svm_cid = VMADDR_CID_HOST;
-	servaddr_vm.svm_port = SEND_PORT;
+	servaddr_vm.svm_port = WMASTERD_PORT;
 	servaddr_vm.svm_family = af;
+
+	/* setup vmci socket */
+	sockfd = socket(af, SOCK_STREAM, 0);
+	/* we can initalize this struct because it never changes */
 	if (sockfd < 0) {
 		perror("socket");
 		free_mem();
 		_exit(EXIT_FAILURE);
 	}
 
-	/* create vmci server socket */
-	myservfd = socket(af, SOCK_DGRAM, 0);
-
-	/* we can initalize this struct because it never changes */
-	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
-	myservaddr_vm.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vm.svm_port = RECV_PORT;
-	myservaddr_vm.svm_family = af;
-	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
-			sizeof(struct sockaddr));
-	if (ret < 0) {
-		perror("bind");
-		close(sockfd);
-		close(myservfd);
-		free_mem();
-		_exit(EXIT_FAILURE);
-	}
+	do {
+		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+		if (ret < 0) {
+			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+			sleep(1);
+		}
+	} while(running && (ret < 0));
 
 	/* send up notification to wmasterd */
 	msg_len = 2;
@@ -2146,15 +2125,13 @@ int main(int argc, char *argv[])
 	memcpy(msg, "UP", msg_len);
 
 	pthread_mutex_lock(&send_mutex);
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vm,
-			sizeof(struct sockaddr));
+	bytes = send(sockfd, msg, msg_len, 0);
 	pthread_mutex_unlock(&send_mutex);
 	free(msg);
 
 	/* this should be 8 bytes */
 	if (bytes != msg_len) {
-		perror("sendto");
+		perror("send");
 		print_debug(LOG_ERR, "Up notification failed");
 	}
 	print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
@@ -2211,7 +2188,6 @@ int main(int argc, char *argv[])
 	print_debug(LOG_DEBUG, "Threads have been cancelled");
 
 	close(sockfd);
-	close(myservfd);
 	close(ioctl_fd);
 
 	print_debug(LOG_DEBUG, "Sockets have been closed");
