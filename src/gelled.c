@@ -521,6 +521,7 @@ void process_rmc(char *line)
 	}
 }
 
+#ifndef _WIN32
 /**
  *	@brief stop movement if we crashed
  *      sends velocity change of 0 to wmasterd
@@ -563,6 +564,7 @@ void send_stop(void)
 
 	return;
 }
+#endif
 
 /**
  *      @brief parse vmci data from wmastered.
@@ -673,6 +675,7 @@ void recv_from_master(void)
 	}
 	#endif
 
+	#ifndef _WIN32
 	/* check if we should stop moving based on land or sea */
 	if (check_position && strncmp(buf, "$GPRMC", 6) == 0) {
 		process_rmc(buf);
@@ -691,6 +694,7 @@ void recv_from_master(void)
 			}
 		}
 	}
+	#endif
 	/* TODO: check for crash if altitude < elevation */
 out:
 	if (verbose)
@@ -940,7 +944,7 @@ int main(int argc, char *argv[])
 	print_debug(LOG_DEBUG, "Shutting down...\n");
 
 	pthread_cancel(status_tid);
-	
+
 	pthread_join(status_tid, NULL);
 
 	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
