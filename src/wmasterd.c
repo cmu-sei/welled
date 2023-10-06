@@ -30,6 +30,7 @@
  *	DM17-0952
  */
 
+#define _USE_MATH_DEFINES
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
