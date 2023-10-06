@@ -280,7 +280,7 @@ Note that chaos calmer, 15.05 is used in this example.
 #git clone git://git.openwrt.org/openwrt.git
 git clone -b chaos_calmer git://github.com/openwrt/openwrt.git
 cd openwrt/package
-git clone https://gitlab.sky.cert.org/cwd/welled.git
+git clone https://github.com/cmu-sei/welled.git
 cd ..
 cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
 cp package/welled/patches/compat-wireless-2016-01-10/* package/kernel/mac80211/patches/
