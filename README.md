@@ -301,6 +301,29 @@ sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=48/CONFIG_TARGET_ROOTFS_PARTSIZE=4096/" 
 make target/linux/{clean,prepare} V=s QUILT=1 
 make -j 8 # number of cpus * 1.5
 ```
+
+## 23.05 Development notes
+```
+git clone --single-branch --branch openwrt-23.05 https://github.com/openwrt/openwrt.git
+cd openwrt/package
+git clone https://github.com/cmu-sei/welled.git
+git clone https://github.com/cmu-sei/vtunnel.git
+cd ..
+./scripts/feeds update
+./scripts/feeds install luci-ssl
+./scripts/feeds install glib2
+cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
+mkdir target/linux/x86/64/profiles/
+cp package/welled/64/profiles/001_welled.mk target/linux/x86/64/profiles/
+#echo CONFIG_TARGET_KERNEL_PARTSIZE=1024 >> .config
+#sed -i "s/CONFIG_TARGET_KERNEL_PARTSIZE=16/CONFIG_TARGET_KERNEL_PARTSIZE=1024/" .config
+sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=104/CONFIG_TARGET_ROOTFS_PARTSIZE=4096/" .config
+touch target/linux/x86/Makefile
+make target/linux/{clean,prepare} V=s QUILT=1
+make -j 12 # number of cpus * 1.5
+```
+
+
 ## 18.06 Development notes
 git clone --single-branch --branch openwrt-18.06 https://github.com/openwrt/openwrt.git
 cd openwrt/package
