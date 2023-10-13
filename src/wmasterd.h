@@ -151,7 +151,7 @@ void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);
 void signal_handler(void);
-void recv_from_welled_vmci(void);
+int process_connection(struct sockaddr_vm, int);
 void *recv_from_hosts(void *);
 void update_node_location(struct client *, struct update_2 *);
 void update_node_info(struct client *, struct update_2 *);

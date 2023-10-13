@@ -1047,7 +1047,7 @@ void recv_from_master(void)
 	//struct sockaddr_vm cliaddr_vmci;
 	//struct sockaddr_in cliaddr;
 	//socklen_t addrlen;
-	//struct timeval tv; /* timer to break out of recvfrom function */
+	struct timeval tv; /* timer to break out of recvfrom function */
 	int bytes;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *gnlh;
@@ -1073,8 +1073,6 @@ void recv_from_master(void)
 	//memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
 	//memset(&cliaddr, 0, sizeof(cliaddr));
 
-	/*
-	no longer need timeout
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
@@ -1082,7 +1080,6 @@ void recv_from_master(void)
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
 	}
-	*/
 
 	/* receive packets from wmasterd */
 	bytes = recv(sockfd, (char *)buf, VMCI_BUFF_LEN, 0);
@@ -1564,12 +1561,7 @@ void process_event(int fd)
  */
 void *monitor_devices(void *arg)
 {
-/*
-	fd_set rfds;
-	int ret;
-	int fd;
-	struct sockaddr_nl addr;
-*/
+
 	struct timeval tv;
 	struct nl_sock *sk;
 	int nlsockfd;
@@ -1590,39 +1582,8 @@ void *monitor_devices(void *arg)
 		perror("setsockopt");
 	}
 
-/*
-	ret = 0;
-
-	//  create a netlink route socket
-	fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-
-	// joins the multicast groups for link notifications
-	memset(&addr, 0, sizeof(addr));
-	addr.nl_family = AF_NETLINK;
-	addr.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
-	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-		perror("bind");
-*/
 	while (running) {
 		nl_recvmsgs_default(sk);
-/*
-		FD_ZERO(&rfds);
-		FD_CLR(fd, &rfds);
-		FD_SET(fd, &rfds);
-
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-
-		ret = select(FD_SETSIZE, &rfds, NULL, NULL, &tv);
-		if (ret == -1)
-			perror("select");
-		else if (ret)
-			process_event(fd);
-		else {
-			printf("old thing times out\n");
-			continue;
-		}
-		*/
 	}
 	nl_close(sk);
 	nl_socket_free(sk);
@@ -1669,7 +1630,7 @@ void *send_status(void *arg)
 		bytes = send(sockfd, msg, msg_len, 0);
 		pthread_mutex_unlock(&send_mutex);
 
-		/* this should be 8 bytes */
+		/* this should be 2 bytes */
 		if (bytes != msg_len) {
 			perror("send");
 			print_debug(LOG_ERR, "Up notification failed");
@@ -2100,21 +2061,22 @@ int main(int argc, char *argv[])
 	servaddr_vm.svm_port = WMASTERD_PORT;
 	servaddr_vm.svm_family = af;
 
-	/* setup vmci socket */
-	sockfd = socket(af, SOCK_STREAM, 0);
-	/* we can initalize this struct because it never changes */
-	if (sockfd < 0) {
-		perror("socket");
-		free_mem();
-		_exit(EXIT_FAILURE);
-	}
-
 	do {
+		/* setup vmci socket */
+		sockfd = socket(af, SOCK_STREAM, 0);
+		/* we can initalize this struct because it never changes */
+		if (sockfd < 0) {
+			perror("socket");
+			free_mem();
+			_exit(EXIT_FAILURE);
+		}
 		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
 		if (ret < 0) {
 			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
 				servaddr_vm.svm_cid, servaddr_vm.svm_port);
 			sleep(1);
+		} else {
+			print_debug(LOG_INFO,  "connected to wmasterd");
 		}
 	} while(running && (ret < 0));
 

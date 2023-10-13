@@ -135,6 +135,7 @@ int loglevel;
 
 int af;
 int sockfd;
+/* vmci server socket */
 int myservfd;
 /** sockaddr_vm for vmci send */
 struct sockaddr_vm servaddr_vm;
@@ -159,7 +160,7 @@ void show_usage(int exval)
 
 	printf("wmasterd - wireless master daemon\n\n");
 
-	printf("Usage: wmasterd [-hVvbrud] [-D <level>] [-c <file>]\n\n");
+	printf("Usage: wmasterd [-hVvbrudn] [-D <level>] [-c <file>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
@@ -170,7 +171,8 @@ void show_usage(int exval)
 	printf("  -u, --update-room     update room on receipt\n");
 	printf("  -d, --distance	prepend distance to frames\n");
 	printf("  -D, --debug		debug level for syslog\n");
-	printf("  -c, --cache		file to save location data\n\n");
+	printf("  -c, --cache		file to save location data\n");
+	printf("  -n, --nogps		disable nnea\n\n");
 
 	printf("Copyright (C) 2015 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
@@ -378,10 +380,8 @@ void update_cache_file_location(struct client *node)
 			"%-11d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
 			node->cid, node->room,
 			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude,
-			node->loc.velocity,
-			node->loc.heading,
-			node->loc.pitch,
+			node->loc.altitude, node->loc.velocity,
+			node->loc.heading, node->loc.pitch,
 			node->name);
 		fflush(cache_fp);
 	} else {
@@ -414,6 +414,7 @@ void update_followers(struct client *node)
 			curr->loc.altitude = node->loc.altitude;
 			curr->loc.velocity = node->loc.velocity;
 			curr->loc.heading = node->loc.heading;
+			curr->loc.pitch = node->loc.pitch;
 			strncpy(curr->loc.nmea_zda,
 				node->loc.nmea_zda, NMEA_LEN);
 			strncpy(curr->loc.nmea_gga, node->loc.nmea_gga,
@@ -559,10 +560,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 			"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
 			node->cid, node->room, age,
 			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude,
-			node->loc.velocity,
-			node->loc.heading,
-			node->loc.pitch,
+			node->loc.altitude, node->loc.velocity,
+			node->loc.heading, node->loc.pitch,
 			node->name);
 
 		update_cache_file_location(node);
@@ -673,8 +672,9 @@ void update_node_location(struct client *node, struct update_2 *data)
 	print_debug(LOG_NOTICE,
 		"%-11d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
 		node->cid, node->room, age,
-		node->loc.latitude, node->loc.longitude, node->loc.altitude,
-		node->loc.velocity, node->loc.heading, node->loc.pitch,
+		node->loc.latitude, node->loc.longitude,
+		node->loc.altitude, node->loc.velocity,
+		node->loc.heading, node->loc.pitch,
 		node->name);
 
 	update_cache_file_location(node);
@@ -1286,7 +1286,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	}
 	if (!room_found) {
 		strncpy(room, "0", 2);
-		print_debug(LOG_ERR, "error: no room found for %d", srchost);
+		print_debug(LOG_INFO, "info: no room found for %d", srchost);
 	}
 
 #ifdef _WIN32
@@ -1678,7 +1678,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	char temp[UUID_LEN + 1];
 	struct sockaddr_in dest_addr;
 	int sock_opts;
-	int sockfd;
+	int udp_send_sockfd;
 	int bytes_sent;
 
 	/* create packet data */
@@ -1695,10 +1695,10 @@ void send_to_hosts(char *buf, int bytes, char *room)
 
 	/* setup socket */
 	sock_opts = 1;
-	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
+	udp_send_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	setsockopt(udp_send_sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
 		(const char *)&sock_opts, sizeof(int));
-	if (sockfd < 0) {
+	if (udp_send_sockfd < 0) {
 		sock_error("wmasterd: socket");
 		print_debug(LOG_ERR, "error: could not create udp socket\n");
 		free(buffer);
@@ -1706,7 +1706,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	}
 
 	/* send packet */
-	bytes_sent = sendto(sockfd, buffer, bytes + UUID_LEN, 0,
+	bytes_sent = sendto(udp_send_sockfd, buffer, bytes + UUID_LEN, 0,
 			(const struct sockaddr *)&dest_addr,
 			sizeof(dest_addr));
 	if (bytes_sent < 0)
@@ -1716,7 +1716,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 				bytes_sent, broadcast_addr);
 
 	/* cleanup */
-	close(sockfd);
+	close(udp_send_sockfd);
 	free(buffer);
 }
 #endif
@@ -1905,7 +1905,7 @@ void *recv_from_hosts(void *arg)
 	struct client node;
 	char src_host[16];
 	char buf[BUFF_LEN];
-	int sockfd;
+	int udp_recv_sockfd;
 	int bytes;
 	struct sockaddr_in bindaddr;
 	struct sockaddr_in cliaddr;
@@ -1916,8 +1916,8 @@ void *recv_from_hosts(void *arg)
 	memset(&bindaddr, 0, sizeof(bindaddr));
 
 	// create socket
-	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sockfd < 0) {
+	udp_recv_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (udp_recv_sockfd < 0) {
 		sock_error("wmasterd: socket");
 		printf("wmasterd: could not create udp listen socket\n");
 		exit(EXIT_FAILURE);
@@ -1928,14 +1928,14 @@ void *recv_from_hosts(void *arg)
 	bindaddr.sin_port = htons(2018);
 
 	// bind
-	if (bind(sockfd, (struct sockaddr *)&bindaddr, sizeof(bindaddr)) < 0) {
+	if (bind(udp_recv_sockfd, (struct sockaddr *)&bindaddr, sizeof(bindaddr)) < 0) {
 		sock_error("wmasterd: bind");
 	}
 
 	while (running) {
 
 		// recv packet
-		bytes = recvfrom(sockfd, (char *)buf, BUFF_LEN, 0,
+		bytes = recvfrom(udp_recv_sockfd, (char *)buf, BUFF_LEN, 0,
 				(struct sockaddr *)&cliaddr, &addrlen);
 		if (bytes < 0)
 			continue;
@@ -1955,23 +1955,17 @@ void *recv_from_hosts(void *arg)
 		pthread_mutex_unlock(&list_mutex);
 
 		/* cleanup */
-		close(sockfd);
+		close(udp_recv_sockfd);
 		free(buffer);
 	}
 	return ((void *)0);
 }
 #endif
 
-/**
- *	@brief receive and process vmci packets from client nodes
- *	@return void - assumes success
- */
-void recv_from_welled_vmci(void)
+
+int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen)
 {
-	char buf[VMCI_BUFF_LEN];
-	struct sockaddr_vm cliaddr_vmci;
-	socklen_t addrlen;
-	int bytes;
+
 	unsigned int src_cid;
 	char room[UUID_LEN];
 	char old_room[UUID_LEN];
@@ -1979,16 +1973,10 @@ void recv_from_welled_vmci(void)
 	char uuid[UUID_LEN];
 	struct client *node;
 
-	addrlen = sizeof(struct sockaddr);
-	memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
+	src_cid = cliaddr_vmci.svm_cid;
 
-	bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
-			(struct sockaddr *)&cliaddr_vmci, &addrlen);
-	if (bytes < 0)
-		return;
-	src_cid = (unsigned int)cliaddr_vmci.svm_cid;
-	print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
-			bytes, src_cid);
+	print_debug(LOG_DEBUG, "adding new node for src host: %d",
+			src_cid);
 
 	memset(room, 0, UUID_LEN);
 	memset(old_room, 0, UUID_LEN);
@@ -2005,7 +1993,7 @@ void recv_from_welled_vmci(void)
 		if (!node) {
 			print_debug(LOG_ERR, "error: adding node %11d",
 					src_cid);
-			return;
+			return -1;
 		}
 	} else if (update_room && check_room) {
 		print_debug(LOG_DEBUG, "checking vmx for room update\n");
@@ -2019,79 +2007,14 @@ void recv_from_welled_vmci(void)
 			node = search_node_vmci(src_cid);
 			if (!node) {
 				print_debug(LOG_ERR, "error: updating node %11d\n", src_cid);
-				return;
+				return -1;
 			}
 		}
 	}
-
-	if ((bytes == 2) || (bytes == 5)) {
-		print_debug(LOG_INFO, "node %11d has sent status",
-					src_cid);
-		return;
-	}
-
-	/*
-	 * format of this message:
-	 * gelled:<struct client>
-	 */
-	/* check for gelled updates from gelled-ctrl */
-	if (strncmp(buf, "gelled:", 7) == 0) {
-
-		/*
-		 * if new size, copy into new buf
-		 * if old size, copy into old buf, then copy
-		 *	from the old into the new buf
-		 */
-
-		print_debug(LOG_INFO, "gelled update received from %11d",
-				src_cid);
-
-		struct update_2 data_2;
-
-		/*
-		 * update_1 is size 1100
-		 * update_2 is size 1136
-		 */
-
-		if (bytes == (sizeof(struct update) + 7)) {
-			print_debug(LOG_INFO, "update version 1 from %11d", src_cid);
-			struct update data_1;
-			/* pull loc from the buffer */
-			memcpy(&data_1, buf + 7, sizeof(struct update));
-			/* convert update to update_2 */
-			strncpy(data_2.version, "1", 8);
-			strncpy(data_2.follow, data_1.follow, FOLLOW_LEN - 1);
-			data_2.latitude = data_1.latitude;
-			data_2.longitude = data_1.longitude;
-			data_2.altitude = data_1.altitude;
-			data_2.velocity = data_1.velocity;
-			data_2.heading = data_1.heading;
-			snprintf(data_2.room, UUID_LEN, "%d", data_1.room_id);
-			strncpy(data_2.name, data_1.name, NAME_LEN - 1);
-			data_2.cid = data_1.cid;
-		} else if (bytes == (sizeof(struct update_2) + 7)) {
-			print_debug(LOG_INFO, "update version 2 from %11d", src_cid);
-			print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
-					sizeof(struct update_2), sizeof(data_2));
-			/* pull loc from the buffer */
-			memcpy(&data_2, buf + 7, sizeof(struct update_2));
-		} else {
-			print_debug(LOG_ERR, "update version unknown from %11d", src_cid);
-			return;
-		}
-		update_node_info(node, &data_2);
-		update_node_location(node, &data_2);
-		return;
-	}
-
-#ifndef _WIN32
-	/* send to other wmasterd hosts */
-	send_to_hosts(buf, bytes, node->room);
-#endif
-
-	/* not a status message or an update, relay */
-	send_to_nodes_vmci(buf, bytes, node);
+	return 0;
 }
+
+
 
 /**
  *	@brief main function
@@ -2104,6 +2027,8 @@ int main(int argc, char *argv[])
 	int ret;
 	int long_index;
 	fd_set fds;
+	int max_clients;
+	int gps;
 #ifndef _WIN32
 	struct utsname uts_buf;
 	int vsock_dev_fd;
@@ -2124,6 +2049,8 @@ int main(int argc, char *argv[])
 	broadcast = 0;
 	loglevel = -1;
 	send_pashr = 0;
+	max_clients = 1000;
+	gps = 1;
 
 	static struct option long_options[] = {
 		{"help",		no_argument, 0, 'h'},
@@ -2134,10 +2061,11 @@ int main(int argc, char *argv[])
 		{"distance",		no_argument, 0, 'd'},
 		{"pashr",		no_argument, 0, 'p'},
 		{"debug",		required_argument, 0, 'D'},
-		{"cache",		required_argument, 0, 'c'}
+		{"cache",		required_argument, 0, 'c'},
+		{"nogps",		required_argument, 0, 'n'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvbrudpD:c:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvbrundpD:c:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2170,6 +2098,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'p':
 			send_pashr = 1;
+			break;
+		case 'n':
+			gps = 0;
 			break;
 		case 'c':
 			cache_filename = optarg;
@@ -2288,6 +2219,14 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "error: cannot open SOCK_STREAM server");
 		return EXIT_FAILURE;
 	}
+    opt = 1;
+	if (setsockopt(myservfd, SOL_SOCKET, SO_REUSEADDR, (char *)&opt,
+          sizeof(opt)) < 0 )
+    {
+        sock_error("wmasterd: setsockopt");
+		print_debug(LOG_ERR, "error: cannot set socket options");
+		return EXIT_FAILURE;
+    }
 
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
@@ -2304,7 +2243,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* listen on vsock server for up backlog of 1000 connections */
-	ret = listen(myservfd, 1000);
+	ret = listen(myservfd, max_clients);
 	if (ret < 0) {
 		sock_error("wmasterd: listen");
 		return EXIT_FAILURE;
@@ -2316,14 +2255,15 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&list_mutex, NULL);
 	pthread_mutex_init(&file_mutex, NULL);
 
-	/* start thread to send nmea */
-	ret = pthread_create(&nmea_tid, NULL, produce_nmea, NULL);
-	if (ret < 0) {
-		sock_error("wmasterd: pthread_create produce_nmea");
-		print_debug(LOG_ERR, "error: pthread_create produce_nmea");
-		exit(EXIT_FAILURE);
+	if (gps) {
+		/* start thread to send nmea */
+		ret = pthread_create(&nmea_tid, NULL, produce_nmea, NULL);
+		if (ret < 0) {
+			sock_error("wmasterd: pthread_create produce_nmea");
+			print_debug(LOG_ERR, "error: pthread_create produce_nmea");
+			exit(EXIT_FAILURE);
+		}
 	}
-
 
 	/* start thread to read console */
 	ret = pthread_create(&console_tid, NULL, read_console, NULL);
@@ -2332,7 +2272,6 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "error: pthread_create read_console");
 		exit(EXIT_FAILURE);
 	}
-
 
 #ifndef _WIN32
 	/* start thread to receive from other hosts */
@@ -2345,66 +2284,22 @@ int main(int argc, char *argv[])
 		}
 	}
 #endif
+    print_debug(LOG_DEBUG, "accepting connections");
+
+	// for reading data from clients
+	fd_set readfds;
+	int nreadfds;
+	int client_socket[max_clients];
+	int i;
+	int max_sd;
+    for (i = 0; i < max_clients; i++) {
+        client_socket[i] = 0;
+    }
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
 
 	/* We wait for incoming msg unless kill signal received */
 	while (running) {
-
-		print_debug(LOG_DEBUG, "accepting connections");
-
-		fd_set rfds;
-		struct timeval tv;
-		int nfds;
-
-		nfds = myservfd + 1;
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-
-		FD_ZERO(&rfds);
-		FD_SET(myservfd, &rfds);
-		ret = select(nfds, &rfds, NULL, NULL, &tv);
-
-		if (ret < 0) {
-			perror("wmasterd: select");
-			continue;
-		} else if (ret > 0) {
-			if (!FD_ISSET(myservfd, &rfds)) {
-				continue;
-			} else if (verbose) {
-				print_debug(LOG_INFO, "connection attempt");
-			}
-		} else {
-			print_debug(LOG_DEBUG, "timeout awaiting connection");
-			continue;
-		}
-
-
-
-		int vsock_client_fd;
-		/** sockaddr_vm for vmci client connecting to here */
-		struct sockaddr_vm client_vm;
-
-		int client_len = sizeof(client_vm);
-
-		/* clear/reset client address information */
-		memset(&client_vm, 0, sizeof(client_vm));
-		vsock_client_fd = -1;
-
-		/* accept vsock connection */
-		vsock_client_fd = accept(myservfd,
-			(struct sockaddr *)&client_vm, &client_len);
-
-		if (vsock_client_fd < 0) {
-			print_debug(LOG_ERR, "vsock accept failed\n");
-			sock_error("vtunnel: accept");
-			continue;
-		} else if (verbose) {
-			print_debug(LOG_INFO, "vsock connection accepted\n");
-		}
-
-		// TODO start thread to process data on connection
-
-
-
 
 		#ifndef _WIN32
 		/* print status is requested by usr1 signal */
@@ -2417,12 +2312,248 @@ int main(int argc, char *argv[])
 			print_status = 0;
 		}
 		#endif
+
+		FD_ZERO(&readfds);
+		FD_SET(myservfd, &readfds);
+		max_sd = myservfd;
+
+		// add child sockets to set
+		int sd;
+        for (i = 0; i < max_clients; i++) {
+            //socket descriptor
+            sd = client_socket[i];
+
+            // if valid socket descriptor then add to read list
+			// if it is set, just re-add it
+            if (sd > 0) {
+				//print_debug(LOG_DEBUG, "adding socket %d to fd set", sd);
+                FD_SET(sd, &readfds);
+			}
+            //highest file descriptor number, need it for the select function
+            if (sd > max_sd)
+                max_sd = sd;
+        }
+
+		ret = select(max_sd + 1, &readfds, NULL, NULL, &tv);
+
+		if (ret < 0) {
+			perror("wmasterd: select");
+			continue;
+		} else if (ret == 0) {
+			//print_debug(LOG_DEBUG, "timeout awaiting connection or data");
+			continue;
+		}
+
+		struct sockaddr_vm client_vm;
+		int client_len = sizeof(client_vm);
+
+		if (FD_ISSET(myservfd, &readfds)) {
+			print_debug(LOG_DEBUG, "connection attempt");
+
+			int vsock_client_fd;
+			/** sockaddr_vm for vmci client connecting to here */
+
+			/* clear/reset client address information */
+			memset(&client_vm, 0, sizeof(client_vm));
+			vsock_client_fd = -1;
+
+			/* accept vsock connection */
+			vsock_client_fd = accept(myservfd,
+					(struct sockaddr *)&client_vm, &client_len);
+
+			if (vsock_client_fd < 0) {
+				print_debug(LOG_ERR, "vsock accept failed\n");
+				sock_error("vtunnel: accept");
+				continue;
+			}
+			print_debug(LOG_INFO, "vsock connection accepted from %d:%d",
+					client_vm.svm_cid, client_vm.svm_port);
+			/* add new socket to array of sockets */
+			for (i = 0; i < max_clients; i++)
+			{
+				/* if position is empty */
+				if (client_socket[i] == 0)
+				{
+					client_socket[i] = vsock_client_fd;
+					print_debug(LOG_INFO, "adding to list of sockets as %d", i);
+					break;
+				}
+			}
+
+
+			// process new connection (add to node linked list)
+			ret = process_connection(client_vm, client_len);
+			if (ret < 0) {
+				print_debug(LOG_ERR, "vsock connection processing failed");
+			}
+		}
+
+		print_debug(LOG_ERR, "checking sockets other than the listen");
+        /* an IO operation on some other socket */
+        for (i = 0; i < max_clients; i++)
+        {
+            sd = client_socket[i];
+
+            if (FD_ISSET(sd, &readfds))
+            {
+				print_debug(LOG_DEBUG, "got event on socket %d at %d", sd, i);
+				int src_cid;
+				memset(&client_vm, 0, sizeof(client_vm));
+				ret = getpeername(sd, (struct sockaddr *)&client_vm,
+                    	(socklen_t *)&client_len);
+				if (ret < 0) {
+					sock_error("wmasterd: getpeername");
+                    print_debug(LOG_INFO, "host disconnected");
+					// Close the socket and mark as 0 in list for reuse
+                    close(sd);
+					print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
+                    client_socket[i] = 0;
+					// TODO remove node
+				} else {
+					// process data on connection
+					src_cid = client_vm.svm_cid;
+					print_debug(LOG_DEBUG, "reading from %d:%d" ,
+						src_cid, client_vm.svm_port);
+
+					char buf[VMCI_BUFF_LEN];
+					int bytes;
+					char room[UUID_LEN];
+					struct client *node;
+
+					bytes = recv(sd, (char *)buf, VMCI_BUFF_LEN, 0);
+					//print_debug(LOG_DEBUG, "buf: %s", buf);
+					if (bytes < 0) {
+						sock_error("wmasterd: recv");
+						printf("bytes %d\n", bytes);
+						print_debug(LOG_ERR, "host disconnected in recv error %d:%d" ,
+							src_cid, client_vm.svm_port);
+						close(sd);
+						print_debug(LOG_INFO, "removing socket %d from sd set at i", sd, i);
+						client_socket[i] = 0;
+						// TODO remove node
+						continue;
+					} else if (bytes == 0) {
+						print_debug(LOG_INFO, "host disconnected %d:%d" ,
+							src_cid, client_vm.svm_port);
+						// Close the socket and mark as 0 in list for reuse
+						close(sd);
+						print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
+						client_socket[i] = 0;
+						// TODO remove node
+						continue;
+					}
+
+					node = search_node_vmci(src_cid);
+					print_debug(LOG_DEBUG, "received %d bytes from %11d",
+							bytes, src_cid);
+
+
+					if ((bytes == 2) || (bytes == 5)) {
+						print_debug(LOG_INFO, "node %11d has sent status",
+								src_cid);
+						continue;
+					}
+
+					/*
+					* format of this message:
+					* gelled:<struct client>
+					*/
+					/* check for gelled updates from gelled-ctrl */
+					if (strncmp(buf, "gelled:", 7) == 0) {
+
+						/*
+						* if new size, copy into new buf
+						* if old size, copy into old buf, then copy
+						*	from the old into the new buf
+						*/
+
+						print_debug(LOG_INFO, "gelled update received from %11d",
+								src_cid);
+
+						struct update_2 data_2;
+
+						/*
+						* update_1 is size 1100
+						* update_2 is size 1136
+						*/
+
+						if (bytes == (sizeof(struct update) + 7)) {
+							print_debug(LOG_INFO, "update version 1 from %11d", src_cid);
+							struct update data_1;
+							/* pull loc from the buffer */
+							memcpy(&data_1, buf + 7, sizeof(struct update));
+							/* convert update to update_2 */
+							strncpy(data_2.version, "1", 8);
+							strncpy(data_2.follow, data_1.follow, FOLLOW_LEN - 1);
+							data_2.latitude = data_1.latitude;
+							data_2.longitude = data_1.longitude;
+							data_2.altitude = data_1.altitude;
+							data_2.velocity = data_1.velocity;
+							data_2.heading = data_1.heading;
+							snprintf(data_2.room, UUID_LEN, "%d", data_1.room_id);
+							strncpy(data_2.name, data_1.name, NAME_LEN - 1);
+							data_2.cid = data_1.cid;
+						} else if (bytes == (sizeof(struct update_2) + 7)) {
+							print_debug(LOG_INFO, "update version 2 from %11d", src_cid);
+							print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
+									sizeof(struct update_2), sizeof(data_2));
+							/* pull loc from the buffer */
+							memcpy(&data_2, buf + 7, sizeof(struct update_2));
+						} else {
+							print_debug(LOG_ERR, "update version unknown from %11d", src_cid);
+							continue;
+						}
+						update_node_info(node, &data_2);
+						update_node_location(node, &data_2);
+						continue;
+					}
+
+					/* send to all clients */
+					for (i = 0; i < max_clients; i++)
+					{
+						sd = client_socket[i];
+						if (sd > 0) {
+
+							print_debug(LOG_DEBUG, "writing data to client on %d at %d", sd, i);
+							bytes = send(sd, (char *)buf, bytes, 0);
+							if (bytes < 0) {
+								sock_error("wmasterd: write");
+								print_debug(LOG_ERR, "host disconnected in write error %d:%d\n" ,
+									client_vm.svm_cid, client_vm.svm_port);
+								close(sd);
+								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
+								client_socket[i] = 0;
+								// TODO remove node
+								continue;
+							} else if (bytes == 0) {
+								print_debug(LOG_INFO, "host disconnected");
+								// Close the socket and mark as 0 in list for reuse
+								close(sd);
+								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
+								client_socket[i] = 0;
+								// TODO remove node
+								continue;
+							}
+						}
+
+					}
+
+					#ifndef _WIN32
+						/* send to other wmasterd hosts */
+						send_to_hosts(buf, bytes, node->room);
+					#endif
+
+				}
+			}
+		}
 	}
 
 	print_debug(LOG_INFO, "Shutting down...");
 
-	pthread_cancel(nmea_tid);
-	pthread_join(nmea_tid, NULL);
+	if (gps) {
+		pthread_cancel(nmea_tid);
+		pthread_join(nmea_tid, NULL);
+	}
 
 	pthread_cancel(console_tid);
 	pthread_join(console_tid, NULL);
