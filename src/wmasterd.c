@@ -643,7 +643,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* adjust heading, lat and lon as we cross north pole */
 	if (node->loc.latitude > 90) {
-		/* printf("wmasterd: crossing north pole\n"); */
+		/* print_debug(LOG_INFO, "crossing north pole"); */
 		overage = node->loc.latitude - 90;
 		node->loc.latitude = 90 - overage;
 		if (node->loc.heading < 90)
@@ -658,7 +658,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* adjust heading, lat and lon as we cross south pole */
 	if (node->loc.latitude < -90) {
-		/* printf("wmasterd: crossing south pole\n"); */
+		/* print_debug(LOG_INFO, "crossing south pole"); */
 		overage = node->loc.latitude + 90;
 		node->loc.latitude = -90 - overage;
 		if (node->loc.heading > 90)
@@ -673,12 +673,12 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	/* adjust longitude as we cross east to west */
 	if (node->loc.longitude > 180) {
-		/* printf("wmasterd: crossing prime meridian\n"); */
+		/* print_debug(LOG_INFO, "crossing prime meridian"); */
 		node->loc.longitude -= 360;
 	}
 	/* adjust longitude as we cross west to east */
 	if (node->loc.longitude < -180) {
-		/* printf("wmasterd: crossing dateline\n"); */
+		/* print_debug(LOG_INFO, "crossing dateline"); */
 		node->loc.longitude += 360;
 	}
 
@@ -949,8 +949,8 @@ void *produce_nmea(void *arg)
  */
 void *read_console(void *arg)
 {
+	print_debug(LOG_DEBUG, "starting console thread");
 	while (running) {
-
 		/* read console */
 		char ch;
 		scanf("%c", &ch);
@@ -1271,7 +1271,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 		pipe = popen("/bin/esxcli vm process list", "r");
 	} else {
 		if (verbose)
-			printf("wmasterd: does not open vmx on linux\n");
+			print_debug(LOG_INFO, "does not open vmx on linux\n");
 		/* TODO: implement check for linux host
 		 * this would be a machine running workstation
 		 */
@@ -1332,6 +1332,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 /**
  *	@brief Adds a node to the linked list
  *	@param srchost - the CID of the guest node vm
+ *  @param srcport - the port of the welled connection
  *	@param room - the room uuid of the vm
  *	@param vm_name - the name of the vm
  *	@param uuid - the uuid of the vm
@@ -1394,7 +1395,7 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 			ret = sscanf(buf, "%d %d %s %lf %lf %lf %lf %lf %lf %s",
 				&cid, &port, room, &lat, &lon, &alt, &sog, &cog,
 				&pit, name);
-			if ((ret != 8) && (ret != 9)) {
+			if ((ret != 9) && (ret != 10)) {
 				print_debug(LOG_ERR, "did not parseline for '%s'", buf);
 				printf("only matched %d variables:\n", ret);
 				printf("cid:  %d\n", cid);
@@ -1409,6 +1410,7 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 				printf("name: %s\n", name);
 				continue;
 			} else if ((cid == srchost) && (port == srcport)) {
+				print_debug(LOG_INFO, "node found in cache file");
 				matched = 1;
 				/* load values from cache file */
 				node->loc.latitude = lat;	/* DD.DDDD*/
@@ -1426,17 +1428,14 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 		}
 
 		if (!matched) {
-			print_debug(LOG_DEBUG,
-					"adding node to the cache file");
+			print_debug(LOG_DEBUG, "adding node to the cache file");
 			fseek(cache_fp, 0, SEEK_END);
 			fprintf(cache_fp,
 				"%-11d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
 				node->cid, node->port, node->room,
 				node->loc.latitude, node->loc.longitude,
-				node->loc.altitude,
-				node->loc.velocity,
-				node->loc.heading,
-				node->loc.pitch,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
 				node->name);
 			fflush(cache_fp);
 		}
@@ -1457,7 +1456,7 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 			curr = curr->next;
 		/* add to node to end of list */
 		curr->next = node;
-		print_debug(LOG_NOTICE, "add: %11d port: %4d room: %36s time: %d name: %s",
+		print_debug(LOG_NOTICE, "add: %11d port: %5d room: %36s time: %d name: %s",
 				srchost, srcport, node->room, node->time, node->name);
 	}
 }
@@ -1512,7 +1511,7 @@ struct client *search_node_vmci(unsigned int srchost, int srcport)
 	curr = head;
 
 	while (curr != NULL) {
-		if ((curr->cid == srchost) && (curr->port != srcport)) {
+		if ((curr->cid == srchost) && (curr->port == srcport)) {
 			curr->time = time(NULL);
 			return curr;
 		}
@@ -1578,21 +1577,16 @@ void list_nodes_vmci(void)
 		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status\n");
 	}
 
-	printf("node:       port: room:				age: lat:      lon:       alt:   sog:       cog: pitch: name:\n");
 
-	if (fp)
-		fprintf(fp, "node:       room:				age: lat:      lon:       alt:   sog:     cog:   pitch: name:\n");
+	char *header = "%-11s %-4s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
+	if (fp) {
+		fprintf(fp, header, "node:", "port:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
+	} else {
+		printf(header, "node:", "port:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
+	}
 
 	while (curr != NULL) {
 		age = time(NULL) - curr->time;
-		printf("%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-			curr->cid, curr->port, curr->room, age,
-			curr->loc.latitude, curr->loc.longitude,
-			curr->loc.altitude,
-			curr->loc.velocity,
-			curr->loc.heading,
-			curr->loc.pitch,
-			curr->name);
 		if (fp) {
 			fprintf(fp, "%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
 				curr->cid, curr->port, curr->room, age,
@@ -1602,6 +1596,15 @@ void list_nodes_vmci(void)
 				curr->loc.heading,
 				curr->loc.pitch,
 				curr->name);
+		} else {
+		printf("%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+			curr->cid, curr->port, curr->room, age,
+			curr->loc.latitude, curr->loc.longitude,
+			curr->loc.altitude,
+			curr->loc.velocity,
+			curr->loc.heading,
+			curr->loc.pitch,
+			curr->name);
 		}
 		curr = curr->next;
 	}
@@ -1961,7 +1964,7 @@ void *recv_from_hosts(void *arg)
 	udp_recv_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (udp_recv_sockfd < 0) {
 		sock_error("wmasterd: socket");
-		printf("wmasterd: could not create udp listen socket\n");
+		print_debug(LOG_ERR, "could not create udp listen socket\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -2036,7 +2039,7 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen)
 		/* make sure we added the node */
 		node = search_node_vmci(src_cid, src_port);
 		if (!node) {
-			print_debug(LOG_ERR, "adding node %11d:%d",
+			print_debug(LOG_ERR, "adding node failed %11d:%d",
 					src_cid, src_port);
 			return -1;
 		}
@@ -2346,17 +2349,14 @@ int main(int argc, char *argv[])
 	/* We wait for incoming msg unless kill signal received */
 	while (running) {
 
-		#ifndef _WIN32
-		/* print status is requested by usr1 signal */
+		/* print status is requested by usr1 signal or console thread */
 		if (print_status) {
 			pthread_mutex_lock(&list_mutex);
 			print_debug(LOG_INFO, "status requested");
 			list_nodes_vmci();
 			pthread_mutex_unlock(&list_mutex);
-
 			print_status = 0;
 		}
-		#endif
 
 		FD_ZERO(&readfds);
 		FD_SET(myservfd, &readfds);
@@ -2455,7 +2455,8 @@ int main(int argc, char *argv[])
                     close(sd);
 					print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
                     client_socket[i] = 0;
-					// TODO remove node
+					// remove node
+					remove_node_vmci(src_cid, src_port);
 				} else {
 					// process data on connection
 					src_cid = client_vm.svm_cid;
@@ -2478,7 +2479,8 @@ int main(int argc, char *argv[])
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at i", sd, i);
 						client_socket[i] = 0;
-						// TODO remove node
+						// remove node
+						remove_node_vmci(src_cid, src_port);
 						continue;
 					} else if (bytes == 0) {
 						print_debug(LOG_INFO, "host disconnected %d:%d" ,
@@ -2487,7 +2489,8 @@ int main(int argc, char *argv[])
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
 						client_socket[i] = 0;
-						// TODO remove node
+						// remove node
+						remove_node_vmci(src_cid, src_port);
 						continue;
 					}
 
@@ -2575,7 +2578,8 @@ int main(int argc, char *argv[])
 								close(sd);
 								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
 								client_socket[i] = 0;
-								// TODO remove node
+								// remove node
+								remove_node_vmci(src_cid, src_port);
 								continue;
 							} else if (bytes == 0) {
 								print_debug(LOG_INFO, "host disconnected");
@@ -2583,7 +2587,8 @@ int main(int argc, char *argv[])
 								close(sd);
 								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
 								client_socket[i] = 0;
-								// TODO remove node
+								// remove node
+								remove_node_vmci(src_cid, src_port);
 								continue;
 							}
 						}
