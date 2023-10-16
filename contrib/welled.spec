@@ -29,7 +29,7 @@
 # 	DM17-0952
 
 Name:		welled
-Version:	2.2.1
+Version:	3.0.0
 Release:	1%{?dist}
 Summary:	wireless emulation
 
