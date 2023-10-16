@@ -159,9 +159,9 @@ You need to have VMCI Sockets enabled in your kernel. This requires `vmw_vmci`,
 have `libpng` and `libglib2` installed.
 
 ## Prerequisites for building gelled and gelled-ctrl
-You must have `libpng-dev` and `libglib2.0-dev` installed.
+You must have `libcurl4-gnutls-dev', 'libpng-dev` and `libglib2.0-dev` installed.
 ```
-apt-get install libpng-dev libglib2.0-dev
+apt-get install libcurl4-gnutls-dev libpng-dev libglib2.0-dev
 ```
 
 ## Prerequisites for installing wmasterd
