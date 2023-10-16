@@ -206,7 +206,7 @@ void attrs_print(struct nlattr *attrs[]);
 static int process_messages_cb(struct nl_msg *, void *);
 int init_netlink(void);
 int send_register_msg(void);
-void recv_from_master(void);
+int recv_from_master(void);
 void dellink(struct nlmsghdr *);
 void newlink(struct nlmsghdr *);
 static int process_nl_route_event(struct nl_msg *, void *);

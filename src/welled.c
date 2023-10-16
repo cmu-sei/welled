@@ -90,6 +90,8 @@
 /** Buffer size for netlink route interface list */
 #define IFLIST_REPLY_BUFFER     4096
 
+/** af vsock address family */
+int af;
 /** Whether to print verbose output */
 int verbose;
 /** Whether to allow any MAC address */
@@ -1041,7 +1043,7 @@ out:
  *	TODO: figure out what to do about tx_info data to better ack
  *	@return void
  */
-void recv_from_master(void)
+int recv_from_master(void)
 {
 	char buf[VMCI_BUFF_LEN];
 	//struct sockaddr_vm cliaddr_vmci;
@@ -1068,11 +1070,6 @@ void recv_from_master(void)
 	int retval;
 	int distance;
 
-	//addrlen = sizeof(struct sockaddr);
-	//memset(addr, 0, sizeof(addr));
-	//memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
-	//memset(&cliaddr, 0, sizeof(cliaddr));
-
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
@@ -1084,8 +1081,19 @@ void recv_from_master(void)
 	/* receive packets from wmasterd */
 	bytes = recv(sockfd, (char *)buf, VMCI_BUFF_LEN, 0);
 
-	if (bytes < 0)
-		return;
+	if (bytes < 0) {
+		if (errno == EWOULDBLOCK) {
+			//nonblocking socket triggers this
+			goto out;
+		}
+		perror("recv");
+		print_debug(LOG_ERR, "host disconnected in recv error");
+		running = 0;
+		goto out;
+	} else if (bytes == 0) {
+        	print_debug(LOG_INFO, "host disconnected");
+		return -1;
+	}
 
 	print_debug(LOG_INFO, "received %d bytes packet from wmasterd",
 			bytes);
@@ -1347,6 +1355,7 @@ out:
 	//free(new_buf);
 	if (verbose)
 		printf("#################### master recv done #####################\n");
+	return 0;
 }
 
 /**
@@ -1354,8 +1363,59 @@ out:
  */
 void *process_master(void *arg)
 {
+        char *msg;
+        int msg_len;
+        int bytes;
+	int ret;
+
+        /* setup wmasterd details */
+        memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+        servaddr_vm.svm_cid = VMADDR_CID_HOST;
+        servaddr_vm.svm_port = WMASTERD_PORT;
+        servaddr_vm.svm_family = af;
+
+connect:
+        do {
+                /* setup vmci socket */
+                sockfd = socket(af, SOCK_STREAM, 0);
+                /* we can initalize this struct because it never changes */
+                if (sockfd < 0) {
+                        perror("socket");
+                        free_mem();
+                        _exit(EXIT_FAILURE);
+                }
+                ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+                if (ret < 0) {
+                        print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+                                servaddr_vm.svm_cid, servaddr_vm.svm_port);
+                        sleep(1);
+                } else {
+                        print_debug(LOG_INFO,  "connected to wmasterd");
+                }
+        } while(running && (ret < 0));
+
+        /* send up notification to wmasterd */
+        msg_len = 2;
+        msg = malloc(msg_len);
+        memset(msg, 0, msg_len);
+        memcpy(msg, "UP", msg_len);
+
+        pthread_mutex_lock(&send_mutex);
+        bytes = send(sockfd, msg, msg_len, 0);
+        pthread_mutex_unlock(&send_mutex);
+        free(msg);
+
+        /* this should be 8 bytes */
+        if (bytes != msg_len) {
+                perror("send");
+                print_debug(LOG_ERR, "Up notification failed");
+        }
+        print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
+
 	while (running) {
-		recv_from_master();
+		if (recv_from_master() < 0) {
+			goto connect;
+		}
 	}
 	print_debug(LOG_DEBUG, "process_master returning");
 	return ((void *)0);
@@ -1928,14 +1988,10 @@ int nl80211_get_interface(int ifindex)
  */
 int main(int argc, char *argv[])
 {
-	int af;
 	int opt;
 	int cid;
 	int ret;
 	int long_index;
-	char *msg;
-	int msg_len;
-	int bytes;
 	int err;
 	int ioctl_fd;
 
@@ -2054,49 +2110,6 @@ int main(int argc, char *argv[])
 		nl_cb_put(cb);
 		_exit(EXIT_FAILURE);
 	}
-
-	/* setup wmasterd details */
-	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-	servaddr_vm.svm_cid = VMADDR_CID_HOST;
-	servaddr_vm.svm_port = WMASTERD_PORT;
-	servaddr_vm.svm_family = af;
-
-	do {
-		/* setup vmci socket */
-		sockfd = socket(af, SOCK_STREAM, 0);
-		/* we can initalize this struct because it never changes */
-		if (sockfd < 0) {
-			perror("socket");
-			free_mem();
-			_exit(EXIT_FAILURE);
-		}
-		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
-		if (ret < 0) {
-			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
-				servaddr_vm.svm_cid, servaddr_vm.svm_port);
-			sleep(1);
-		} else {
-			print_debug(LOG_INFO,  "connected to wmasterd");
-		}
-	} while(running && (ret < 0));
-
-	/* send up notification to wmasterd */
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	memcpy(msg, "UP", msg_len);
-
-	pthread_mutex_lock(&send_mutex);
-	bytes = send(sockfd, msg, msg_len, 0);
-	pthread_mutex_unlock(&send_mutex);
-	free(msg);
-
-	/* this should be 8 bytes */
-	if (bytes != msg_len) {
-		perror("send");
-		print_debug(LOG_ERR, "Up notification failed");
-	}
-	print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 
 	if (verbose)
 		printf("################################################################################\n");
