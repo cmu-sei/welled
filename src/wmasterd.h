@@ -114,10 +114,10 @@ struct update_2 {
 struct client {
 	/** CID */
 	unsigned int cid;
+	/** Port */
+	int port;
         /** Isolation Tag */
         char isolation_tag[UUID_LEN];
-	/** RoomID */
-	//int room_id;
 	/** GUID for Room */
 	char room[UUID_LEN];
 	/** VM name */
@@ -138,12 +138,12 @@ void print_node(struct client *);
 void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
-void add_node_vmci(unsigned int, char *, char *, char *);
+void add_node_vmci(unsigned int, int, char *, char *, char *);
 void clear_inactive_nodes(void);
-struct client *search_node_vmci(unsigned int);
+struct client *search_node_vmci(unsigned int, int);
 struct client *search_node_name(char *);
 void list_nodes_vmci(void);
-void remove_node_vmci(unsigned int);
+void remove_node_vmci(unsigned int, int);
 void send_to_hosts(char *, int, char *);
 void send_to_nodes_vmci(char *, int, struct client *);
 void send_gps_to_nodes(void);
