@@ -116,8 +116,10 @@ struct client {
 	unsigned int cid;
 	/** Port */
 	int port;
-        /** Isolation Tag */
-        char isolation_tag[UUID_LEN];
+	/* socket descriptor */
+	int socket;
+    /** Isolation Tag */
+    char isolation_tag[UUID_LEN];
 	/** GUID for Room */
 	char room[UUID_LEN];
 	/** VM name */
@@ -138,12 +140,13 @@ void print_node(struct client *);
 void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
-void add_node_vmci(unsigned int, int, char *, char *, char *);
+void add_node_vmci(unsigned int, int, char *, char *, char *, int);
 void clear_inactive_nodes(void);
 struct client *search_node_vmci(unsigned int, int);
 struct client *search_node_name(char *);
 void list_nodes_vmci(void);
 void remove_node_vmci(unsigned int, int);
+void remove_node_vmci_socket(int);
 void send_to_hosts(char *, int, char *);
 void send_to_nodes_vmci(char *, int, struct client *);
 void send_gps_to_nodes(void);
@@ -151,7 +154,7 @@ void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);
 void signal_handler(void);
-int process_connection(struct sockaddr_vm, int);
+int process_connection(struct sockaddr_vm, int, int);
 void *recv_from_hosts(void *);
 void update_node_location(struct client *, struct update_2 *);
 void update_node_info(struct client *, struct update_2 *);

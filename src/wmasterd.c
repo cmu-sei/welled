@@ -1306,7 +1306,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 		/* continue if room found or first line of output */
 		if (strncmp(line, "Total", 5) == 0) {
 			continue;
-		}	
+		}
 		line[strnlen(line, 1024) - 1] = '\0';
 		snprintf(vmx, 1024, "\"%s\"", line);
 		if (parse_vmx(vmx, srchost, room, name, uuid)) {
@@ -1354,7 +1354,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
  *	@param uuid - the uuid of the vm
  *	@return void
  */
-void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_name, char *uuid)
+void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_name, char *uuid, int socket)
 {
 	print_debug(LOG_DEBUG, "add_node_vmci");
 
@@ -1382,6 +1382,7 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 	node->port = srcport;
 	node->next = NULL;
 	node->time = time(NULL);
+	node->socket = socket;
 	memset(&node->loc, 0, sizeof(struct location));
 	memset(node->name, 0, NAME_LEN);
 	memset(node->uuid, 0, UUID_LEN);
@@ -1594,18 +1595,19 @@ void list_nodes_vmci(void)
 	}
 
 
-	char *header = "%-11s %-4s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
+	char *header = "%-11s %-5s %-5s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
 	if (fp) {
-		fprintf(fp, header, "node:", "port:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
+		fprintf(fp, header, "node:", "port:", "sd:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
 	} else {
-		printf(header, "node:", "port:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
+		printf(header, "node:", "port:", "sd:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
 	}
 
 	while (curr != NULL) {
 		age = time(NULL) - curr->time;
 		if (fp) {
-			fprintf(fp, "%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-				curr->cid, curr->port, curr->room, age,
+			fprintf(fp, "%-11d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+				curr->cid, curr->port, curr->socket,
+				curr->room, age,
 				curr->loc.latitude, curr->loc.longitude,
 				curr->loc.altitude,
 				curr->loc.velocity,
@@ -1613,8 +1615,9 @@ void list_nodes_vmci(void)
 				curr->loc.pitch,
 				curr->name);
 		} else {
-		printf("%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-			curr->cid, curr->port, curr->room, age,
+		printf("%-11d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+			curr->cid, curr->port, curr->socket,
+			curr->room, age,
 			curr->loc.latitude, curr->loc.longitude,
 			curr->loc.altitude,
 			curr->loc.velocity,
@@ -1633,6 +1636,7 @@ void list_nodes_vmci(void)
 /**
  *	@brief Removed a node from the linked list
  *	@param dsthost - CID of the guest
+ *	@param dstport - port of the guest connection
  *	@return void
  */
 void remove_node_vmci(unsigned int dsthost, int dstport)
@@ -1665,6 +1669,58 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
 	strncpy(room, curr->room, strnlen(curr->room, UUID_LEN - 1));
 	strncpy(name, curr->name, strnlen(curr->name, NAME_LEN - 1));
 	time = curr->time;
+
+	/* delete node */
+	if (prev == NULL) {
+		head = curr->next;
+	} else {
+		prev->next = curr->next;
+	}
+	free(curr);
+
+	print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
+		dsthost, dstport, room, time, name);
+}
+
+/**
+ *	@brief Removed a node from the linked list
+ *	@param socket - file descriptor for the socket
+ *	@return void
+ */
+void remove_node_vmci_socket(int socket)
+{
+	struct client *curr;
+	struct client *prev;
+	char name[NAME_LEN];
+	char room[UUID_LEN];
+	unsigned int dsthost;
+	int dstport;
+	int time;
+
+	time = 0;
+	memset(name, 0, NAME_LEN);
+	memset(room, 0, UUID_LEN);
+	curr = head;
+	prev = NULL;
+
+	/* traverse while not null and no match */
+	while (curr != NULL && !(curr->socket == socket)) {
+		prev = curr;
+		curr = curr->next;
+	}
+
+	/* exit if we hit the end of the list */
+	if (curr == NULL) {
+		print_debug(LOG_INFO, "node not found on socket: %d\n",
+				socket);
+		return;
+	}
+
+	strncpy(room, curr->room, strnlen(curr->room, UUID_LEN - 1));
+	strncpy(name, curr->name, strnlen(curr->name, NAME_LEN - 1));
+	time = curr->time;
+	dsthost = curr->cid;
+	dstport = curr->port;
 
 	/* delete node */
 	if (prev == NULL) {
@@ -2027,7 +2083,7 @@ void *recv_from_hosts(void *arg)
 #endif
 
 
-int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen)
+int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen, int socket)
 {
 
 	unsigned int src_cid;
@@ -2053,7 +2109,7 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen)
 	if (!node) {
 		print_debug(LOG_DEBUG, "node %11d:%d does not exist", src_cid, src_port);
 		get_vm_info(src_cid, room, name, uuid);
-		add_node_vmci(src_cid, src_port, room, name, uuid);
+		add_node_vmci(src_cid, src_port, room, name, uuid, socket);
 		/* make sure we added the node */
 		node = search_node_vmci(src_cid, src_port);
 		if (!node) {
@@ -2068,7 +2124,7 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen)
 		get_vm_info(src_cid, room, name, uuid);
 		if (strncmp(old_room, room, UUID_LEN  - 1) != 0) {
 			remove_node_vmci(src_cid, src_port);
-			add_node_vmci(src_cid, src_port, room, name, uuid);
+			add_node_vmci(src_cid, src_port, room, name, uuid, socket);
 			/* make sure we updated the node */
 			node = search_node_vmci(src_cid, src_port);
 			if (!node) {
@@ -2445,7 +2501,7 @@ int main(int argc, char *argv[])
 
 
 			// process new connection (add to node linked list)
-			ret = process_connection(client_vm, client_len);
+			ret = process_connection(client_vm, client_len, vsock_client_fd);
 			if (ret < 0) {
 				print_debug(LOG_ERR, "vsock connection processing failed");
 			}
@@ -2470,8 +2526,8 @@ int main(int argc, char *argv[])
 					close(sd);
 					print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
 					client_socket[i] = 0;
-					// TODO remove node via the sd
-					//remove_node_vmci(sd);
+					// remove node via the sd
+					remove_node_vmci_socket(sd);
 				} else {
 					// process data on connection
 					src_cid = client_vm.svm_cid;
