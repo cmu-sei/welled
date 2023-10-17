@@ -188,12 +188,12 @@ void print_debug(int level, char *format, ...)
 {
 	char buffer[1024];
 
-	if (loglevel < 0)
+	if (loglevel < 0) {
 		return;
-
-	if (level > loglevel)
+	}
+	if (level > loglevel) {
 		return;
-
+	}
 	va_list args;
 	va_start(args, format);
 	vsprintf(buffer, format, args);
@@ -268,8 +268,9 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 		} else {
 			ch = 'N';
 		}
-		if (min < 0)
+		if (min < 0) {
 			min *= -1;
+		}
 		snprintf(temp, len, "%02d%07.4f,%c",
 				abs(deg), min, ch);
 		strncpy(dest, temp, len);
@@ -282,8 +283,9 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 		} else {
 			ch = 'E';
 		}
-		if (min < 0)
+		if (min < 0) {
 			min *= -1;
+		}
 		snprintf(temp, len, "%03d%07.4f,%c",
 				abs(deg), min, ch);
 		strncpy(dest, temp, len);
@@ -306,12 +308,12 @@ void update_cache_file_info(struct client *node)
 	long pos;
 	int matched;
 
-	if (node == NULL)
+	if (node == NULL) {
 		return;
-
-	if (!cache)
+	}
+	if (!cache) {
 		return;
-
+	}
 	pthread_mutex_lock(&file_mutex);
 
 	fseek(cache_fp, 0, SEEK_SET);
@@ -367,12 +369,12 @@ void update_cache_file_location(struct client *node)
 	long pos;
 	int matched;
 
-	if (!cache)
+	if (!cache) {
 		return;
-
-	if (node == NULL)
+	}
+	if (node == NULL) {
 		return;
-
+	}
 	print_debug(LOG_DEBUG, "updating cache file for node location");
 
 	pthread_mutex_lock(&file_mutex);
@@ -423,9 +425,9 @@ void update_followers(struct client *node)
 {
 	struct client *curr;
 
-	if (node == NULL)
+	if (node == NULL) {
 		return;
-
+	}
 	curr = head;
 
 	while (curr != NULL) {
@@ -535,7 +537,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 		if (verbose) {
 			printf("old position: %.8f %.8f\n",
-				node->loc.latitude, node->loc.longitude);
+					node->loc.latitude, node->loc.longitude);
 			printf("old heading:  %f\n", node->loc.heading);
 			printf("old velocity: %f\n", node->loc.velocity);
 			printf("old altitude: %f\n", node->loc.altitude);
@@ -543,29 +545,30 @@ void update_node_location(struct client *node, struct update_2 *data)
 		}
 
 		/* update velocity */
-		if (data->velocity != -1)
+		if (data->velocity != -1) {
 			node->loc.velocity = data->velocity;
-
+		}
 		/* update heading */
-		if (data->heading != -1)
+		if (data->heading != -1) {
 			node->loc.heading = data->heading;
-
+		}
 		/* update pitch angle */
-		if (data->pitch != -1)
+		if (data->pitch != -1) {
 			node->loc.pitch = data->pitch;
-
+		}
 		/* update coordinates */
 		if ((data->latitude >= -90) &&
-				(data->latitude <= 90))
+				(data->latitude <= 90)) {
 			node->loc.latitude = data->latitude;
+		}
 		if ((data->longitude >= -180) &&
-				(data->longitude <= 180))
+				(data->longitude <= 180)) {
 			node->loc.longitude = data->longitude;
-
+		}
 		/* update altitude */
-		if (data->altitude != -1)
+		if (data->altitude != -1) {
 			node->loc.altitude = data->altitude;
-
+		}
 		/* correct bad values */
 		if (isnan(node->loc.heading)) {
 			node->loc.heading = 0;
@@ -583,12 +586,12 @@ void update_node_location(struct client *node, struct update_2 *data)
 		int age = time(NULL) - node->time;
 
 		print_debug(LOG_NOTICE,
-			"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-			node->cid, node->port, node->room, age,
-			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude, node->loc.velocity,
-			node->loc.heading, node->loc.pitch,
-			node->name);
+				"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+				node->cid, node->port, node->room, age,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
+				node->name);
 
 		update_cache_file_location(node);
 		update_followers(node);
@@ -646,14 +649,16 @@ void update_node_location(struct client *node, struct update_2 *data)
 		/* print_debug(LOG_INFO, "crossing north pole"); */
 		overage = node->loc.latitude - 90;
 		node->loc.latitude = 90 - overage;
-		if (node->loc.heading < 90)
+		if (node->loc.heading < 90) {
 			node->loc.heading += 180;
-		else if (node->loc.heading > 270)
+		} else if (node->loc.heading > 270) {
 			node->loc.heading -= 180;
-		if (node->loc.longitude < 0)
+		}
+		if (node->loc.longitude < 0) {
 			node->loc.longitude += 180;
-		else
+		} else {
 			node->loc.longitude -= 180;
+		}
 	}
 
 	/* adjust heading, lat and lon as we cross south pole */
@@ -661,14 +666,16 @@ void update_node_location(struct client *node, struct update_2 *data)
 		/* print_debug(LOG_INFO, "crossing south pole"); */
 		overage = node->loc.latitude + 90;
 		node->loc.latitude = -90 - overage;
-		if (node->loc.heading > 90)
+		if (node->loc.heading > 90) {
 			node->loc.heading += 180;
-		else if (node->loc.heading < 270)
+		} else if (node->loc.heading < 270) {
 			node->loc.heading -= 180;
-		if (node->loc.longitude < 0)
+		}
+		if (node->loc.longitude < 0) {
 			node->loc.longitude += 180;
-		else
+		} else {
 			node->loc.longitude -= 180;
+		}
 	}
 
 	/* adjust longitude as we cross east to west */
@@ -696,12 +703,12 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	int age = time(NULL) - node->time;
 	print_debug(LOG_NOTICE,
-		"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-		node->cid, node->port, node->room, age,
-		node->loc.latitude, node->loc.longitude,
-		node->loc.altitude, node->loc.velocity,
-		node->loc.heading, node->loc.pitch,
-		node->name);
+			"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+			node->cid, node->port, node->room, age,
+			node->loc.latitude, node->loc.longitude,
+			node->loc.altitude, node->loc.velocity,
+			node->loc.heading, node->loc.pitch,
+			node->name);
 
 	update_cache_file_location(node);
 	update_followers(node);
@@ -1027,8 +1034,9 @@ void send_gps_to_nodes(void)
 					sizeof(struct sockaddr));
 			}
 		}
-		if (curr != NULL)
+		if (curr != NULL) {
 			curr = curr->next;
+		}
 	}
 	pthread_mutex_unlock(&list_mutex);
 }
@@ -1084,12 +1092,13 @@ void block_signal(void)
 {
 	sigset_t intmask;
 
-	if (sigemptyset(&intmask) == -1)
+	if (sigemptyset(&intmask) == -1) {
 		perror("wmasterd: sigemptyset");
-	else if (sigaddset(&intmask, SIGUSR1) == -1)
+	} else if (sigaddset(&intmask, SIGUSR1) == -1) {
 		perror("wmasterd: sigaddset");
-	else if (sigprocmask(SIG_BLOCK, &intmask, NULL) < 0)
+	} else if (sigprocmask(SIG_BLOCK, &intmask, NULL) < 0) {
 		perror("wmasterd: sigprocmask");
+	}
 }
 
 /**
@@ -1100,12 +1109,13 @@ void unblock_signal(void)
 {
 	sigset_t intmask;
 
-	if (sigemptyset(&intmask) == -1)
+	if (sigemptyset(&intmask) == -1) {
 		perror("wmasterd: sigemptyset");
-	else if (sigaddset(&intmask, SIGUSR1) == -1)
+	} else if (sigaddset(&intmask, SIGUSR1) == -1) {
 		perror("wmasterd: sigaddset");
-	else if (sigprocmask(SIG_UNBLOCK, &intmask, NULL) < 0)
+	} else if (sigprocmask(SIG_UNBLOCK, &intmask, NULL) < 0) {
 		perror("wmasterd: sigprocmask");
+	}
 }
 #endif
 
@@ -1126,7 +1136,7 @@ int parse_annotation(char *annotation, char *room)
 		if (strncmp(guestinfo, "0Aroomid = ", 11) == 0) {
 			line_len = strlen(guestinfo);
 			strncpy(room, guestinfo + 11,
-				line_len - 11);
+					line_len - 11);
 			return 1;
 		}
 		guestinfo = strtok(NULL, "|");
@@ -1294,23 +1304,28 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 #ifdef _WIN32
 
 		/* continue if room found or first line of output */
-		if (strncmp(line, "Total", 5) == 0)
+		if (strncmp(line, "Total", 5) == 0) {
 			continue;
+		}	
 		line[strnlen(line, 1024) - 1] = '\0';
 		snprintf(vmx, 1024, "\"%s\"", line);
-		if (parse_vmx(vmx, srchost, room, name, uuid))
+		if (parse_vmx(vmx, srchost, room, name, uuid)) {
 			room_found = 1;
+		}
 #else
 		/* continue if room found or this is not a config file line */
-		if (strncmp(line, "   Config File:", 15) != 0)
+		if (strncmp(line, "   Config File:", 15) != 0) {
 			continue;
+		}
 		line_len = strnlen(line, 1024);
 		strncpy(vmx, line + 16, line_len - 17);
-		if (parse_vmx(vmx, srchost, room, name, uuid))
+		if (parse_vmx(vmx, srchost, room, name, uuid)) {
 			room_found = 1;
+		}
 #endif
-		if (room_found)
+		if (room_found) {
 			break;
+		}
 	}
 	if (!room_found) {
 		strncpy(room, "0", 2);
@@ -1325,8 +1340,9 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	ret = pclose(pipe);
 #endif
 
-	if (ret < 0)
+	if (ret < 0) {
 		perror("wmasterd: pclose");
+	}
 }
 
 /**
@@ -1483,11 +1499,11 @@ void clear_inactive_nodes(void)
 			print_debug(LOG_INFO, "node: %11d:%d stale at %d sec",
 					curr->cid, curr->port, age);
 			/* delete node */
-			if (prev == NULL)
+			if (prev == NULL) {
 				head = curr->next;
-			else
+			} else {
 				prev->next = curr->next;
-
+			}
 			print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
 					curr->cid, curr->port, curr->room, curr->time, curr->name);
 			free(curr);
@@ -1609,8 +1625,9 @@ void list_nodes_vmci(void)
 		curr = curr->next;
 	}
 
-	if (fp)
+	if (fp) {
 		fclose(fp);
+	}
 }
 
 /**
@@ -1650,11 +1667,11 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
 	time = curr->time;
 
 	/* delete node */
-	if (prev == NULL)
+	if (prev == NULL) {
 		head = curr->next;
-	else
+	} else {
 		prev->next = curr->next;
-
+	}
 	free(curr);
 
 	print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
@@ -1682,8 +1699,9 @@ void hex_dump(void *addr, int len)
 		/* new line every 16 bytes */
 		if ((i % 16) == 0) {
 			/* dont print ascii for the zeroth line */
-			if (i != 0)
+			if (i != 0) {
 				printf("  %s\n", buff);
+			}
 			/* print offset */
 			printf("  %04x ", i);
 		}
@@ -1692,10 +1710,11 @@ void hex_dump(void *addr, int len)
 		printf(" %02x", pc[i]);
 
 		/* store ASCII character for later */
-		if ((pc[i] < 0x20) || (pc[i] > 0x7e))
+		if ((pc[i] < 0x20) || (pc[i] > 0x7e)) {
 			buff[i % 16] = '.';
-		else
+		} else {
 			buff[i % 16] = pc[i];
+		}
 		buff[(i % 16) + 1] = '\0';
 	}
 
@@ -1712,8 +1731,9 @@ void hex_dump(void *addr, int len)
 #ifndef _WIN32
 void send_to_hosts(char *buf, int bytes, char *room)
 {
-	if (!esx || !broadcast)
+	if (!esx || !broadcast) {
 		return;
+	}
 
 	char *buffer;
 	char temp[UUID_LEN + 1];
@@ -1750,12 +1770,12 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	bytes_sent = sendto(udp_send_sockfd, buffer, bytes + UUID_LEN, 0,
 			(const struct sockaddr *)&dest_addr,
 			sizeof(dest_addr));
-	if (bytes_sent < 0)
+	if (bytes_sent < 0) {
 		sock_error("wmasterd: sendto\n");
-	else
+	} else {
 		print_debug(LOG_DEBUG, "sent %d bytes to %s\n",
 				bytes_sent, broadcast_addr);
-
+	}
 	/* cleanup */
 	close(udp_send_sockfd);
 	free(buffer);
@@ -1818,11 +1838,11 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 		/* send frame to this welled client */
 		if (send_distance) {
 			/* determine distance between the nodes */
-			if (curr == node)
+			if (curr == node) {
 				distance = 0;
-			else
+			} else {
 				distance = get_distance(curr, node);
-
+			}
 			/* skip nodes out of range */
 			if ((distance > 2500) || (distance < 0)) {
 				curr = curr->next;
@@ -1982,14 +2002,12 @@ void *recv_from_hosts(void *arg)
 		// recv packet
 		bytes = recvfrom(udp_recv_sockfd, (char *)buf, BUFF_LEN, 0,
 				(struct sockaddr *)&cliaddr, &addrlen);
-		if (bytes < 0)
+		if (bytes < 0) {
 			continue;
-
-		inet_ntop(AF_INET, &cliaddr.sin_addr, src_host, addrlen);
-		if (verbose) {
-			print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
-				bytes, src_host);
 		}
+		inet_ntop(AF_INET, &cliaddr.sin_addr, src_host, addrlen);
+		print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
+				bytes, src_host);
 		/* parse out room */
 		strncpy(node.room, buf + bytes - UUID_LEN + 1, UUID_LEN);
 		buffer = malloc(bytes - UUID_LEN - 1);
@@ -2170,9 +2188,9 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (optind < argc)
+	if (optind < argc) {
 		show_usage(EXIT_FAILURE);
-
+	}
 	#ifdef _WIN32
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
 	if (broadcast) {
@@ -2190,8 +2208,9 @@ int main(int argc, char *argv[])
 	}
 
 	#ifndef _WIN32
-	if (loglevel >= 0)
+	if (loglevel >= 0) {
 		openlog("wmasterd", LOG_PID, LOG_USER);
+	}
 	#endif
 
 	print_debug(LOG_NOTICE, "Starting, version %s\n", VERSION_STR);
@@ -2204,9 +2223,9 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "could not open /dev/vsock\n");
 		_exit(EXIT_FAILURE);
 	}
-	if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0)
+	if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
 		perror("wmasterd: ioctl IOCTL_VM_SOCKETS_GET_LOCAL_CID");
-
+	}
 	if (ioctl(vsock_dev_fd, IOCTL_VMCI_SOCKETS_GET_AF_VALUE, &af) < 0) {
 		perror("wmasterd: ioctl IOCTL_VMCI_SOCKETS_GET_AF_VALUE");
 		af = -1;
@@ -2234,11 +2253,11 @@ int main(int argc, char *argv[])
 
 #ifndef _WIN32
 	char udp_int[8];
-	if (esx)
+	if (esx) {
 		strncpy(udp_int, "vmk0", 8);
-	else
+	} else {
 		strncpy(udp_int, "ens33", 8);
-
+	}
 	/* get ip address */
 	if (broadcast) {
 		int fd;
@@ -2267,14 +2286,13 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "cannot open SOCK_STREAM server");
 		return EXIT_FAILURE;
 	}
-    opt = 1;
-	if (setsockopt(myservfd, SOL_SOCKET, SO_REUSEADDR, (char *)&opt,
-          sizeof(opt)) < 0 )
-    {
+	opt = 1;
+	if (setsockopt(myservfd, SOL_SOCKET, SO_REUSEADDR,
+			(char *)&opt, sizeof(opt)) < 0) {
         sock_error("wmasterd: setsockopt");
 		print_debug(LOG_ERR, "cannot set socket options");
 		return EXIT_FAILURE;
-    }
+	}
 
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
@@ -2282,7 +2300,7 @@ int main(int argc, char *argv[])
 	myservaddr_vm.svm_port = WMASTERD_PORT;
 	myservaddr_vm.svm_family = af;
 	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
-		sizeof(struct sockaddr));
+			sizeof(struct sockaddr));
 
 	if (ret < 0) {
 		sock_error("wmasterd: myservaddr");
@@ -2340,9 +2358,9 @@ int main(int argc, char *argv[])
 	int client_socket[max_clients];
 	int i;
 	int max_sd;
-    for (i = 0; i < max_clients; i++) {
-        client_socket[i] = 0;
-    }
+	for (i = 0; i < max_clients; i++) {
+		client_socket[i] = 0;
+	}
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
@@ -2364,20 +2382,21 @@ int main(int argc, char *argv[])
 
 		// add child sockets to set
 		int sd;
-        for (i = 0; i < max_clients; i++) {
-            //socket descriptor
-            sd = client_socket[i];
+        	for (i = 0; i < max_clients; i++) {
+                	//socket descriptor
+            		sd = client_socket[i];
 
-            // if valid socket descriptor then add to read list
+            		// if valid socket descriptor then add to read list
 			// if it is set, just re-add it
-            if (sd > 0) {
+            		if (sd > 0) {
 				//print_debug(LOG_DEBUG, "adding socket %d to fd set", sd);
-                FD_SET(sd, &readfds);
+                		FD_SET(sd, &readfds);
 			}
-            //highest file descriptor number, need it for the select function
-            if (sd > max_sd)
-                max_sd = sd;
-        }
+            		//highest file descriptor number, need it for the select function
+            		if (sd > max_sd) {
+                		max_sd = sd;
+			}
+		}
 
 		ret = select(max_sd + 1, &readfds, NULL, NULL, &tv);
 
@@ -2414,11 +2433,9 @@ int main(int argc, char *argv[])
 			print_debug(LOG_INFO, "vsock connection accepted from %d:%d",
 					client_vm.svm_cid, client_vm.svm_port);
 			/* add new socket to array of sockets */
-			for (i = 0; i < max_clients; i++)
-			{
+			for (i = 0; i < max_clients; i++) {
 				/* if position is empty */
-				if (client_socket[i] == 0)
-				{
+				if (client_socket[i] == 0) {
 					client_socket[i] = vsock_client_fd;
 					print_debug(LOG_INFO, "adding %d to list of sockets at %d",
 							vsock_client_fd, i);
@@ -2435,35 +2452,32 @@ int main(int argc, char *argv[])
 		}
 
 		print_debug(LOG_ERR, "checking sockets other than the listen");
-        /* an IO operation on some other socket */
-        for (i = 0; i < max_clients; i++)
-        {
-            sd = client_socket[i];
+        	/* an IO operation on some other socket */
+        	for (i = 0; i < max_clients; i++) {
+                	sd = client_socket[i];
 
-            if (FD_ISSET(sd, &readfds))
-            {
+                	if (FD_ISSET(sd, &readfds)) {
 				print_debug(LOG_DEBUG, "got event on socket %d at %d", sd, i);
 				unsigned int src_cid;
 				int src_port;
 				memset(&client_vm, 0, sizeof(client_vm));
 				ret = getpeername(sd, (struct sockaddr *)&client_vm,
-                    	(socklen_t *)&client_len);
+                    				(socklen_t *)&client_len);
 				if (ret < 0) {
 					sock_error("wmasterd: getpeername");
-                    print_debug(LOG_INFO, "host disconnected");
+					print_debug(LOG_INFO, "host disconnected");
 					// Close the socket and mark as 0 in list for reuse
-                    close(sd);
+					close(sd);
 					print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
-                    client_socket[i] = 0;
-					// remove node
-					remove_node_vmci(src_cid, src_port);
+					client_socket[i] = 0;
+					// TODO remove node via the sd
+					//remove_node_vmci(sd);
 				} else {
 					// process data on connection
 					src_cid = client_vm.svm_cid;
 					src_port = client_vm.svm_port;
 					print_debug(LOG_DEBUG, "reading from %d:%d" ,
-						src_cid, src_port);
-
+							src_cid, src_port);
 					char buf[VMCI_BUFF_LEN];
 					int bytes;
 					char room[UUID_LEN];
@@ -2475,7 +2489,7 @@ int main(int argc, char *argv[])
 						sock_error("wmasterd: recv");
 						printf("bytes %d\n", bytes);
 						print_debug(LOG_ERR, "host disconnected in recv error %d:%d" ,
-							src_cid, src_port);
+								src_cid, src_port);
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at i", sd, i);
 						client_socket[i] = 0;
@@ -2484,7 +2498,7 @@ int main(int argc, char *argv[])
 						continue;
 					} else if (bytes == 0) {
 						print_debug(LOG_INFO, "host disconnected %d:%d" ,
-							src_cid, src_port);
+								src_cid, src_port);
 						// Close the socket and mark as 0 in list for reuse
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
@@ -2563,8 +2577,7 @@ int main(int argc, char *argv[])
 					}
 
 					/* send to all clients */
-					for (i = 0; i < max_clients; i++)
-					{
+					for (i = 0; i < max_clients; i++) {
 						sd = client_socket[i];
 						if (sd > 0) {
 
@@ -2595,10 +2608,10 @@ int main(int argc, char *argv[])
 
 					}
 
-					#ifndef _WIN32
-						/* send to other wmasterd hosts */
-						send_to_hosts(buf, bytes, node->room);
-					#endif
+#ifndef _WIN32
+					/* send to other wmasterd hosts */
+					send_to_hosts(buf, bytes, node->room);
+#endif
 
 				}
 			}
@@ -2625,9 +2638,9 @@ int main(int argc, char *argv[])
 
 	print_debug(LOG_INFO, "Mutices have been destroyed\n");
 
-	if (cache_fp)
+	if (cache_fp) {
 		fclose(cache_fp);
-
+	}
 	/* close sockets*/
 	close(myservfd);
 	#ifndef _WIN32
