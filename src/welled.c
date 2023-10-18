@@ -39,6 +39,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #ifdef _ANDROID
 #include <asm-generic/errno-base.h>
@@ -906,10 +907,11 @@ int init_netlink(void)
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
-	if (setsockopt(nlsockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
-			 sizeof(tv)) < 0) {
+	if (setsockopt(nlsockfd, SOL_SOCKET, SO_RCVTIMEO,
+			&tv, sizeof(tv)) < 0) {
 		perror("setsockopt");
 	}
+
 	return 1;
 }
 
@@ -1091,7 +1093,7 @@ int recv_from_master(void)
 		running = 0;
 		goto out;
 	} else if (bytes == 0) {
-        	print_debug(LOG_INFO, "host disconnected");
+		print_debug(LOG_INFO, "host disconnected");
 		return -1;
 	}
 
@@ -1363,54 +1365,54 @@ out:
  */
 void *process_master(void *arg)
 {
-        char *msg;
-        int msg_len;
-        int bytes;
+	char *msg;
+	int msg_len;
+	int bytes;
 	int ret;
 
-        /* setup wmasterd details */
-        memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-        servaddr_vm.svm_cid = VMADDR_CID_HOST;
-        servaddr_vm.svm_port = WMASTERD_PORT;
-        servaddr_vm.svm_family = af;
+	/* setup wmasterd details */
+	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+	servaddr_vm.svm_cid = VMADDR_CID_HOST;
+	servaddr_vm.svm_port = WMASTERD_PORT;
+	servaddr_vm.svm_family = af;
 
 connect:
-        do {
-                /* setup vmci socket */
-                sockfd = socket(af, SOCK_STREAM, 0);
-                /* we can initalize this struct because it never changes */
-                if (sockfd < 0) {
-                        perror("socket");
-                        free_mem();
-                        _exit(EXIT_FAILURE);
-                }
-                ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
-                if (ret < 0) {
-                        print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
-                                servaddr_vm.svm_cid, servaddr_vm.svm_port);
-                        sleep(1);
-                } else {
-                        print_debug(LOG_INFO,  "connected to wmasterd");
-                }
-        } while(running && (ret < 0));
+	do {
+		/* setup vmci socket */
+		sockfd = socket(af, SOCK_STREAM, 0);
+		/* we can initalize this struct because it never changes */
+		if (sockfd < 0) {
+			perror("socket");
+			free_mem();
+			_exit(EXIT_FAILURE);
+		}
+		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+		if (ret < 0) {
+			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+			sleep(1);
+		} else {
+			print_debug(LOG_INFO,  "connected to wmasterd");
+		}
+	} while(running && (ret < 0));
 
-        /* send up notification to wmasterd */
-        msg_len = 2;
-        msg = malloc(msg_len);
-        memset(msg, 0, msg_len);
-        memcpy(msg, "UP", msg_len);
+	/* send up notification to wmasterd */
+	msg_len = 2;
+	msg = malloc(msg_len);
+	memset(msg, 0, msg_len);
+	memcpy(msg, "UP", msg_len);
 
-        pthread_mutex_lock(&send_mutex);
-        bytes = send(sockfd, msg, msg_len, 0);
-        pthread_mutex_unlock(&send_mutex);
-        free(msg);
+	pthread_mutex_lock(&send_mutex);
+	bytes = send(sockfd, msg, msg_len, 0);
+	pthread_mutex_unlock(&send_mutex);
+	free(msg);
 
-        /* this should be 8 bytes */
-        if (bytes != msg_len) {
-                perror("send");
-                print_debug(LOG_ERR, "Up notification failed");
-        }
-        print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
+	/* this should be 8 bytes */
+	if (bytes != msg_len) {
+		perror("send");
+		print_debug(LOG_ERR, "Up notification failed");
+	}
+	print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 
 	while (running) {
 		if (recv_from_master() < 0) {
@@ -1436,6 +1438,13 @@ void dellink(struct nlmsghdr *h)
 	/* require an interface name */
 	if (!(ifi->ifi_flags & IFLA_IFNAME))
 		return;
+
+	if (ifi->ifi_flags & IFLA_LINK_NETNSID)
+		print_debug(LOG_DEBUG, "IFLA_LINK_NETNSID");
+
+	//if (ifi->ifi_flags & IFLA_TARGET_NETNSID)
+	//	print_debug(LOG_DEBUG, "IFLA_TARGET_NETNSID");
+
 
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
@@ -1492,6 +1501,98 @@ void newlink(struct nlmsghdr *h)
 	} else {
 		return;
 	}
+
+	int netnsid;
+	if (tb[IFLA_NET_NS_FD]) {
+		print_debug(LOG_DEBUG, "IFLA_NET_NS_FD");
+		//memcpy(&netnsid, RTA_DATA(tb[IFLA_NET_NS_FD]), RTA_PAYLOAD(tb[IFLA_NET_NS_FD]));
+		memcpy(&netnsid, RTA_DATA(tb[IFLA_NET_NS_FD]), sizeof(netnsid));
+		printf("netnsid %d\n", netnsid);
+		exit(0);
+	}
+	if (tb[IFLA_NET_NS_PID]) {
+		print_debug(LOG_DEBUG, "IFLA_NET_NS_PID");
+	}
+	//if (tb[IFLA_TARGET_NETNSID]) {
+	//	print_debug(LOG_DEBUG, "IFLA_TARGET_NETNSID");
+	//}
+
+	if (verbose) {
+		printf("############ newlink ############\n");
+		printf("index:   %d\n", ifi->ifi_index);
+		printf("name:    %s\n", name);
+
+		if (ifi->ifi_family == AF_UNSPEC)
+			printf("family:  AF_UNSPEC\n");
+		if (ifi->ifi_family == AF_INET6)
+			printf("family:  AF_INET6\n");
+
+		/* ARPHRD_ETHER normal, ARPHRD_IEEE80211_RADIOTAP as monitor */
+		if (ifi->ifi_type == ARPHRD_ETHER)
+			printf("type:    ARPHRD_ETHER\n");
+		else if (ifi->ifi_type == ARPHRD_IEEE80211_RADIOTAP)
+			printf("type:    ARPHRD_IEEE80211_RADIOTAP\n");
+		else
+			printf("type:    UNKNOWN\n");
+		printf("#################################\n");
+	}
+
+	/* require address field to be set */
+	if (tb[IFLA_ADDRESS]) {
+		memcpy((char *)addr, RTA_DATA(tb[IFLA_ADDRESS]), ETH_ALEN);
+		if (verbose) {
+			printf("address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+				addr[0], addr[1],
+				addr[2], addr[3],
+				addr[4], addr[5]);
+		}
+	} else {
+		return;
+	}
+
+	nl80211_get_interface(ifi->ifi_index);
+
+}
+
+/**
+ *      @brief processes RTM_GETNSID messages
+ *      @param h - netlink message header
+ *      @return void
+ */
+void getns(struct nlmsghdr *h)
+{
+	int len;
+	struct rtattr *tb[IFLA_MAX + 1];
+	char *name;
+	struct rtattr *rta;
+	struct ifinfomsg *ifi;
+	unsigned char addr[ETH_ALEN];
+
+	ifi = NLMSG_DATA(h);
+
+	/* retrieve all attributes */
+	memset(tb, 0, sizeof(tb));
+	rta = IFLA_RTA(ifi);
+	len = h->nlmsg_len - NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	while (RTA_OK(rta, len)) {
+		if (rta->rta_type <= IFLA_MAX)
+			tb[rta->rta_type] = rta;
+		rta = RTA_NEXT(rta, len);
+	}
+
+	/* require name field to be set */
+	if (tb[IFLA_IFNAME]) {
+		name = (char *)RTA_DATA(tb[IFLA_IFNAME]);
+	} else {
+		return;
+	}
+
+	if (tb[IFLA_NET_NS_PID]) {
+		print_debug(LOG_DEBUG, "IFLA_NET_NS_PID");
+	}
+
+	// TODO remove after testing
+	exit(1);
 
 	if (verbose) {
 		printf("############ newlink ############\n");
@@ -1552,6 +1653,10 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
 		case RTM_DELLINK:
 			dellink(nlh);
 			break;
+		case RTM_NEWNSID:
+		case RTM_GETNSID:
+			getns(nlh);
+			break;
 		default:
 			break;
 		}
@@ -1569,11 +1674,12 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
  */
 void process_event(int fd)
 {
+	printf("proicess event"); exit(1);
 	int len;
 	char buf[IFLIST_REPLY_BUFFER];
-	struct iovec iov = { buf, sizeof(buf) };
+	struct iovec iov = {buf, sizeof(buf)};
 	struct sockaddr_nl snl;
-	struct msghdr msg = { (void *)&snl, sizeof(snl), &iov, 1, NULL, 0, 0 };
+	struct msghdr msg = {(void *)&snl, sizeof(snl), &iov, 1, NULL, 0, 0 };
 	struct nlmsghdr *h;
 
 	/* read the waiting message */
@@ -1630,8 +1736,7 @@ void *monitor_devices(void *arg)
 	nl_socket_disable_seq_check(sk);
 	nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM, process_nl_route_event, NULL);
 	nl_connect(sk, NETLINK_ROUTE);
-	nl_socket_add_memberships(sk, RTMGRP_LINK, RTMGRP_IPV4_IFADDR, 0);
-
+	nl_socket_add_memberships(sk, RTMGRP_LINK, RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, 0);
 	nlsockfd = nl_socket_get_fd(sk);
 
 	tv.tv_sec = 1;
@@ -1640,6 +1745,14 @@ void *monitor_devices(void *arg)
 	if (setsockopt(nlsockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
+	}
+
+	/* this may not be needed */
+	int opt = 1;
+	if (setsockopt(nlsockfd, SOL_NETLINK, NETLINK_LISTEN_ALL_NSID,
+				&opt, sizeof(opt)) < 0) {
+		perror("setsockopt");
+		print_debug(LOG_ERR, "netlink could not listen to all nsid");
 	}
 
 	while (running) {
@@ -1805,6 +1918,10 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	else
 		return NL_SKIP;
 
+	if (tb_msg[NL80211_ATTR_NETNS_FD]) {
+		print_debug(LOG_DEBUG, "we got netns");
+		exit(0);
+	}
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
 	node = get_node_by_index(ifindex);
@@ -2073,6 +2190,64 @@ int main(int argc, char *argv[])
 		print_debug(LOG_ERR, "could not get local CID");
 	} else {
 		print_debug(LOG_DEBUG, "CID: %u", cid);
+	}
+
+	long int mynetns;
+	int netns = 0;
+	/* get my netns */
+	char *nspath = "/proc/self/ns/net";
+	char pathbuf[256];
+	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	if (len < 0) {
+		perror("readlink");
+	} else {
+		sscanf(pathbuf, "net:[%ld]", &mynetns);
+		print_debug(LOG_DEBUG, "mynetns: %ld", mynetns);
+	}
+
+	/* get all netns */
+	DIR *d;
+	struct dirent *file;
+	struct stat *statbuf;
+	d = opendir("/run/netns");
+	if (d) {
+		while ((file = readdir(d)) != NULL) {
+			if (file->d_name[0] != '.') {
+				statbuf = malloc(sizeof(struct stat));
+				if (!statbuf) {
+					perror("malloc");
+					exit(1);
+				}
+				int maxlen = strlen("/run/netns/") + strlen(file->d_name);
+				char *fullpath = malloc(maxlen);
+				if (!fullpath) {
+					perror("malloc");
+					exit(1);
+				}
+				snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+				int fd = open(fullpath, O_RDONLY);
+				if (fd) {
+					fstat(fd, statbuf);
+					long int inode = statbuf->st_ino;
+					print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+					if (inode == mynetns) {
+						netns = 1;
+					}
+					close(fd);
+					free(statbuf);
+					free(fullpath);
+				}
+			}
+		}
+		closedir(d);
+	} else {
+		print_debug(LOG_ERR, "cannot open /run/netns");
+	}
+
+	if (netns) {
+		 print_debug(LOG_INFO, "running inside netns %ld", mynetns);
+	} else {
+		print_debug(LOG_INFO, "not runnning inside netns");
 	}
 
 	/* Handle signals */
