@@ -43,6 +43,7 @@ struct device_node {
 	char *name;
 	int index;
 	int iftype;
+	long int netnsid;
 	unsigned char address[ETH_ALEN];
 	unsigned char perm_addr[ETH_ALEN];
 	struct device_node *next;

@@ -101,6 +101,10 @@ int any_mac;
 int running;
 /** Number of devices/interfaces */
 int devices;
+/** netns of this process */
+long int mynetns;
+/** whether this process is inside a netns */
+ int inside_netns;
 /** Whether we have received the end of a nl msg */
 int nlmsg_end;
 /** pointer for netlink socket */
@@ -1431,6 +1435,9 @@ connect:
  */
 void dellink(struct nlmsghdr *h)
 {
+	/* this gets executed when the driver is unloaded or
+	 * when the phy is moved to a different netns
+	 */
 	struct ifinfomsg *ifi;
 
 	ifi = NLMSG_DATA(h);
@@ -1439,19 +1446,12 @@ void dellink(struct nlmsghdr *h)
 	if (!(ifi->ifi_flags & IFLA_IFNAME))
 		return;
 
-	if (ifi->ifi_flags & IFLA_LINK_NETNSID)
-		print_debug(LOG_DEBUG, "IFLA_LINK_NETNSID");
-
-	//if (ifi->ifi_flags & IFLA_TARGET_NETNSID)
-	//	print_debug(LOG_DEBUG, "IFLA_TARGET_NETNSID");
-
-
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
 	if (remove_node_by_index(ifi->ifi_index)) {
 		devices--;
 		if (verbose) {
-			printf("############ dellink ############\n");
+			printf("############ RTM_DELLINK ############\n");
 			printf("index:	  %d\n", ifi->ifi_index);
 			printf("deleted device; now %d devices\n", devices);
 			list_nodes();
@@ -1469,98 +1469,7 @@ void dellink(struct nlmsghdr *h)
  */
 void newlink(struct nlmsghdr *h)
 {
-	int len;
-	struct rtattr *tb[IFLA_MAX + 1];
-	char *name;
-	struct rtattr *rta;
-	struct ifinfomsg *ifi;
-	unsigned char addr[ETH_ALEN];
-
-	ifi = NLMSG_DATA(h);
-
-	/* down - no address
-	 * addr - no address
-	 * up   - has address
-	 */
-	if (!(ifi->ifi_flags & IFLA_ADDRESS))
-		return;
-
-	/* retrieve all attributes */
-	memset(tb, 0, sizeof(tb));
-	rta = IFLA_RTA(ifi);
-	len = h->nlmsg_len - NLMSG_LENGTH(sizeof(struct ifinfomsg));
-	while (RTA_OK(rta, len)) {
-		if (rta->rta_type <= IFLA_MAX)
-			tb[rta->rta_type] = rta;
-		rta = RTA_NEXT(rta, len);
-	}
-
-	/* require name field to be set */
-	if (tb[IFLA_IFNAME]) {
-		name = (char *)RTA_DATA(tb[IFLA_IFNAME]);
-	} else {
-		return;
-	}
-
-	int netnsid;
-	if (tb[IFLA_NET_NS_FD]) {
-		print_debug(LOG_DEBUG, "IFLA_NET_NS_FD");
-		//memcpy(&netnsid, RTA_DATA(tb[IFLA_NET_NS_FD]), RTA_PAYLOAD(tb[IFLA_NET_NS_FD]));
-		memcpy(&netnsid, RTA_DATA(tb[IFLA_NET_NS_FD]), sizeof(netnsid));
-		printf("netnsid %d\n", netnsid);
-		exit(0);
-	}
-	if (tb[IFLA_NET_NS_PID]) {
-		print_debug(LOG_DEBUG, "IFLA_NET_NS_PID");
-	}
-	//if (tb[IFLA_TARGET_NETNSID]) {
-	//	print_debug(LOG_DEBUG, "IFLA_TARGET_NETNSID");
-	//}
-
-	if (verbose) {
-		printf("############ newlink ############\n");
-		printf("index:   %d\n", ifi->ifi_index);
-		printf("name:    %s\n", name);
-
-		if (ifi->ifi_family == AF_UNSPEC)
-			printf("family:  AF_UNSPEC\n");
-		if (ifi->ifi_family == AF_INET6)
-			printf("family:  AF_INET6\n");
-
-		/* ARPHRD_ETHER normal, ARPHRD_IEEE80211_RADIOTAP as monitor */
-		if (ifi->ifi_type == ARPHRD_ETHER)
-			printf("type:    ARPHRD_ETHER\n");
-		else if (ifi->ifi_type == ARPHRD_IEEE80211_RADIOTAP)
-			printf("type:    ARPHRD_IEEE80211_RADIOTAP\n");
-		else
-			printf("type:    UNKNOWN\n");
-		printf("#################################\n");
-	}
-
-	/* require address field to be set */
-	if (tb[IFLA_ADDRESS]) {
-		memcpy((char *)addr, RTA_DATA(tb[IFLA_ADDRESS]), ETH_ALEN);
-		if (verbose) {
-			printf("address: %02X:%02X:%02X:%02X:%02X:%02X\n",
-				addr[0], addr[1],
-				addr[2], addr[3],
-				addr[4], addr[5]);
-		}
-	} else {
-		return;
-	}
-
-	nl80211_get_interface(ifi->ifi_index);
-
-}
-
-/**
- *      @brief processes RTM_GETNSID messages
- *      @param h - netlink message header
- *      @return void
- */
-void getns(struct nlmsghdr *h)
-{
+	/* this is ifconfig dev up and ifconfig dev down */
 	int len;
 	struct rtattr *tb[IFLA_MAX + 1];
 	char *name;
@@ -1587,17 +1496,11 @@ void getns(struct nlmsghdr *h)
 		return;
 	}
 
-	if (tb[IFLA_NET_NS_PID]) {
-		print_debug(LOG_DEBUG, "IFLA_NET_NS_PID");
-	}
-
-	// TODO remove after testing
-	exit(1);
-
 	if (verbose) {
-		printf("############ newlink ############\n");
+		printf("############ RTM_NEWLINK ############\n");
 		printf("index:   %d\n", ifi->ifi_index);
 		printf("name:    %s\n", name);
+		printf("netns:   %ld\n", mynetns);
 
 		if (ifi->ifi_family == AF_UNSPEC)
 			printf("family:  AF_UNSPEC\n");
@@ -1653,11 +1556,8 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
 		case RTM_DELLINK:
 			dellink(nlh);
 			break;
-		case RTM_NEWNSID:
-		case RTM_GETNSID:
-			getns(nlh);
-			break;
 		default:
+			print_debug(LOG_DEBUG, "unknown RTM event %d", nlh->nlmsg_type);
 			break;
 		}
 		nlh = NLMSG_NEXT(nlh, len);
@@ -1665,60 +1565,6 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
 	return 0;
 }
 
-
-/**
- *	@brief processes netlink route events from the kernel
- *	Determines the event type for netlink route messages (del/new).
- *	@param fd - the netlink socket
- *	@return void
- */
-void process_event(int fd)
-{
-	printf("proicess event"); exit(1);
-	int len;
-	char buf[IFLIST_REPLY_BUFFER];
-	struct iovec iov = {buf, sizeof(buf)};
-	struct sockaddr_nl snl;
-	struct msghdr msg = {(void *)&snl, sizeof(snl), &iov, 1, NULL, 0, 0 };
-	struct nlmsghdr *h;
-
-	/* read the waiting message */
-	len = recvmsg(fd, &msg, 0);
-	if (len < 0)
-		perror("read_netlink");
-	for (h = (struct nlmsghdr *)buf;
-			NLMSG_OK(h, (unsigned int)len);
-			h = NLMSG_NEXT(h, len)) {
-/*
- * RTM_NEWLINK (kernel→user)
- * This message type is used in reply to a RTM_GETLINK request and carries the
- * configuration and statistics of a link. If multiple links need to be sent,
- * the messages will be sent in form of a multipart message.
- *
- * The message type is also used for notifications sent by the kernel to the
- * multicast group RTNLGRP_LINK to inform about various link events. It is
- * therefore recommended to always use a separate link socket for link
- * notifications in order to separate between the two message types.
- */
-
-		switch (h->nlmsg_type) {
-		case NLMSG_DONE:
-			nlmsg_end = 1;
-			break;
-		case NLMSG_ERROR:
-			perror("read_netlink");
-			break;
-		case RTM_NEWLINK:
-			newlink(h);
-			break;
-		case RTM_DELLINK:
-			dellink(h);
-			break;
-		default:
-			break;
-		}
-	}
-}
 
 /**
  *	@brief Monitor netlink route messages
@@ -1736,7 +1582,7 @@ void *monitor_devices(void *arg)
 	nl_socket_disable_seq_check(sk);
 	nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM, process_nl_route_event, NULL);
 	nl_connect(sk, NETLINK_ROUTE);
-	nl_socket_add_memberships(sk, RTMGRP_LINK, RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, 0);
+	nl_socket_add_memberships(sk, RTMGRP_LINK, RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, RTNLGRP_NSID, 0);
 	nlsockfd = nl_socket_get_fd(sk);
 
 	tv.tv_sec = 1;
@@ -1893,10 +1739,19 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	int ioctl_fd;
 	struct ethtool_perm_addr *epaddr;
 	struct ifreq ifr;
+	long int netnsid;
 
 	gnlh = nlmsg_data(nlmsg_hdr(msg));
 	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 			genlmsg_attrlen(gnlh, 0), NULL);
+
+	if (tb_msg[NL80211_ATTR_NETNS_FD]) {
+		netnsid = nla_get_u32(tb_msg[NL80211_ATTR_NETNS_FD]);
+		print_debug(LOG_DEBUG, "we got netns %ld fd for interface", netnsid);
+		exit(0);
+	} else {
+		netnsid = mynetns;
+	}
 
 	if (tb_msg[NL80211_ATTR_IFNAME])
 		ifname = nla_get_string(tb_msg[NL80211_ATTR_IFNAME]);
@@ -1918,10 +1773,6 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	else
 		return NL_SKIP;
 
-	if (tb_msg[NL80211_ATTR_NETNS_FD]) {
-		print_debug(LOG_DEBUG, "we got netns");
-		exit(0);
-	}
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
 	node = get_node_by_index(ifindex);
@@ -1943,6 +1794,9 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 
 		/* set interface type */
 		node->iftype = iftype;
+
+		/* set netns for interface */
+		node->netnsid = netnsid;
 
 		/* initialilze socket to be used for ioctl */
 		ioctl_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -2100,6 +1954,23 @@ int nl80211_get_interface(int ifindex)
 	return 0;
 }
 
+int get_mynetns(void)
+{
+	char *nspath = "/proc/self/ns/net";
+	char pathbuf[256];
+	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	if (len < 0) {
+		perror("readlink");
+		return -1;
+	}
+	if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+		perror("sscanf");
+		return -1;
+	}
+	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+	return 0;
+}
+
 /**
  *	@brief main function
  */
@@ -2192,18 +2063,12 @@ int main(int argc, char *argv[])
 		print_debug(LOG_DEBUG, "CID: %u", cid);
 	}
 
-	long int mynetns;
-	int netns = 0;
+	inside_netns = 0;
+
 	/* get my netns */
-	char *nspath = "/proc/self/ns/net";
-	char pathbuf[256];
-	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
-	if (len < 0) {
-		perror("readlink");
-	} else {
-		sscanf(pathbuf, "net:[%ld]", &mynetns);
-		print_debug(LOG_DEBUG, "mynetns: %ld", mynetns);
-	}
+	if (get_mynetns() < 0) {
+			mynetns = 0;
+	};
 
 	/* get all netns */
 	DIR *d;
@@ -2212,39 +2077,46 @@ int main(int argc, char *argv[])
 	d = opendir("/run/netns");
 	if (d) {
 		while ((file = readdir(d)) != NULL) {
-			if (file->d_name[0] != '.') {
-				statbuf = malloc(sizeof(struct stat));
-				if (!statbuf) {
-					perror("malloc");
-					exit(1);
-				}
-				int maxlen = strlen("/run/netns/") + strlen(file->d_name);
-				char *fullpath = malloc(maxlen);
-				if (!fullpath) {
-					perror("malloc");
-					exit(1);
-				}
-				snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
-				int fd = open(fullpath, O_RDONLY);
-				if (fd) {
-					fstat(fd, statbuf);
-					long int inode = statbuf->st_ino;
-					print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
-					if (inode == mynetns) {
-						netns = 1;
-					}
-					close(fd);
-					free(statbuf);
-					free(fullpath);
-				}
+			if (strcmp(file->d_name, ".") == 0)
+				continue;
+			if (strcmp(file->d_name, "..") == 0)
+				continue;
+
+			statbuf = malloc(sizeof(struct stat));
+			if (!statbuf) {
+				perror("malloc");
+				exit(1);
 			}
+			int maxlen = strlen("/run/netns/") + strlen(file->d_name) + 1;
+			char *fullpath = malloc(maxlen);
+			if (!fullpath) {
+				perror("malloc");
+				exit(1);
+			}
+			snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+			int fd = open(fullpath, O_RDONLY);
+			if (fd < 0) {
+				perror("open");
+			}
+			if (fstat(fd, statbuf) < 0) {
+				perror("fstat");
+			}
+			long int inode = statbuf->st_ino;
+			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+
+			if (inode == mynetns) {
+				inside_netns = 1;
+			}
+			close(fd);
+			free(statbuf);
+			free(fullpath);
 		}
 		closedir(d);
 	} else {
 		print_debug(LOG_ERR, "cannot open /run/netns");
 	}
 
-	if (netns) {
+	if (inside_netns) {
 		 print_debug(LOG_INFO, "running inside netns %ld", mynetns);
 	} else {
 		print_debug(LOG_INFO, "not runnning inside netns");

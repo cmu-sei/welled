@@ -152,7 +152,7 @@ int monitor_mode(void)
 		curr = curr->next;
 	}
 
-        return 0;
+    return 0;
 }
 
 /**
@@ -171,6 +171,7 @@ void list_nodes(void)
 	while (curr != NULL) {
 		printf("N[%d]:name:      %s\n", i, curr->name);
 		printf("N[%d]:index:     %d\n", i, curr->index);
+		printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
 		if (curr->iftype == 2)
 			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
 		else if (curr->iftype == 3)
