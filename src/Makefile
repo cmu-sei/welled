@@ -475,6 +475,7 @@ rpm:
 	cp ../contrib/welled.spec SPECS/
 	sed -i "s/2.2.1/$(VERSION)/g" SPECS/welled.spec
 	rpmbuild -bb --target $(ARCH) SPECS/welled.spec
+	rm -rf ../rpmbuild
 
 rpm-x86_64-Linux: x86_64-Linux rpm
 	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc30.x86_64.rpm ../dist/x86_64-Linux/
