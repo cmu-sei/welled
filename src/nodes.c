@@ -172,14 +172,23 @@ void list_nodes(void)
 		printf("N[%d]:name:      %s\n", i, curr->name);
 		printf("N[%d]:index:     %d\n", i, curr->index);
 		printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
-		if (curr->iftype == 2)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
-		else if (curr->iftype == 3)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
-		else if (curr->iftype == 8)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
-		else
-			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
+		switch (curr->iftype) {
+			case 2:
+				printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
+				break;
+			case 3:
+				printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
+				break;
+			case 6:
+				printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
+				break;
+			case 7:
+				printf("M[%d]:iftype:    @NL80211_IFTYPE_MESH_POINT\n", i);
+				break;
+			default:
+				printf("M[%d]:iftype:    %d\n", i, curr->iftype);
+				break;
+		}
 		printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,
 			curr->address[0], curr->address[1],
 			curr->address[2], curr->address[3],
