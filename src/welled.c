@@ -353,7 +353,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	attrs_print(attrs);
 	printf("#### welled -> hwsim nlmsg cloned end ####\n");
 	*/
-	bytes = nl_send_auto_complete(sock, msg);
+	bytes = nl_send_auto(sock, msg);
 	nlmsg_free(msg);
 	mac_address_to_string(addr, dst);
 	print_debug(LOG_INFO, "sent %d bytes to %s", bytes, addr);
@@ -468,7 +468,7 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	attrs_print(attrs);
 	printf("#### welled -> hwsim nlmsg tx info end ####\n");
 	*/
-	nl_send_auto_complete(sock, msg);
+	nl_send_auto(sock, msg);
 	nlmsg_free(msg);
 	return 0;
 out:
@@ -668,8 +668,59 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 
 	/* ignore if anything other than a frame
 	do we need to free the msg? */
-	if (!(gnlh->cmd == HWSIM_CMD_FRAME))
+	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
+		print_debug(LOG_ERR, "hwsim error");
+		/*
+		if (verbose) {
+			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+			printf("#### hwsim -> welled nlmsg beg ####\n");
+			nlh_print(nlh);
+			gnlh_print(gnlh);
+			attrs_print(attrs);
+			printf("#### hwsim -> welled nlmsg end ####\n");
+		}
+		*/
 		goto out;
+	} else if (gnlh->cmd == HWSIM_CMD_GET_RADIO) {
+		print_debug(LOG_ERR, "HWSIM_CMD_GET_RADIO");
+		if (verbose) {
+			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+			printf("#### hwsim -> welled nlmsg beg ####\n");
+			int data_len;
+			if (attrs[HWSIM_ATTR_RADIO_ID]) {
+				printf("HWSIM_ATTR_RADIO_ID\n");
+				data_len = nla_len(attrs[HWSIM_ATTR_RADIO_ID]);
+				data = (char *)nla_data(attrs[HWSIM_ATTR_RADIO_ID]);
+				int id = nla_get_u32(attrs[HWSIM_ATTR_RADIO_ID]);
+				print_debug(LOG_DEBUG, "got radio %d", id);
+			}
+			if (attrs[HWSIM_ATTR_RADIO_NAME]) {
+				printf("HWSIM_ATTR_RADIO_NAME\n");
+				data_len = nla_len(attrs[HWSIM_ATTR_RADIO_NAME]);
+				data = (char *)nla_data(attrs[HWSIM_ATTR_RADIO_NAME]);
+				print_debug(LOG_DEBUG, "got radio %s", data);
+			}
+
+			printf("#### hwsim -> welled nlmsg end ####\n");
+		}
+		goto out;
+	}
+
+	if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
+		/* for example, notificaiton of device up/down */
+		print_debug(LOG_DEBUG, "msg is not a frame, cmd is %d", gnlh->cmd);
+		/*
+		if (verbose) {
+			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+			printf("#### hwsim -> welled nlmsg beg ####\n");
+			nlh_print(nlh);
+			gnlh_print(gnlh);
+			attrs_print(attrs);
+			printf("#### hwsim -> welled nlmsg end ####\n");
+		}
+		*/
+		goto out;
+	}
 
 	/* processing original HWSIM_CMD_FRAME */
 	genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -915,6 +966,13 @@ int init_netlink(void)
 			&tv, sizeof(tv)) < 0) {
 		perror("setsockopt");
 	}
+	/* this may not be needed */
+	int opt = 1;
+	if (setsockopt(nlsockfd, SOL_NETLINK, NETLINK_LISTEN_ALL_NSID,
+				&opt, sizeof(opt)) < 0) {
+		perror("setsockopt");
+		print_debug(LOG_ERR, "netlink could not listen to all nsid");
+	}
 
 	return 1;
 }
@@ -944,7 +1002,35 @@ int send_register_msg(void)
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
 
-	nl_send_auto_complete(sock, msg);
+	nl_send_auto(sock, msg);
+	nlmsg_free(msg);
+
+	return 0;
+}
+
+int get_radio(int id)
+{
+	print_debug(LOG_DEBUG, "get_radio %d", id);
+	struct nl_msg *msg;
+
+	msg = nlmsg_alloc();
+
+	if (!msg) {
+		print_debug(LOG_ERR, "Error allocating new message MSG!\n");
+		return -1;
+	}
+
+	if (family_id < 0) {
+		nlmsg_free(msg);
+		return -1;
+	}
+
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+		    0, NLM_F_REQUEST, HWSIM_CMD_GET_RADIO, VERSION_NR);
+
+	int rc = nla_put_u32(msg, HWSIM_ATTR_RADIO_ID, id);
+
+	nl_send_auto(sock, msg);
 	nlmsg_free(msg);
 
 	return 0;
@@ -1748,7 +1834,6 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	if (tb_msg[NL80211_ATTR_NETNS_FD]) {
 		netnsid = nla_get_u32(tb_msg[NL80211_ATTR_NETNS_FD]);
 		print_debug(LOG_DEBUG, "we got netns %ld fd for interface", netnsid);
-		exit(0);
 	} else {
 		netnsid = mynetns;
 	}
@@ -1934,7 +2019,7 @@ int nl80211_get_interface(int ifindex)
 	if (ifindex)
 		nla_put_u32(nlmsg, NL80211_ATTR_IFINDEX, ifindex);
 
-	nl_send_auto_complete(wifi.nls, nlmsg);
+	nl_send_auto(wifi.nls, nlmsg);
 
 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &err);
 
@@ -2049,6 +2134,7 @@ int main(int argc, char *argv[])
 	/* new code for vm_sockets */
 	af = AF_VSOCK;
 
+	// TODO may need to load the driver if device not present
 	ioctl_fd = open("/dev/vsock", 0);
 	if (ioctl_fd < 0) {
 		perror("open");
@@ -2133,8 +2219,9 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&list_mutex, NULL);
 	pthread_mutex_init(&send_mutex, NULL);
 
+
 	/* init list of interfaces */
-	nl80211_get_interface(0);
+	//nl80211_get_interface(0);
 
 	/* init netlink will loop until driver is loaded */
 	pthread_mutex_lock(&hwsim_mutex);
@@ -2156,6 +2243,11 @@ int main(int argc, char *argv[])
 		nl_socket_free(sock);
 		nl_cb_put(cb);
 		_exit(EXIT_FAILURE);
+	}
+
+	int id = 0;
+	for (id = 0; id < 100; id++) {
+		get_radio(id);
 	}
 
 	if (verbose)
@@ -2193,7 +2285,7 @@ int main(int argc, char *argv[])
 		running = 0;
 	}
 
-	/* We wait for incoming msg*/
+	/* We wait for incoming msg from hwsim */
 	while (running) {
 		pthread_mutex_lock(&hwsim_mutex);
 		nl_recvmsgs_default(sock);
