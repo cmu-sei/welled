@@ -124,8 +124,8 @@ define Package/welled/install
 	$(INSTALL_DATA) ./doc/dhcp $(1)/etc/config/dhcp-example
 	$(INSTALL_DATA) ./doc/firewall $(1)/etc/config/firewall-example
 	$(INSTALL_DATA) ./doc/welled.conf $(1)/etc/welled.conf-example
-	#$(INSTALL_DIR) $(1)/etc/modules.d/
-	#$(INSTALL_DATA) ./doc/mac80211-hwsim $(1)/etc/modules.d/
+	$(INSTALL_DIR) $(1)/etc/modules.d/
+	$(INSTALL_DATA) ./doc/mac80211-hwsim $(1)/etc/modules.d/mac80211-hwsim-example
 endef
 
 # Configure the package after install
