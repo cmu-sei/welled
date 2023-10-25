@@ -73,7 +73,7 @@ define Package/welled
 	Daemon \\\
 	This program is the link layer \\\
 	exchange daemon for wireless emulation.
-	DEPENDS:=+libnl +glib2 +hostapd +kmod-mac80211-hwsim
+	DEPENDS:=+libnl +glib2 +kmod-mac80211-hwsim
 	MAINTAINER:=Adam Welle <arwelle@cert.org>
 endef
 
