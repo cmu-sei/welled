@@ -1984,6 +1984,7 @@ int nl80211_get_interface(int ifindex)
  */
 int main(int argc, char *argv[])
 {
+	int euid;
 	int af;
 	int opt;
 	int cid;
@@ -2057,6 +2058,12 @@ int main(int argc, char *argv[])
 
 	if (loglevel >= 0)
 		openlog("welled", LOG_PID, LOG_USER);
+
+        euid = geteuid();
+        if (euid != 0) {
+                print_debug(LOG_ERR, "must run as root");
+                _exit(EXIT_FAILURE);
+        }
 
 	/* old code for vmci_sockets.h */
 	//af = VMCISock_GetAFValue();
@@ -2159,13 +2166,13 @@ int main(int argc, char *argv[])
 	pthread_mutex_unlock(&send_mutex);
 	free(msg);
 
-	/* this should be 8 bytes */
+	/* this should be 2 bytes */
 	if (bytes != msg_len) {
 		perror("sendto");
 		print_debug(LOG_ERR, "Up notification failed");
+	} else {
+		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 	}
-	print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
-
 	if (verbose)
 		printf("################################################################################\n");
 
