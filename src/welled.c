@@ -2061,6 +2061,7 @@ int get_mynetns(void)
  */
 int main(int argc, char *argv[])
 {
+	int euid;
 	int opt;
 	int cid;
 	int ret;
@@ -2130,6 +2131,12 @@ int main(int argc, char *argv[])
 
 	if (loglevel >= 0)
 		openlog("welled", LOG_PID, LOG_USER);
+
+        euid = geteuid();
+        if (euid != 0) {
+                print_debug(LOG_ERR, "must run as root");
+                _exit(EXIT_FAILURE);
+        }
 
 	/* new code for vm_sockets */
 	af = AF_VSOCK;
