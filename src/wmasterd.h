@@ -115,11 +115,11 @@ struct client {
 	/** CID */
 	unsigned int cid;
 	/** Port */
-	int port;
+	unsigned int port;
 	/* socket descriptor */
 	int socket;
-    /** Isolation Tag */
-    char isolation_tag[UUID_LEN];
+	/** Isolation Tag */
+	char isolation_tag[UUID_LEN];
 	/** GUID for Room */
 	char room[UUID_LEN];
 	/** VM name */

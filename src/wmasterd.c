@@ -973,6 +973,8 @@ void *read_console(void *arg)
  */
 void send_gps_to_nodes(void)
 {
+	// TODO re-implement
+	return;
 	struct client *curr;
 	struct client *temp;
 	int bytes;
@@ -1641,6 +1643,7 @@ void list_nodes_vmci(void)
  */
 void remove_node_vmci(unsigned int dsthost, int dstport)
 {
+	print_debug(LOG_DEBUG, "remove_node_vmci %d %d", dsthost, dstport); 
 	struct client *curr;
 	struct client *prev;
 	char name[NAME_LEN];
@@ -1661,7 +1664,7 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
 
 	/* exit if we hit the end of the list */
 	if (curr == NULL) {
-		print_debug(LOG_INFO, "node not found: %11d:%d\n",
+		print_debug(LOG_INFO, "node not found: %11d:%d",
 				dsthost, dstport);
 		return;
 	}
@@ -1689,12 +1692,13 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
  */
 void remove_node_vmci_socket(int socket)
 {
+	print_debug(LOG_DEBUG, "remove_node_vmci_socket %d", socket);
 	struct client *curr;
 	struct client *prev;
 	char name[NAME_LEN];
 	char room[UUID_LEN];
 	unsigned int dsthost;
-	int dstport;
+	unsigned int dstport;
 	int time;
 
 	time = 0;
@@ -2087,7 +2091,7 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen, int socket)
 {
 
 	unsigned int src_cid;
-	int src_port;
+	unsigned int src_port;
 	char room[UUID_LEN];
 	char old_room[UUID_LEN];
 	char name[NAME_LEN];
