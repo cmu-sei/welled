@@ -612,6 +612,7 @@ void attrs_print(struct nlattr *attrs[])
  */
 static int process_messages_cb(struct nl_msg *msg, void *arg)
 {
+	print_debug(LOG_DEBUG, "process_messages_cb");
 	int msg_len;
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
 	struct nlmsghdr *nlh;
@@ -639,6 +640,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	msg_len = nlh->nlmsg_len;
 
 	if (nlh->nlmsg_type != family_id) {
+		print_debug(LOG_ERR, "not hwsim msg");
 		return 1;
 	} else if (nlh->nlmsg_type == NLMSG_ERROR) {
 		err = nlmsg_data(nlh);
@@ -667,8 +669,10 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 
 	/* ignore if anything other than a frame
 	do we need to free the msg? */
-	if (!(gnlh->cmd == HWSIM_CMD_FRAME))
+	if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
+		print_debug(LOG_ERR, "have gnlh cmd %d", gnlh->cmd);
 		goto out;
+	}
 
 	/* processing original HWSIM_CMD_FRAME */
 	genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -831,7 +835,6 @@ attempt idx, count: -1 0
 		printf("radio src: %s\n", addr);
 	}
 
-
 	/* compare tx src to frame src, update TX src ATTR in msg if needed */
 	/* if we rebuild the nl msg, this can change */
 	if (memcmp(&framesrc, src, ETH_ALEN) != 0) {
@@ -902,6 +905,7 @@ int init_netlink(void)
 		sleep(1);
 		family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 	}
+	print_debug(LOG_DEBUG, "MAC80211_HWSIM is family id %d", family_id);
 	if (!running) {
 		return 0;
 	}
@@ -916,6 +920,7 @@ int init_netlink(void)
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
 	}
+	print_debug(LOG_DEBUG, "netlink initialized");
 	return 1;
 }
 
@@ -1193,7 +1198,7 @@ void recv_from_master(void)
 			distance = atoi(buf + nlh->nlmsg_len + 7);
 	}
 
-	print_debug(LOG_DEBUG, "distance from rx to here: %d", distance);
+	print_debug(LOG_DEBUG, "distance from tx to rx here: %d", distance);
 
 	double loss;
 	loss = 0;
@@ -1238,6 +1243,8 @@ void recv_from_master(void)
 	memcpy(&framedst, data + 4, ETH_ALEN);
 
 	if (verbose) {
+		mac_address_to_string(addr, src);
+                printf("frame src: %s\n", addr);
 		mac_address_to_string(addr, &framedst);
 		printf("frame dst: %s\n", addr);
 	}
@@ -1262,7 +1269,7 @@ void recv_from_master(void)
 		if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
 			/* this radio sent the frame, skip it */
 			if (verbose)
-				printf("this radio sent this frame\n");
+				printf("- this radio sent this frame\n");
 			continue;
 		}
 
@@ -1277,7 +1284,7 @@ void recv_from_master(void)
 
 		if (verbose) {
 			mac_address_to_string(addr, dst);
-			printf("radio mac: %s\n", addr);
+			printf("- old radio mac: %s\n", addr);
 		}
 
 		if (any_mac) {
@@ -1290,7 +1297,7 @@ void recv_from_master(void)
 			 */
 			if (should_ack && !retval) {
 				if (verbose)
-					printf("attempting to ack\n");
+					printf("- attempting to ack\n");
 				generate_ack_frame(freq, src, dst);
 			}
 			continue;
@@ -1317,14 +1324,14 @@ void recv_from_master(void)
  */
 
 		if (verbose)
-			printf("we are changing the address\n");
+			printf("- we are changing the address\n");
 
 		memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
 
 		/* check whether this radio mac matches our nl msg data */
 		if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
 			if (verbose)
-				printf("radio mac: %s === dst\n", addr);
+				printf("- radio mac: %s === dst\n", addr);
 
 			send_cloned_frame_msg(dst, data, data_len, rate_idx,
 				signal, freq);
@@ -1337,14 +1344,14 @@ void recv_from_master(void)
 
 			if (verbose) {
 				mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]));
-				printf("radio mac: %s\n", addr);
+				printf("- new radio mac: %s\n", addr);
 			}
 			retval = send_cloned_frame_msg(&radiomac, data,
 				data_len, rate_idx, signal, freq);
 
 			if (should_ack && !retval) {
 				if (verbose)
-					printf("attempting to ack\n");
+					printf("- attempting to ack\n");
 				/* TODO: determine correct values below */
 				generate_ack_frame(freq, src, dst);
 			}
