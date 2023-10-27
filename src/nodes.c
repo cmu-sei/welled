@@ -115,6 +115,48 @@ struct device_node *get_node_by_index(int index)
 
 /**
  *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_node_by_radio_id(int id)
+{
+        struct device_node *curr;
+
+        curr = head;
+
+        while (curr != NULL) {
+                if (curr->radio_id == id)
+                        return curr;
+
+                curr = curr->next;
+        }
+
+        return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_node_by_wiphy(int id)
+{
+        struct device_node *curr;
+
+        curr = head;
+
+        while (curr != NULL) {
+                if (curr->wiphy == id)
+                        return curr;
+
+                curr = curr->next;
+        }
+
+        return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
  *      @param pos - position of interface we are searching for
  *      @return returns a pointer to the node
  */
@@ -169,37 +211,44 @@ void list_nodes(void)
 	curr = head;
 
 	while (curr != NULL) {
-		printf("N[%d]:name:      %s\n", i, curr->name);
-		printf("N[%d]:index:     %d\n", i, curr->index);
-		printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
-		switch (curr->iftype) {
-			case 2:
-				printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
-				break;
-			case 3:
-				printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
-				break;
-			case 6:
-				printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
-				break;
-			case 7:
-				printf("M[%d]:iftype:    @NL80211_IFTYPE_MESH_POINT\n", i);
-				break;
-			default:
-				printf("M[%d]:iftype:    %d\n", i, curr->iftype);
-				break;
-		}
-		printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,
-			curr->address[0], curr->address[1],
-			curr->address[2], curr->address[3],
-			curr->address[4], curr->address[5]);
-		printf("N[%d]:perm_addr: %02X:%02X:%02X:%02X:%02X:%02X\n", i,
-			curr->perm_addr[0], curr->perm_addr[1],
-			curr->perm_addr[2], curr->perm_addr[3],
-			curr->perm_addr[4], curr->perm_addr[5]);
+		print_node(i, curr);
 		i++;
-		curr = curr->next;
+                curr = curr->next;
+        }
+}
+
+void print_node(int i, struct device_node *curr)
+{
+	printf("N[%d]:name:      %s\n", i, curr->name);
+	printf("N[%d]:index:     %d\n", i, curr->index);
+        printf("N[%d]:radio_id   %d\n", i, curr->radio_id);
+	printf("N[%d]:wiphy      %d\n", i, curr->wiphy);
+	printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
+	switch (curr->iftype) {
+		case 2:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
+			break;
+		case 3:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
+			break;
+		case 6:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
+			break;
+		case 7:
+			printf("M[%d]:iftype:    @NL80211_IFTYPE_MESH_POINT\n", i);
+			break;
+		default:
+			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
+			break;
 	}
+	printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,
+		curr->address[0], curr->address[1],
+		curr->address[2], curr->address[3],
+		curr->address[4], curr->address[5]);
+	printf("N[%d]:perm_addr: %02X:%02X:%02X:%02X:%02X:%02X\n", i,
+		curr->perm_addr[0], curr->perm_addr[1],
+		curr->perm_addr[2], curr->perm_addr[3],
+		curr->perm_addr[4], curr->perm_addr[5]);
 }
 
 /**

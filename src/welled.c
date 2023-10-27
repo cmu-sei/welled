@@ -104,7 +104,7 @@ int devices;
 /** netns of this process */
 long int mynetns;
 /** whether this process is inside a netns */
- int inside_netns;
+int inside_netns;
 /** Whether we have received the end of a nl msg */
 int nlmsg_end;
 /** pointer for netlink socket */
@@ -112,7 +112,7 @@ struct nl_sock *sock;
 /** pointer for netlink callback function */
 struct nl_cb *cb;
 /** For the family ID used by hwsim */
-int family_id;
+int hwsim_genl_family_id;
 /** FD for vmci */
 int sockfd;
 /** sockaddr_vm for vmci */
@@ -319,10 +319,10 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 		print_debug(LOG_ERR, "Error allocating new message MSG!");
 		goto out;
 	}
-	if (family_id < 0)
+	if (hwsim_genl_family_id < 0)
 		goto out;
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER,
@@ -434,10 +434,10 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 		print_debug(LOG_ERR, "Error allocating new message MSG!\n");
 		goto out;
 	}
-	if (family_id < 0)
+	if (hwsim_genl_family_id < 0)
 		goto out;
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_TX_INFO_FRAME, VERSION_NR);
 
 	/* i have to ack the src the driver expects
@@ -639,7 +639,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	/* get message length needed for sendto */
 	msg_len = nlh->nlmsg_len;
 
-	if (nlh->nlmsg_type != family_id) {
+	if (nlh->nlmsg_type != hwsim_genl_family_id) {
 		return 1;
 	} else if (nlh->nlmsg_type == NLMSG_ERROR) {
 		err = nlmsg_data(nlh);
@@ -660,14 +660,12 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		printf("NLMSG_DONE\n");
 	else if (nlh->nlmsg_type == NLMSG_MIN_TYPE)
 		printf("NLMSG_MIN_TYPE\n");
-	else if (nlh->nlmsg_type == family_id)
+	else if (nlh->nlmsg_type == hwsim_genl_family_id)
 		printf("MAC80211_HWSIM\n");
 	else
 		printf("NLMSG: %d\n", nlh->nlmsg_type);
 	*/
 
-	/* ignore if anything other than a frame
-	do we need to free the msg? */
 	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
 		print_debug(LOG_ERR, "HWSIM_CMD_UNSPEC");
 		/*
@@ -681,35 +679,63 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		}
 		*/
 		goto out;
-	} else if (gnlh->cmd == HWSIM_CMD_GET_RADIO) {
-		print_debug(LOG_ERR, "HWSIM_CMD_GET_RADIO");
-		// TODO determine what causes this and update node if needed
-		if (verbose) {
-			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
-			printf("#### hwsim -> welled nlmsg beg ####\n");
-			int data_len;
-			if (attrs[HWSIM_ATTR_RADIO_ID]) {
-				printf("HWSIM_ATTR_RADIO_ID\n");
-				data_len = nla_len(attrs[HWSIM_ATTR_RADIO_ID]);
-				data = (char *)nla_data(attrs[HWSIM_ATTR_RADIO_ID]);
-				int id = nla_get_u32(attrs[HWSIM_ATTR_RADIO_ID]);
-				print_debug(LOG_DEBUG, "got radio %d", id);
+	} else if ((gnlh->cmd == HWSIM_CMD_GET_RADIO) && (!genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL))) {
+		int radio_id;
+		/* this is a response to a get radio request */
+		print_debug(LOG_DEBUG, "HWSIM_CMD_GET_RADIO");
+		if (attrs[HWSIM_ATTR_RADIO_ID] && attrs[HWSIM_ATTR_RADIO_NAME]) {
+			radio_id = nla_get_u32(attrs[HWSIM_ATTR_RADIO_ID]);
+			data = (char *)nla_data(attrs[HWSIM_ATTR_RADIO_NAME]);
+			if (verbose) {
+				printf("- got radio id  %d\n", radio_id);
+				printf("- got radio phy %s\n", data);
 			}
-			if (attrs[HWSIM_ATTR_RADIO_NAME]) {
-				printf("HWSIM_ATTR_RADIO_NAME\n");
-				data_len = nla_len(attrs[HWSIM_ATTR_RADIO_NAME]);
-				data = (char *)nla_data(attrs[HWSIM_ATTR_RADIO_NAME]);
-				print_debug(LOG_DEBUG, "got radio %s", data);
+			print_debug(LOG_INFO, "radio %d on %s with [add mac]", radio_id, data);
+			struct device_node *node;
+			int phy;
+			if (sscanf(data, "phy%d", &phy) != 1) {
+				print_debug(LOG_INFO, "unknown device for radio %d", radio_id);
 			}
-
-			printf("#### hwsim -> welled nlmsg end ####\n");
+			// TODO there may be more than one interface (device) on a radio (phy)
+			node = get_node_by_wiphy(phy);
+			if (node->radio_id == -1) {
+				print_debug(LOG_INFO, "updating radio id");
+				node->radio_id = radio_id;
+			}
+			/* print addresses */
+			mac_address_to_string(addr, (struct ether_addr *)node->perm_addr);
+			print_debug(LOG_INFO, "radio %d on %s with %s", radio_id, data, addr);
+			mac_address_to_string(addr, (struct ether_addr *)node->address);
+			print_debug(LOG_INFO, "radio %d on %s with %s", radio_id, data, addr);
+			if (verbose)
+				list_nodes();
 		}
 		goto out;
-	}
-
-	if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
+	} else if (gnlh->cmd == HWSIM_CMD_ADD_MAC_ADDR) {
+		print_debug(LOG_DEBUG, "HWSIM_CMD_ADD_MAC_ADDR");
+		genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+		if (verbose) {
+			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]));
+			printf("- attr tx radio mac: %s\n", addr);
+			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_RECEIVER]));
+			printf("- attr rx radio mac: %s\n", addr);
+			// TODO update?
+		}
+		goto out;
+	} else if (gnlh->cmd == HWSIM_CMD_DEL_MAC_ADDR) {
+		print_debug(LOG_DEBUG, "HWSIM_CMD_DEL_MAC_ADDR");
+		genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+		if (verbose) {
+			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]));
+			printf("- attr tx radio mac: %s\n", addr);
+			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_RECEIVER]));
+			printf("- attr rx radio mac: %s\n", addr);
+			// TODO update?
+		}
+		goto out;
+	}else if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
 		/* for example, notification of device up/down */
-		print_debug(LOG_DEBUG, "msg is not a frame, cmd is %d", gnlh->cmd);
+		print_debug(LOG_DEBUG, "msg is not a frame, unhandled cmd is %d", gnlh->cmd);
 		/*
 		if (verbose) {
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -949,12 +975,12 @@ int init_netlink(void)
 	nl_socket_disable_auto_ack(sock);
 	genl_connect(sock);
 
-	family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
+	hwsim_genl_family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 
-	while ((family_id < 0) && running) {
+	while ((hwsim_genl_family_id < 0) && running) {
 		print_debug(LOG_INFO, "Family MAC80211_HWSIM not registered\n");
 		sleep(1);
-		family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
+		hwsim_genl_family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
 	}
 	if (!running) {
 		return 0;
@@ -998,12 +1024,12 @@ int send_register_msg(void)
 		return -1;
 	}
 
-	if (family_id < 0) {
+	if (hwsim_genl_family_id < 0) {
 		nlmsg_free(msg);
 		return -1;
 	}
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
 
 	nl_send_auto(sock, msg);
@@ -1014,8 +1040,8 @@ int send_register_msg(void)
 
 int get_radio(int id)
 {
-	print_debug(LOG_DEBUG, "get_radio %d", id);
 	struct nl_msg *msg;
+	int ret;
 
 	msg = nlmsg_alloc();
 
@@ -1024,15 +1050,18 @@ int get_radio(int id)
 		return -1;
 	}
 
-	if (family_id < 0) {
+	if (hwsim_genl_family_id < 0) {
 		nlmsg_free(msg);
 		return -1;
 	}
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_GET_RADIO, VERSION_NR);
 
-	int rc = nla_put_u32(msg, HWSIM_ATTR_RADIO_ID, id);
+	ret = nla_put_u32(msg, HWSIM_ATTR_RADIO_ID, id);
+	if (ret < 0) {
+		print_debug(LOG_ERR, "get_radio failed to request radio %d", id);
+	}
 
 	nl_send_auto(sock, msg);
 	nlmsg_free(msg);
@@ -1087,10 +1116,10 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	 * the hwsim driver on another system? maybe not as long as it
 	 * shows up in a tcpdump
 	 */
-	if (family_id < 0)
+	if (hwsim_genl_family_id < 0)
 		goto out;
 
-	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family_id,
+	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	/* set source address */
@@ -1142,9 +1171,6 @@ out:
 int recv_from_master(void)
 {
 	char buf[VMCI_BUFF_LEN];
-	//struct sockaddr_vm cliaddr_vmci;
-	//struct sockaddr_in cliaddr;
-	//socklen_t addrlen;
 	struct timeval tv; /* timer to break out of recvfrom function */
 	int bytes;
 	struct nlmsghdr *nlh;
@@ -1215,7 +1241,8 @@ int recv_from_master(void)
 
 	/* exit if the message does not contain frame data */
 	if (gnlh->cmd != HWSIM_CMD_FRAME) {
-		print_debug(LOG_ERR, "Error - received no frame data in message");
+		/* could be multiple messages queued up */
+		print_debug(LOG_ERR, "Error - received no frame data in message from wmasterd");
 		if (verbose) {
 			hex_dump(nlh, bytes);
 		}
@@ -1285,8 +1312,6 @@ int recv_from_master(void)
 			distance = atoi(buf + nlh->nlmsg_len + 7);
 	}
 
-	print_debug(LOG_DEBUG, "distance from rx to here: %d", distance);
-
 	double loss;
 	loss = 0;
 
@@ -1319,10 +1344,11 @@ int recv_from_master(void)
 	}
 
 	if (verbose) {
-		printf("signal: %d\n", signal);
-		printf("freq: %d\n", freq);
-		printf("rate_idx: %d\n", rate_idx);
-		printf("loss: %f\n", loss);
+		printf("- distance: %d\n", distance);
+		printf("- signal:   %d\n", signal);
+		printf("- freq:     %d\n", freq);
+		//printf("- rate_idx: %d\n", rate_idx);
+		//printf("- loss:     %f\n", loss);
 	}
 
 
@@ -1331,9 +1357,13 @@ int recv_from_master(void)
 
 	if (verbose) {
 		mac_address_to_string(addr, &framedst);
-		printf("frame dst: %s\n", addr);
+		printf("- frame dst: %s\n", addr);
 	}
 
+	if (!devices) {
+		print_debug(LOG_INFO, "no devices registered");
+		goto out;
+	}
 	pthread_mutex_lock(&list_mutex);
 	for (i = 0; i < devices; i++) {
 		should_ack = 0;
@@ -1346,6 +1376,10 @@ int recv_from_master(void)
 			printf("sending to: %s\n", node->name);
 
 		dst = (struct ether_addr *)node->address;
+		if (verbose) {
+			mac_address_to_string(addr, dst);
+			printf("- radio dst: %s\n", addr);
+		}
 
 		if (dst == NULL)
 			continue;
@@ -1607,24 +1641,24 @@ void newlink(struct nlmsghdr *h)
 	}
 
 	/* require address field to be set */
-	if (tb[IFLA_ADDRESS]) {
-		memcpy((char *)addr, RTA_DATA(tb[IFLA_ADDRESS]), ETH_ALEN);
-		if (verbose) {
-			printf("address: %02X:%02X:%02X:%02X:%02X:%02X\n",
-				addr[0], addr[1],
-				addr[2], addr[3],
-				addr[4], addr[5]);
-		}
-	} else {
+	if (!tb[IFLA_ADDRESS]) {
 		return;
 	}
 
-	nl80211_get_interface(ifi->ifi_index);
+	if (verbose) {
+		memcpy((char *)addr, RTA_DATA(tb[IFLA_ADDRESS]), ETH_ALEN);
+		printf("address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+			addr[0], addr[1],
+			addr[2], addr[3],
+			addr[4], addr[5]);
+	}
 
+	nl80211_get_interface(ifi->ifi_index);
 }
 
 static int process_nl_route_event(struct nl_msg *msg, void *arg)
 {
+	print_debug(LOG_DEBUG, "process_nl_route_event");
 	struct nlmsghdr *nlh;
 	int len;
 
@@ -1662,10 +1696,11 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
  */
 void *monitor_devices(void *arg)
 {
-
+	print_debug(LOG_DEBUG, "monitor_devices running");
 	struct timeval tv;
 	struct nl_sock *sk;
 	int nlsockfd;
+	int opt;
 
 	sk = nl_socket_alloc();
 	nl_socket_disable_seq_check(sk);
@@ -1683,7 +1718,7 @@ void *monitor_devices(void *arg)
 	}
 
 	/* this may not be needed */
-	int opt = 1;
+	opt = 1;
 	if (setsockopt(nlsockfd, SOL_NETLINK, NETLINK_LISTEN_ALL_NSID,
 				&opt, sizeof(opt)) < 0) {
 		perror("setsockopt");
@@ -1769,9 +1804,9 @@ void *monitor_hwsim(void *arg)
 	while (running) {
 
 		sleep(1);
-		family_id = genl_ctrl_resolve(sock2, "MAC80211_HWSIM");
+		hwsim_genl_family_id = genl_ctrl_resolve(sock2, "MAC80211_HWSIM");
 
-		if (family_id < 0) {
+		if (hwsim_genl_family_id < 0) {
 			print_debug(LOG_INFO, "Driver has been unloaded");
 
 			/*  we call init_netlink which returns when back up */
@@ -1829,6 +1864,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	struct ethtool_perm_addr *epaddr;
 	struct ifreq ifr;
 	long int netnsid;
+	int wiphy;
 
 	gnlh = nlmsg_data(nlmsg_hdr(msg));
 	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
@@ -1839,6 +1875,12 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		print_debug(LOG_DEBUG, "we got netns %ld fd for interface", netnsid);
 	} else {
 		netnsid = mynetns;
+	}
+	if (tb_msg[NL80211_ATTR_WIPHY]) {
+		wiphy = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
+		print_debug(LOG_DEBUG, "we got wiphy %d for interface", wiphy);
+	} else {
+		wiphy = -1;
 	}
 
 	if (tb_msg[NL80211_ATTR_IFNAME])
@@ -1873,12 +1915,18 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		}
 		node->next = NULL;
 
+		/* TODO update node from HWSIM CMD GET RADIO */
+		node->radio_id = -1;
+
 		/* set name */
 		node->name = malloc(strlen(ifname) + 1);
 		strncpy(node->name, ifname, strlen(ifname) + 1);
 
 		/* set index */
 		node->index = ifindex;
+
+		/* set wiphy */
+		node->wiphy = wiphy;
 
 		/* set interface type */
 		node->iftype = iftype;
@@ -1976,6 +2024,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
  */
 int nl80211_get_interface(int ifindex)
 {
+	print_debug(LOG_DEBUG, "nl80211_get_interface");
 	struct nl_msg *nlmsg;
 	struct nl_cb *cb;
 	int err;
@@ -2081,7 +2130,7 @@ int main(int argc, char *argv[])
 	err = 0;
 	ioctl_fd = 0;
 	cid = 0;
-	family_id = -1;
+	hwsim_genl_family_id = -1;
 	loglevel = -1;
 
 	/* TODO: Send syslog message indicating start time */
@@ -2135,11 +2184,11 @@ int main(int argc, char *argv[])
 	if (loglevel >= 0)
 		openlog("welled", LOG_PID, LOG_USER);
 
-        euid = geteuid();
-        if (euid != 0) {
-                print_debug(LOG_ERR, "must run as root");
-                _exit(EXIT_FAILURE);
-        }
+	euid = geteuid();
+	if (euid != 0) {
+		print_debug(LOG_ERR, "must run as root");
+		_exit(EXIT_FAILURE);
+	}
 
 	/* new code for vm_sockets */
 	af = AF_VSOCK;
@@ -2231,7 +2280,7 @@ int main(int argc, char *argv[])
 
 
 	/* init list of interfaces */
-	//nl80211_get_interface(0);
+	nl80211_get_interface(0);
 
 	/* init netlink will loop until driver is loaded */
 	pthread_mutex_lock(&hwsim_mutex);
@@ -2255,6 +2304,7 @@ int main(int argc, char *argv[])
 		_exit(EXIT_FAILURE);
 	}
 
+	/* get radios from hwsim and update wiphy and radio_id in device nodes */
 	int id = 0;
 	for (id = 0; id < 100; id++) {
 		get_radio(id);
