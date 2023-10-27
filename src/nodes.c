@@ -235,7 +235,7 @@ void print_node(int i, struct device_node *curr)
 			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
 			break;
 		case 7:
-			printf("M[%d]:iftype:    @NL80211_IFTYPE_MESH_POINT\n", i);
+			printf("M[%d]:iftype:    NL80211_IFTYPE_MESH_POINT\n", i);
 			break;
 		default:
 			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
