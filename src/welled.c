@@ -690,7 +690,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 				printf("- got radio id  %d\n", radio_id);
 				printf("- got radio phy %s\n", data);
 			}
-			print_debug(LOG_INFO, "radio %d on %s with [add mac]", radio_id, data);
+			print_debug(LOG_INFO, "radio %d on %s", radio_id, data);
 			struct device_node *node;
 			int phy;
 			if (sscanf(data, "phy%d", &phy) != 1) {
@@ -698,8 +698,8 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			}
 			// TODO there may be more than one interface (device) on a radio (phy)
 			node = get_node_by_wiphy(phy);
-			if (node->radio_id == -1) {
-				print_debug(LOG_INFO, "updating radio id");
+			if (node->radio_id != radio_id) {
+				print_debug(LOG_INFO, "updating radio id for this device");
 				node->radio_id = radio_id;
 			}
 			/* print addresses */
@@ -707,11 +707,10 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			print_debug(LOG_INFO, "radio %d on %s with %s", radio_id, data, addr);
 			mac_address_to_string(addr, (struct ether_addr *)node->address);
 			print_debug(LOG_INFO, "radio %d on %s with %s", radio_id, data, addr);
-			if (verbose)
-				list_nodes();
 		}
 		goto out;
 	} else if (gnlh->cmd == HWSIM_CMD_ADD_MAC_ADDR) {
+		/* we see this when an interface comes up */
 		print_debug(LOG_DEBUG, "HWSIM_CMD_ADD_MAC_ADDR");
 		genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 		if (verbose) {
@@ -719,10 +718,15 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			printf("- attr tx radio mac: %s\n", addr);
 			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_RECEIVER]));
 			printf("- attr rx radio mac: %s\n", addr);
+			if (attrs[HWSIM_ATTR_PERM_ADDR]) {
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_PERM_ADDR]));
+				printf("- attr perm addr: %s\n", addr);
+			}
 			// TODO update?
 		}
 		goto out;
 	} else if (gnlh->cmd == HWSIM_CMD_DEL_MAC_ADDR) {
+		/* we see this when an interface goes down */
 		print_debug(LOG_DEBUG, "HWSIM_CMD_DEL_MAC_ADDR");
 		genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 		if (verbose) {
@@ -730,6 +734,10 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			printf("- attr tx radio mac: %s\n", addr);
 			mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_RECEIVER]));
 			printf("- attr rx radio mac: %s\n", addr);
+			if (attrs[HWSIM_ATTR_PERM_ADDR]) {
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_PERM_ADDR]));
+				printf("- attr perm addr: %s\n", addr);
+			}
 			// TODO update?
 		}
 		goto out;
@@ -1583,7 +1591,13 @@ void dellink(struct nlmsghdr *h)
 	}
 	pthread_mutex_unlock(&list_mutex);
 
+	/* get radios from hwsim and update wiphy and radio_id in device nodes */
+	int id = 0;
+	for (id = 0; id < 100; id++) {
+		get_radio(id);
+	}
 }
+
 /**
  *	@brief processes RTM_NEWLINK messages
  *	Detects when interfaces are created and modified
@@ -1654,6 +1668,11 @@ void newlink(struct nlmsghdr *h)
 	}
 
 	nl80211_get_interface(ifi->ifi_index);
+	/* get radios from hwsim and update wiphy and radio_id in device nodes */
+	int id = 0;
+	for (id = 0; id < 100; id++) {
+		get_radio(id);
+	}
 }
 
 static int process_nl_route_event(struct nl_msg *msg, void *arg)
@@ -1866,21 +1885,23 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	long int netnsid;
 	int wiphy;
 
+	print_debug(LOG_DEBUG, "handling NL80211 interface data");
+
 	gnlh = nlmsg_data(nlmsg_hdr(msg));
 	nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 			genlmsg_attrlen(gnlh, 0), NULL);
 
 	if (tb_msg[NL80211_ATTR_NETNS_FD]) {
 		netnsid = nla_get_u32(tb_msg[NL80211_ATTR_NETNS_FD]);
-		print_debug(LOG_DEBUG, "we got netns %ld fd for interface", netnsid);
+		print_debug(LOG_DEBUG, "interface with netns %ld fd", netnsid);
 	} else {
 		netnsid = mynetns;
 	}
 	if (tb_msg[NL80211_ATTR_WIPHY]) {
 		wiphy = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
-		print_debug(LOG_DEBUG, "we got wiphy %d for interface", wiphy);
+		print_debug(LOG_DEBUG, "interface with wiphy %d", wiphy);
 	} else {
-		wiphy = -1;
+		return NL_SKIP;
 	}
 
 	if (tb_msg[NL80211_ATTR_IFNAME])
@@ -1914,9 +1935,6 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 			_exit(EXIT_FAILURE);
 		}
 		node->next = NULL;
-
-		/* TODO update node from HWSIM CMD GET RADIO */
-		node->radio_id = -1;
 
 		/* set name */
 		node->name = malloc(strlen(ifname) + 1);
@@ -1959,6 +1977,13 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 			node->perm_addr[0] |= 0x40;
 
 		free(epaddr);
+
+		/* after calling nl80211 get interface function,
+		 * make sure to update node by sending HWSIM CMD GET RADIO
+		 * via the get_radio function
+		 */
+		print_debug(LOG_INFO, "assuming radio_id to match perm_addr[4]: %d", node->perm_addr[4]);
+		node->radio_id = node->perm_addr[4];
 
 		/* when the address match patch gets reverted upstream, which
 		 * it now has since mid december 2015, we will need to perform
