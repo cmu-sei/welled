@@ -643,13 +643,13 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		return 1;
 	} else if (nlh->nlmsg_type == NLMSG_ERROR) {
 		err = nlmsg_data(nlh);
-		if (verbose)
+		if (verbose) 
 			print_debug(LOG_ERR, "NLMSG_ERROR: %d\n", err->error);
 		if (err->error == -22) {
 			/* check hw - rx radio probably down */
 			print_debug(LOG_ERR, "-EINVAL from hwsim\n");
-			goto out;
 		}
+		goto out;
 	}
 
 	print_debug(LOG_INFO, "received %d bytes msg from hwsim", msg_len);
@@ -669,7 +669,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	/* ignore if anything other than a frame
 	do we need to free the msg? */
 	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
-		print_debug(LOG_ERR, "hwsim error");
+		print_debug(LOG_ERR, "HWSIM_CMD_UNSPEC");
 		/*
 		if (verbose) {
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -683,6 +683,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		goto out;
 	} else if (gnlh->cmd == HWSIM_CMD_GET_RADIO) {
 		print_debug(LOG_ERR, "HWSIM_CMD_GET_RADIO");
+		// TODO determine what causes this and update node if needed
 		if (verbose) {
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 			printf("#### hwsim -> welled nlmsg beg ####\n");
@@ -707,7 +708,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	}
 
 	if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
-		/* for example, notificaiton of device up/down */
+		/* for example, notification of device up/down */
 		print_debug(LOG_DEBUG, "msg is not a frame, cmd is %d", gnlh->cmd);
 		/*
 		if (verbose) {
@@ -721,6 +722,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 		*/
 		goto out;
 	}
+	print_debug(LOG_DEBUG, "processing new frame from hwsim");
 
 	/* processing original HWSIM_CMD_FRAME */
 	genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -734,8 +736,10 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	*/
 
 	/* this check was duplicated below in a second if statement, now gone */
-	if (!(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]))
+	if (!(attrs[HWSIM_ATTR_ADDR_TRANSMITTER])) {
+		print_debug(LOG_INFO, "HWSIM_ATTR_ADDR_TRANSMITTER missing");
 		goto out;
+	}
 
 	/* we get the attributes*/
 	src = (struct ether_addr *)
@@ -878,9 +882,9 @@ attempt idx, count: -1 0
 
 	if (verbose) {
 		mac_address_to_string(addr, &framesrc);
-		printf("frame src: %s\n", addr);
+		printf("- frame src: %s\n", addr);
 		mac_address_to_string(addr, src);
-		printf("radio src: %s\n", addr);
+		printf("- radio src: %s\n", addr);
 	}
 
 
@@ -888,7 +892,7 @@ attempt idx, count: -1 0
 	/* if we rebuild the nl msg, this can change */
 	if (memcmp(&framesrc, src, ETH_ALEN) != 0) {
 		if (verbose)
-			printf("updating the TX src ATTR\n");
+			printf("- updating the TX src ATTR to match frame\n");
 		/* copy dest address from frame to nlh */
 		memcpy((char *)nlh + 24, &framesrc, ETH_ALEN);
 	}
@@ -900,7 +904,7 @@ attempt idx, count: -1 0
 	if (bytes < 0) {
 		/* wmasterd probably down */
 		perror("send");
-		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
+		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 	}
@@ -1175,13 +1179,12 @@ int recv_from_master(void)
 
 	if (bytes < 0) {
 		if (errno == EWOULDBLOCK) {
-			//nonblocking socket triggers this
+			/* nonblocking socket triggers this */
 			goto out;
 		}
 		perror("recv");
 		print_debug(LOG_ERR, "host disconnected in recv error");
-		running = 0;
-		goto out;
+		return -1;
 	} else if (bytes == 0) {
 		print_debug(LOG_INFO, "host disconnected");
 		return -1;
