@@ -1466,8 +1466,6 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 	if (head == NULL) {
 		/* add first node */
 		head = node;
-		print_debug(LOG_NOTICE, "add: %11d port: %5d room: %36s time: %d name: %s",
-				srchost, srcport, node->room, node->time, node->name);
 	} else {
 		/* traverse to end of list */
 		curr = head;
@@ -1475,9 +1473,10 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 			curr = curr->next;
 		/* add to node to end of list */
 		curr->next = node;
-		print_debug(LOG_NOTICE, "add: %11d port: %5d room: %36s time: %d name: %s",
-				srchost, srcport, node->room, node->time, node->name);
 	}
+	print_debug(LOG_NOTICE, "add: %11d port: %5d room: %36s time: %d name: %s",
+			srchost, srcport, node->room, node->time, node->name);
+
 }
 
 /**
@@ -2101,7 +2100,7 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen, int socket)
 	src_cid = cliaddr_vmci.svm_cid;
 	src_port = cliaddr_vmci.svm_port;
 
-	print_debug(LOG_DEBUG, "adding new node for src host: %d port: %d",
+	print_debug(LOG_NOTICE, "adding new node for src host: %d port: %d",
 			src_cid, src_port);
 
 	memset(room, 0, UUID_LEN);
@@ -2132,7 +2131,8 @@ int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen, int socket)
 			/* make sure we updated the node */
 			node = search_node_vmci(src_cid, src_port);
 			if (!node) {
-				print_debug(LOG_ERR, "updating node %11d%d\n", src_cid, src_port);
+				print_debug(LOG_ERR, "updating node failed %11d:%d\n",
+						src_cid, src_port);
 				return -1;
 			}
 		}
@@ -2440,10 +2440,10 @@ int main(int argc, char *argv[])
 		FD_SET(myservfd, &readfds);
 		max_sd = myservfd;
 
-		// add child sockets to set
+		/* add child sockets to set */
 		int sd;
         	for (i = 0; i < max_clients; i++) {
-                	//socket descriptor
+                	/* socket descriptor */
             		sd = client_socket[i];
 
             		// if valid socket descriptor then add to read list
@@ -2452,7 +2452,7 @@ int main(int argc, char *argv[])
 				//print_debug(LOG_DEBUG, "adding socket %d to fd set", sd);
                 		FD_SET(sd, &readfds);
 			}
-            		//highest file descriptor number, need it for the select function
+            		/* highest file descriptor number, need it for the select function */
             		if (sd > max_sd) {
                 		max_sd = sd;
 			}
@@ -2475,7 +2475,6 @@ int main(int argc, char *argv[])
 			print_debug(LOG_DEBUG, "connection attempt");
 
 			int vsock_client_fd;
-			/** sockaddr_vm for vmci client connecting to here */
 
 			/* clear/reset client address information */
 			memset(&client_vm, 0, sizeof(client_vm));
@@ -2504,14 +2503,13 @@ int main(int argc, char *argv[])
 			}
 
 
-			// process new connection (add to node linked list)
+			/* process new connection (add to node linked list) */
 			ret = process_connection(client_vm, client_len, vsock_client_fd);
 			if (ret < 0) {
 				print_debug(LOG_ERR, "vsock connection processing failed");
 			}
 		}
 
-		print_debug(LOG_ERR, "checking sockets other than the listen");
         	/* an IO operation on some other socket */
         	for (i = 0; i < max_clients; i++) {
                 	sd = client_socket[i];
@@ -2524,53 +2522,46 @@ int main(int argc, char *argv[])
 				ret = getpeername(sd, (struct sockaddr *)&client_vm,
                     				(socklen_t *)&client_len);
 				if (ret < 0) {
-					sock_error("wmasterd: getpeername");
-					print_debug(LOG_INFO, "host disconnected");
-					// Close the socket and mark as 0 in list for reuse
+					print_debug(LOG_INFO, "client disconnected on socket %d", sd);
 					close(sd);
-					print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
 					client_socket[i] = 0;
-					// remove node via the sd
 					remove_node_vmci_socket(sd);
 				} else {
-					// process data on connection
+					/* process data on connection */
 					src_cid = client_vm.svm_cid;
 					src_port = client_vm.svm_port;
-					print_debug(LOG_DEBUG, "reading from %d:%d" ,
-							src_cid, src_port);
+					print_debug(LOG_DEBUG, "reading from %d:%d on socket %d" ,
+							src_cid, src_port, sd);
 					char buf[VMCI_BUFF_LEN];
 					int bytes;
 					char room[UUID_LEN];
 					struct client *node;
 
 					bytes = recv(sd, (char *)buf, VMCI_BUFF_LEN, 0);
-					//print_debug(LOG_DEBUG, "buf: %s", buf);
 					if (bytes < 0) {
 						sock_error("wmasterd: recv");
 						printf("bytes %d\n", bytes);
-						print_debug(LOG_ERR, "host disconnected in recv error %d:%d" ,
-								src_cid, src_port);
+						print_debug(LOG_ERR, "host %d:%d disconnected in recv error on sock %d" ,
+								src_cid, src_port, sd);
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at i", sd, i);
 						client_socket[i] = 0;
-						// remove node
 						remove_node_vmci(src_cid, src_port);
 						continue;
 					} else if (bytes == 0) {
-						print_debug(LOG_INFO, "host disconnected %d:%d" ,
-								src_cid, src_port);
-						// Close the socket and mark as 0 in list for reuse
+						print_debug(LOG_INFO, "host %d:%d disconnected on sock %d" ,
+								src_cid, src_port, sd);
+						/* close the socket and mark for reuse */
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
 						client_socket[i] = 0;
-						// remove node
 						remove_node_vmci(src_cid, src_port);
 						continue;
 					}
 
 					node = search_node_vmci(src_cid, src_port);
-					print_debug(LOG_DEBUG, "received %d bytes from %11d:%d",
-							bytes, src_cid, src_port);
+					print_debug(LOG_DEBUG, "received %d bytes from %11d:%d on socket %d",
+							bytes, src_cid, src_port, sd);
 
 
 					if ((bytes == 2) || (bytes == 5)) {
@@ -2641,29 +2632,25 @@ int main(int argc, char *argv[])
 						sd = client_socket[i];
 						if (sd > 0) {
 
-							print_debug(LOG_DEBUG, "writing data to client on %d at %d",
-									sd, i);
+							print_debug(LOG_DEBUG, "writing data to client on socket %d", sd);
 							bytes = send(sd, (char *)buf, bytes, 0);
 							if (bytes < 0) {
 								sock_error("wmasterd: write");
-								print_debug(LOG_ERR, "host disconnected in write error %d:%d\n" ,
-									client_vm.svm_cid, client_vm.svm_port);
+								print_debug(LOG_ERR, "client disconnected in write error on socket %d", sd);
+								/* close the socket and mark for reuse */
 								close(sd);
-								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
 								client_socket[i] = 0;
-								// remove node
-								remove_node_vmci(src_cid, src_port);
+								remove_node_vmci_socket(sd);
 								continue;
 							} else if (bytes == 0) {
-								print_debug(LOG_INFO, "host disconnected");
-								// Close the socket and mark as 0 in list for reuse
+								print_debug(LOG_INFO, "client disconnected on socket %d", sd);
+								/* close the socket and mark for reuse */
 								close(sd);
-								print_debug(LOG_INFO, "removing socket %d from sd set", sd);
 								client_socket[i] = 0;
-								// remove node
-								remove_node_vmci(src_cid, src_port);
+								remove_node_vmci_socket(sd);
 								continue;
 							}
+							print_debug(LOG_INFO, "sent %d bytes to socket %d", bytes, sd);
 						}
 
 					}
