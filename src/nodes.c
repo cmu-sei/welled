@@ -62,7 +62,7 @@ void add_node(struct device_node *node)
 		/* add first node */
 		head = node;
 	} else {
-		 /* traverse to end of list */
+		/* traverse to end of list */
 		curr = head;
 		while (curr->next != NULL)
 			curr = curr->next;
@@ -120,18 +120,41 @@ struct device_node *get_node_by_index(int index)
  */
 struct device_node *get_node_by_radio_id(int id)
 {
-        struct device_node *curr;
+	struct device_node *curr;
 
-        curr = head;
+	curr = head;
 
-        while (curr != NULL) {
-                if (curr->radio_id == id)
-                        return curr;
+	while (curr != NULL) {
+		if (curr->radio_id == id)
+			return curr;
 
-                curr = curr->next;
-        }
+		curr = curr->next;
+	}
 
-        return NULL;
+	return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_node_by_perm_addr(char *perm_addr)
+{
+	struct device_node *curr;
+
+	int radio = perm_addr[4];
+
+	curr = head;
+
+	while (curr != NULL) {
+		if (curr->radio_id == radio)
+			return curr;
+
+		curr = curr->next;
+	}
+
+	return NULL;
 }
 
 /**
@@ -141,18 +164,18 @@ struct device_node *get_node_by_radio_id(int id)
  */
 struct device_node *get_node_by_wiphy(int id)
 {
-        struct device_node *curr;
+	struct device_node *curr;
 
-        curr = head;
+	curr = head;
 
-        while (curr != NULL) {
-                if (curr->wiphy == id)
-                        return curr;
+	while (curr != NULL) {
+		if (curr->wiphy == id)
+			return curr;
 
-                curr = curr->next;
-        }
+		curr = curr->next;
+	}
 
-        return NULL;
+	return NULL;
 }
 
 /**
@@ -213,15 +236,15 @@ void list_nodes(void)
 	while (curr != NULL) {
 		print_node(i, curr);
 		i++;
-                curr = curr->next;
-        }
+		curr = curr->next;
+	}
 }
 
 void print_node(int i, struct device_node *curr)
 {
 	printf("N[%d]:name:      %s\n", i, curr->name);
 	printf("N[%d]:index:     %d\n", i, curr->index);
-        printf("N[%d]:radio_id   %d\n", i, curr->radio_id);
+	printf("N[%d]:radio_id   %d\n", i, curr->radio_id);
 	printf("N[%d]:wiphy      %d\n", i, curr->wiphy);
 	printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
 	switch (curr->iftype) {

@@ -60,6 +60,7 @@ struct device_node *get_node_by_index(int);
 struct device_node *get_node_by_radio_id(int);
 struct device_node *get_node_by_pos(int);
 struct device_node *get_node_by_wiphy(int);
+struct device_node *get_node_by_perm_addr(char *);
 
 void add_node(struct device_node *);
 void list_nodes(void);
