@@ -168,7 +168,10 @@ apt-get install libcurl4-gnutls-dev libpng-dev libglib2.0-dev
 The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * ESXi 5.5
 * ESXi 6.0
+* ESXi 7.0
 * Windows 7 with VMware Workstation 12 and 14
+* Windows 10 with VMware Workstation 17
+* OpenWrt 23.05
 
 ## Building welled for Linux
 `welled` has been used on:
@@ -178,6 +181,9 @@ The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * Fedora 23
 * Fedora 27
 * Ubuntu 12.04
+`welled` 3.0.0 has been used on:
+* Fedora 38
+* Ubuntu 22.04
 
 An RPM and a Debian package are available for `welled`. It contains the three
 client programs of `welled`, `gelled` and `gelled-ctrl`.
@@ -364,6 +370,10 @@ opkg install /mnt/welled_2.2.1_x86_64.ipk
 You must compile `wmasterd` for an x86_64 GNU/Linux system, then copy the file
 to the ESXi host. The Makefile's esx target will create a tarball containing the
 `wmasterd` executable, an init script, and an installation script.
+ESXi requires an older version of glibc then used on our development VMs. The
+source file therefore specifies a version of memcpy from glibc 2.25.
+If compiling on a machine with glibc 2.34 it is not possible to build for ESXi
+because is uses an older glibc version.
 ```
 cd src
 make esx
