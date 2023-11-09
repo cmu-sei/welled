@@ -357,6 +357,13 @@ Just follow these steps after getting the image running.
 7. restart the network
 8. profit
 
+Create the iso:
+```
+make V=s package/welled/install
+mkisofs -o /tmp/welled.iso ./bin/packages/x86_64/base/welled_3.0.0_x86_64.ipk
+```
+
+Update the VM:
 ```
 opkg update
 opkg install kmod-scsi-core kmod-scsi-cdrom kmod-fs-isofs
