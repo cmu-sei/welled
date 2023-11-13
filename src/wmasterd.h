@@ -77,19 +77,6 @@ struct location {
 */
 };
 
-struct update {
-	char follow[FOLLOW_LEN];
-	float latitude;
-	float longitude;
-	float altitude;
-	float velocity;
-	float heading;
-	int room_id;
-	char name[1024];
-	char address[16];
-	unsigned int cid;
-};
-
 struct update_2 {
 	char version[8];
 	char follow[FOLLOW_LEN];
@@ -102,7 +89,7 @@ struct update_2 {
 	char room[UUID_LEN];
 	char name[NAME_LEN];
 	char isolation_tag[UUID_LEN];
-	unsigned int cid;
+	unsigned int address;
 };
 
 /**
@@ -112,8 +99,8 @@ struct update_2 {
  *      We will retransmit all frames and netlink data to these clients
  */
 struct client {
-	/** CID */
-	unsigned int cid;
+	/** address */
+	unsigned int address;
 	/** Port */
 	unsigned int port;
 	/* socket descriptor */
@@ -140,21 +127,21 @@ void print_node(struct client *);
 void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
-void add_node_vmci(unsigned int, int, char *, char *, char *, int);
-void clear_inactive_nodes(void);
-struct client *search_node_vmci(unsigned int, int);
+void add_node(unsigned int, int, char *, char *, char *, int);
+struct client *search_node(unsigned int, int);
 struct client *search_node_name(char *);
-void list_nodes_vmci(void);
-void remove_node_vmci(unsigned int, int);
-void remove_node_vmci_socket(int);
+void remove_node(unsigned int, int);
+void remove_node_bu_socket(int);
+void clear_inactive_nodes(void);
+void list_nodes(void);
+void send_to_nodes(char *, int, struct client *);
 void send_to_hosts(char *, int, char *);
-void send_to_nodes_vmci(char *, int, struct client *);
 void send_gps_to_nodes(void);
 void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);
 void signal_handler(void);
-int process_connection(struct sockaddr_vm, int, int);
+int process_connection(unsigned int, unsigned int, int, int);
 void *recv_from_hosts(void *);
 void update_node_location(struct client *, struct update_2 *);
 void update_node_info(struct client *, struct update_2 *);

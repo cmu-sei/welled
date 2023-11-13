@@ -282,12 +282,12 @@ wmasterd-i386-Linux:
 	cp $(OUTDIR)/wmasterd ../dist/i386-Linux/
 
 wmasterd-x86_64-w64-mingw32:
-	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
+	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32* ../dist/x86_64-w64-mingw32/
 
 wmasterd-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/wmasterd-i686-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/i686-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
+	$(CC) -o $(OUTDIR)/wmasterd-i686-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/i686-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
 	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
 	cp $(OUTDIR)/wmasterd-i686-w64-mingw32* ../dist/i686-w64-mingw32/
 

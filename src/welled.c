@@ -85,12 +85,18 @@
 	#define VMADDR_CID_HOST		2
 #endif
 /** Buffer size for VMCI datagrams */
-#define VMCI_BUFF_LEN		4096
+#define WMASTERD_BUFF_LEN		4096
 /** Buffer size for UDP datagrams */
 #define BUFF_LEN		4096
 /** Buffer size for netlink route interface list */
 #define IFLIST_REPLY_BUFFER     4096
 
+/** wmasterd port */
+int port;
+/** for wmasterd IP */
+struct in_addr wmasterd_address;
+/** whether to use vsock */
+int vsock;
 /** af vsock address family */
 int af;
 /** Whether to print verbose output */
@@ -113,10 +119,12 @@ struct nl_sock *sock;
 struct nl_cb *cb;
 /** For the family ID used by hwsim */
 int hwsim_genl_family_id;
-/** FD for vmci */
+/** FD for wmasterd connection */
 int sockfd;
 /** sockaddr_vm for vmci */
 struct sockaddr_vm servaddr_vm;
+/** sockaddr_vm for ip */
+struct sockaddr_in servaddr_in;
 /** mutex for linked list access */
 pthread_mutex_t list_mutex;
 /** mutex for driver unload/load checking */
@@ -146,12 +154,14 @@ void show_usage(int exval)
 
 	printf("welled - wireless emulation link layer exchange daemon\n\n");
 
-	printf("Usage: welled [-hVav] [-D <level>]\n\n");
+	printf("Usage: welled [-hVav] [-s <ip_address>] [-p <port>] [-D <level>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help	print this help and exit\n");
 	printf("  -V, --version	print version and exit\n");
 	printf("  -a, --any	allow any mac address (patched driver)\n");
+	printf("  -s, --server	wmasterd server address\n");
+	printf("  -p, --port	wmasterd server port\n");
 	printf("  -D, --debug   debug level for syslog\n");
 	printf("  -v, --verbose	verbose output\n\n");
 
@@ -606,7 +616,7 @@ void attrs_print(struct nlattr *attrs[])
 /**
  *	@brief Callback function to process messages received from kernel
  *	It processes the frames received from hwsim via netlink messages.
- *	These frames get sent via vmci to wmasterd.
+ *	These frames get sent to wmasterd.
  *	@param msg - pointer to netlink message
  *	@param arg - pointer to additional args
  *	@return success or failure
@@ -964,7 +974,7 @@ attempt idx, count: -1 0
 	if (bytes < 0) {
 		/* wmasterd probably down */
 		perror("send");
-		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI");
+		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 	}
@@ -1183,7 +1193,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	if (bytes < 0) {
 		/* wmasterd probably down */
 		perror("send");
-		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via VMCI\n");
+		print_debug(LOG_ERR, "ERROR: Could not TX to wmasterd via\n");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 	}
@@ -1195,7 +1205,7 @@ out:
 }
 
 /**
- *	@brief parse vmci data received from wmastered.
+ *	@brief parse data received from wmastered.
  *	At the moment, this will not
  *	include any txinfo messages since we immediately ack them inside
  *	the process_messages_cb function
@@ -1204,7 +1214,7 @@ out:
  */
 int recv_from_master(void)
 {
-	char buf[VMCI_BUFF_LEN];
+	char buf[WMASTERD_BUFF_LEN];
 	struct timeval tv; /* timer to break out of recvfrom function */
 	int bytes;
 	struct nlmsghdr *nlh;
@@ -1235,7 +1245,7 @@ int recv_from_master(void)
 	}
 
 	/* receive packets from wmasterd */
-	bytes = recv(sockfd, (char *)buf, VMCI_BUFF_LEN, 0);
+	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
 
 	if (bytes < 0) {
 		if (errno == EWOULDBLOCK) {
@@ -1525,7 +1535,7 @@ out:
 }
 
 /**
- *	@brief thread to receive and process frames from wmasterd
+ *	@brief thread to send and receive frames with wmasterd
  */
 void *process_master(void *arg)
 {
@@ -1537,23 +1547,41 @@ void *process_master(void *arg)
 	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 	servaddr_vm.svm_cid = VMADDR_CID_HOST;
-	servaddr_vm.svm_port = WMASTERD_PORT;
+	servaddr_vm.svm_port = port;
 	servaddr_vm.svm_family = af;
+
+	memset(&servaddr_in, 0, sizeof(servaddr_in));
+	servaddr_in.sin_addr = wmasterd_address;
+	servaddr_in.sin_port = port;
+	servaddr_in.sin_family = af;
 
 connect:
 	do {
-		/* setup vmci socket */
-		sockfd = socket(af, SOCK_STREAM, 0);
+		/* setup socket */
+		if (vsock) {
+			sockfd = socket(af, SOCK_STREAM, 0);
+		} else {
+			sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+		}
 		/* we can initalize this struct because it never changes */
 		if (sockfd < 0) {
 			perror("socket");
 			free_mem();
 			_exit(EXIT_FAILURE);
 		}
-		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+		if (vsock) {
+			ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+		} else {
+			ret = connect(sockfd, (struct sockaddr *)&servaddr_in, sizeof(struct sockaddr));
+		}
 		if (ret < 0) {
-			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
-				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+			if (vsock) {
+				print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+						servaddr_vm.svm_cid, servaddr_vm.svm_port);
+			} else {
+				print_debug(LOG_ERR, "could not connect to wmasterd on %s:%d",
+						inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+			}
 			sleep(1);
 		} else {
 			print_debug(LOG_INFO,  "connected to wmasterd");
@@ -2192,6 +2220,8 @@ int main(int argc, char *argv[])
 	cid = 0;
 	hwsim_genl_family_id = -1;
 	loglevel = -1;
+	vsock = 1;
+	port = WMASTERD_PORT;
 
 	/* TODO: Send syslog message indicating start time */
 
@@ -2199,11 +2229,14 @@ int main(int argc, char *argv[])
 		{"help",	no_argument, 0, 'h'},
 		{"version",	no_argument, 0, 'V'},
 		{"verbose",	no_argument, 0, 'v'},
-		{"debug",       required_argument, 0, 'D'},
-		{"any",		no_argument, 0, 'a'}
+		{"any",		no_argument, 0, 'a'},
+		//{"cid",		no_argument, 0, 'c'},
+		{"server",	required_argument, 0, 's'},
+		{"port",	required_argument, 0, 'p'},
+		{"debug",	required_argument, 0, 'D'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVavD:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVavs:p:D:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2224,10 +2257,27 @@ int main(int argc, char *argv[])
 		case 'D':
 			loglevel = atoi(optarg);
 			if ((loglevel < 0) || (loglevel > 7)) {
-				printf("welled: syslog level must be 0-7\n");
-				_exit(EXIT_FAILURE);
+				show_usage(EXIT_FAILURE);
 			}
 			printf("welled: syslog level set to %d\n", loglevel);
+			break;
+		case 'p':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
+			break;
+/*
+		case 'c':
+			wmasterd_cid = atoi(optarg);
+			break;
+*/
+		case 's':
+			vsock = 0;
+			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
+				printf("welled: invalid ip address\n");
+				show_usage(EXIT_FAILURE);
+			}
 			break;
 		case '?':
 			printf("Error - No such option: `%c'\n\n",
@@ -2250,22 +2300,26 @@ int main(int argc, char *argv[])
 		_exit(EXIT_FAILURE);
 	}
 
-	/* new code for vm_sockets */
-	af = AF_VSOCK;
+	if (vsock) {
+		/* code for vm_sockets */
+		af = AF_VSOCK;
 
-	// TODO may need to load the driver if device not present
-	ioctl_fd = open("/dev/vsock", 0);
-	if (ioctl_fd < 0) {
-		perror("open");
-		print_debug(LOG_ERR, "could not open /dev/vsock");
-		_exit(EXIT_FAILURE);
-	}
-	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
-	if (err < 0) {
-		perror("ioctl: Cannot get local CID");
-		print_debug(LOG_ERR, "could not get local CID");
+		// TODO may need to load the driver if device not present
+		ioctl_fd = open("/dev/vsock", 0);
+		if (ioctl_fd < 0) {
+			perror("open");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
+			_exit(EXIT_FAILURE);
+		}
+		err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
+		if (err < 0) {
+			perror("ioctl: Cannot get local CID");
+			print_debug(LOG_ERR, "could not get local CID");
+		} else {
+			print_debug(LOG_DEBUG, "CID: %u", cid);
+		}
 	} else {
-		print_debug(LOG_DEBUG, "CID: %u", cid);
+		af = AF_INET;
 	}
 
 	inside_netns = 0;

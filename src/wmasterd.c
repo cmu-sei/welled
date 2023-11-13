@@ -80,6 +80,8 @@ __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 
 #include "wmasterd.h"
 
+/** whether we are vsock or ip */
+int vsock;
 /** broadcast address for main interface */
 char broadcast_addr[16];
 /** Whether to broadcast frames to host subnet */
@@ -141,6 +143,10 @@ int myservfd;
 struct sockaddr_vm servaddr_vm;
 /** sockaddr_vm for vmci receive */
 struct sockaddr_vm myservaddr_vm;
+/** sockaddr_in for ip send */
+struct sockaddr_in servaddr_in;
+/** sockaddr_in for ip receive */
+struct sockaddr_in myservaddr_in;
 
 struct client *head;
 
@@ -160,7 +166,7 @@ void show_usage(int exval)
 
 	printf("wmasterd - wireless master daemon\n\n");
 
-	printf("Usage: wmasterd [-hVvbrudn] [-D <level>] [-c <file>]\n\n");
+	printf("Usage: wmasterd [-hVvbrudni] [-p <port>] [-D <level>] [-c <file>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
@@ -172,9 +178,11 @@ void show_usage(int exval)
 	printf("  -d, --distance	prepend distance to frames\n");
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -c, --cache		file to save location data\n");
-	printf("  -n, --nogps		disable nnea\n\n");
+	printf("  -n, --nogps		disable nmea\n");
+	printf("  -i, --ip		use ip\n");
+	printf("  -l, --listen-port	listen port\n\n");
 
-	printf("Copyright (C) 2015 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2023 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -301,12 +309,14 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 void update_cache_file_info(struct client *node)
 {
 	char buf[1024];
-	unsigned int cid;
+	unsigned int address;
 	int port;
 	int ret;
 	int line_num;
 	long pos;
 	int matched;
+	struct in_addr ip;
+	char ip_address[16];
 
 	if (node == NULL) {
 		return;
@@ -322,11 +332,15 @@ void update_cache_file_info(struct client *node)
 	matched = 0;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
-		ret = sscanf(buf, "%d %d", &cid, &port);
-
+		if (vsock) {
+			ret = sscanf(buf, "%d %d", &address, &port);
+		} else {
+			ret = sscanf(buf, "%s %d", &ip_address, &port);
+		}
+		// TODO handle ip.. should this not look for 2?
 		if (ret != 1) {
 			print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-		} else if ((cid == node->cid) && (port == node->port)) {
+		} else if ((address == node->address) && (port == node->port)) {
 			matched = 1;
 			break;
 		}
@@ -339,18 +353,37 @@ void update_cache_file_info(struct client *node)
 	if (matched) {
 		fseek(cache_fp, pos, SEEK_SET);
 
-		fprintf(cache_fp,
-			"%-11d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
-			node->cid, node->port, node->room,
-			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude,
-			node->loc.velocity,
-			node->loc.heading,
-			node->loc.pitch,
-			node->name);
+		if (vsock) {
+			fprintf(cache_fp,
+				"%-16d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				node->address, node->port, node->room,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude,
+				node->loc.velocity,
+				node->loc.heading,
+				node->loc.pitch,
+				node->name);
+		} else {
+			ip.s_addr = node->address;
+			fprintf(cache_fp,
+				"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				inet_ntoa(ip), node->port, node->room,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude,
+				node->loc.velocity,
+				node->loc.heading,
+				node->loc.pitch,
+				node->name);
+		}
 		fflush(cache_fp);
 	} else {
-		print_debug(LOG_ERR, "no match for node %d:%d in cache file", node->cid, node->port);
+		if (vsock) {
+			print_debug(LOG_ERR, "no match for node %d:%d in cache file", node->address, node->port);
+		} else {
+			struct in_addr ip;
+			ip.s_addr = node->address;
+			print_debug(LOG_ERR, "no match for node %s:%d in cache file", inet_ntoa(ip), node->port);
+		}
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -362,12 +395,14 @@ void update_cache_file_info(struct client *node)
 void update_cache_file_location(struct client *node)
 {
 	char buf[1024];
-	unsigned int cid;
+	unsigned int address;
 	int port;
 	int ret;
 	int line_num;
 	long pos;
 	int matched;
+	char ip_address[16];
+	struct in_addr ip;
 
 	if (!cache) {
 		return;
@@ -385,11 +420,15 @@ void update_cache_file_location(struct client *node)
 	matched = 0;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
-		ret = sscanf(buf, "%d %d", &cid, &port);
-
+		if (vsock) {
+			ret = sscanf(buf, "%d %d", &address, &port);
+		} else {
+			ret = sscanf(buf, "%s %d", &ip_address, &port);
+		}
+		// TODO parse for ip ... should this not look for 2?
 		if (ret != 1) {
 			print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-		} else if (cid == node->cid) {
+		} else if (address == node->address) {
 			matched = 1;
 			break;
 		}
@@ -402,17 +441,28 @@ void update_cache_file_location(struct client *node)
 	if (matched) {
 		fseek(cache_fp, pos, SEEK_SET);
 
-		fprintf(cache_fp,
-			"%-11d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
-			node->cid, node->port, node->room,
-			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude, node->loc.velocity,
-			node->loc.heading, node->loc.pitch,
-			node->name);
+		if (vsock) {
+			fprintf(cache_fp,
+				"%-16d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				node->address, node->port, node->room,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
+				node->name);
+		} else {
+			ip.s_addr = node->address;
+			fprintf(cache_fp,
+				"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				inet_ntoa(ip), node->port, node->room,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
+				node->name);
+		}
 		fflush(cache_fp);
 	} else {
 		print_debug(LOG_WARNING, "no match for node %d:%d in cache file",
-				node->cid, node->port);
+				node->address, node->port);
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -503,13 +553,13 @@ void update_node_location(struct client *node, struct update_2 *data)
 			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
 				print_debug(LOG_NOTICE, "clearing follow on %d:%d",
-						node->cid, node->port);
+						node->address, node->port);
 				memset(node->loc.follow, 0, FOLLOW_LEN);
 			} else {
 				strncpy(node->loc.follow,
 						data->follow, FOLLOW_LEN - 1);
 				print_debug(LOG_NOTICE, "set follow to %s on %d:%d",
-						node->loc.follow, node->cid, node->port);
+						node->loc.follow, node->address, node->port);
 			}
 		}
 
@@ -525,7 +575,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 			if (!master) {
 				print_debug(LOG_INFO, "no master for follow on %d:%d",
-						node->cid, node->port);
+						node->address, node->port);
 			} else {
 				print_debug(LOG_DEBUG, "node set to follow %s", node->loc.follow);
 				print_debug(LOG_DEBUG, "update master instead");
@@ -586,8 +636,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 		int age = time(NULL) - node->time;
 
 		print_debug(LOG_NOTICE,
-				"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-				node->cid, node->port, node->room, age,
+				"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+				node->address, node->port, node->room, age,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude, node->loc.velocity,
 				node->loc.heading, node->loc.pitch,
@@ -703,8 +753,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	int age = time(NULL) - node->time;
 	print_debug(LOG_NOTICE,
-			"%-11d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-			node->cid, node->port, node->room, age,
+			"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+			node->address, node->port, node->room, age,
 			node->loc.latitude, node->loc.longitude,
 			node->loc.altitude, node->loc.velocity,
 			node->loc.heading, node->loc.pitch,
@@ -996,7 +1046,7 @@ void send_gps_to_nodes(void)
 
 		/* rmc is minumum required nav data */
 		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-		servaddr_vm.svm_cid = curr->cid;
+		servaddr_vm.svm_cid = curr->address;
 		servaddr_vm.svm_port = SEND_PORT_G;
 		servaddr_vm.svm_family = af;
 
@@ -1005,7 +1055,7 @@ void send_gps_to_nodes(void)
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 		if (ret < 0) {
-			print_debug(LOG_NOTICE, "del: %11d room: %36s time: %d name: %s", curr->cid, curr->room, curr->time, curr->name);
+			print_debug(LOG_NOTICE, "del: %16d room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
 
 			if (verbose)
 				sock_error("wmasterd: sendto");
@@ -1015,7 +1065,7 @@ void send_gps_to_nodes(void)
 			 * we remove the node from list
 			 */
 			temp = curr->next;
-			remove_node_vmci(curr->cid, curr->port);
+			remove_node(curr->address, curr->port);
 			curr = temp;
 		} else {
 			print_debug(LOG_DEBUG, "sent %d/%d bytes: %s", ret, bytes, buf);
@@ -1198,7 +1248,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 	if (!fp) {
 		perror("wmasterd: fopen");
 		print_debug(LOG_ERR, "could not open vmx %s", vmx_file);
-		list_nodes_vmci();
+		list_nodes();
 		return 0;
 	}
 
@@ -1233,7 +1283,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	/* find the room id */
 	if (cid == srchost) {
-		print_debug(LOG_DEBUG, "cid %11d is a match for name %s",
+		print_debug(LOG_DEBUG, "cid %16d is a match for name %s",
 				cid, name);
 		/* guestinfo variables not found (they override annotation */
 		if (!room_found) {
@@ -1243,7 +1293,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 				strncpy(room, "0", 2);
 			}
 		}
-		print_debug(LOG_DEBUG, "cid %11d is in room %s", cid, room);
+		print_debug(LOG_DEBUG, "cid %16d is in room %s", cid, room);
 		return 1;
 	}
 
@@ -1260,6 +1310,11 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
  */
 void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 {
+	if (!vsock) {
+		strncpy(room, "0", 2);
+		return;
+	}
+
 	FILE *pipe;
 	char line[1024];
 	char vmx[1024];
@@ -1332,7 +1387,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	if (!room_found) {
 		strncpy(room, "0", 2);
 		if (check_room) {
-			print_debug(LOG_INFO, "info: no room found for %d", srchost);
+			print_debug(LOG_INFO, "no room found for node %d", srchost);
 		}
 	}
 
@@ -1349,21 +1404,22 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 
 /**
  *	@brief Adds a node to the linked list
+ *	@param vosck - whether address is CID or IP, 1 if CID
  *	@param srchost - the CID of the guest node vm
- *  @param srcport - the port of the welled connection
+ *	@param srcport - the port of the welled connection
  *	@param room - the room uuid of the vm
  *	@param vm_name - the name of the vm
  *	@param uuid - the uuid of the vm
  *	@return void
  */
-void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_name, char *uuid, int socket)
+void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, char *uuid, int socket)
 {
-	print_debug(LOG_DEBUG, "add_node_vmci");
+	print_debug(LOG_DEBUG, "add_node");
 
 	struct client *node;
 	struct client *curr;
 	char buf[1024];
-	unsigned int cid;
+	unsigned int address;
 	int port;
 	double lat;
 	double lon;
@@ -1375,12 +1431,16 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 	int matched;
 	char name[NAME_LEN];
 	char room[UUID_LEN];
+	struct in_addr ip;
+	char ip_address[16];
 
+	ip.s_addr = srchost;
 	matched = 0;
+	memset(ip_address, 0, 16);
 
 	/* create new node */
 	node = malloc(sizeof(struct client));
-	node->cid = srchost;
+	node->address = srchost;
 	node->port = srcport;
 	node->next = NULL;
 	node->time = time(NULL);
@@ -1411,13 +1471,23 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 		/* TODO: update the cache file to include alt and pitch */
 
 		while (((fgets(buf, 1024, cache_fp)) != NULL) && (!matched)) {
-			ret = sscanf(buf, "%d %d %s %lf %lf %lf %lf %lf %lf %s",
-				&cid, &port, room, &lat, &lon, &alt, &sog, &cog,
-				&pit, name);
+			if (vsock) {
+				ret = sscanf(buf, "%d %d %s %lf %lf %lf %lf %lf %lf %s",
+						&address, &port, room, &lat, &lon, &alt, &sog, &cog,
+						&pit, name);
+			} else {
+				ret = sscanf(buf, "%s %d %s %lf %lf %lf %lf %lf %lf %s",
+						&ip_address, &port, room, &lat, &lon, &alt, &sog, &cog,
+						&pit, name);
+			}
 			if ((ret != 9) && (ret != 10)) {
 				print_debug(LOG_ERR, "did not parseline for '%s'", buf);
 				printf("only matched %d variables:\n", ret);
-				printf("cid:  %d\n", cid);
+				if (vsock) {
+					printf("addr: %d\n", address);
+				} else {
+					printf("addr: %s\n", ip_address);
+				}
 				printf("port: %d\n", port);
 				printf("room: %s\n", room);
 				printf("lat:  %f\n", lat);
@@ -1428,7 +1498,8 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 				printf("pit:  %f\n", pit);
 				printf("name: %s\n", name);
 				continue;
-			} else if ((cid == srchost) && (port == srcport)) {
+			} else if (((address == srchost) && (port == srcport)) ||
+					(strncmp(ip_address, inet_ntoa(ip), 16) && (port == srcport))) {
 				print_debug(LOG_INFO, "node found in cache file");
 				matched = 1;
 				/* load values from cache file */
@@ -1445,17 +1516,28 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 				break;
 			}
 		}
-
+		// TODO should we track radio id instead and forget anout port?
+		// that could enable us to set follow by radio id instead of vm
 		if (!matched) {
 			print_debug(LOG_DEBUG, "adding node to the cache file");
 			fseek(cache_fp, 0, SEEK_END);
-			fprintf(cache_fp,
-				"%-11d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
-				node->cid, node->port, node->room,
-				node->loc.latitude, node->loc.longitude,
-				node->loc.altitude, node->loc.velocity,
-				node->loc.heading, node->loc.pitch,
-				node->name);
+			if (vsock) {
+				fprintf(cache_fp,
+					"%-16d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
+					node->address, node->port, node->room,
+					node->loc.latitude, node->loc.longitude,
+					node->loc.altitude, node->loc.velocity,
+					node->loc.heading, node->loc.pitch,
+					node->name);
+			} else {
+				fprintf(cache_fp,
+					"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
+					inet_ntoa(ip), node->port, node->room,
+					node->loc.latitude, node->loc.longitude,
+					node->loc.altitude, node->loc.velocity,
+					node->loc.heading, node->loc.pitch,
+					node->name);
+			}
 			fflush(cache_fp);
 		}
 
@@ -1474,9 +1556,13 @@ void add_node_vmci(unsigned int srchost, int srcport, char *vm_room, char *vm_na
 		/* add to node to end of list */
 		curr->next = node;
 	}
-	print_debug(LOG_NOTICE, "add: %11d port: %5d room: %36s time: %d name: %s",
-			srchost, srcport, node->room, node->time, node->name);
-
+	if (vsock) {
+		print_debug(LOG_NOTICE, "add: %16d port: %5d room: %36s time: %d name: %s",
+				srchost, srcport, node->room, node->time, node->name);
+	} else {
+		print_debug(LOG_NOTICE, "add: %16s port: %5d room: %36s time: %d name: %s",
+				inet_ntoa(ip), srcport, node->room, node->time, node->name);
+	}
 }
 
 /**
@@ -1498,16 +1584,30 @@ void clear_inactive_nodes(void)
 	while (curr != NULL) {
 		age = now - curr->time;
 		if (age > 300) {
-			print_debug(LOG_INFO, "node: %11d:%d stale at %d sec",
-					curr->cid, curr->port, age);
+			struct in_addr ip;
+			if (vsock) {
+				print_debug(LOG_INFO, "node: %16d:%d stale at %d sec",
+						curr->address, curr->port, age);
+			} else {
+				struct in_addr ip;
+				ip.s_addr = curr->address;
+				print_debug(LOG_INFO, "node: %16s:%d stale at %d sec",
+						inet_ntoa(ip), curr->port, age);
+			}
 			/* delete node */
 			if (prev == NULL) {
 				head = curr->next;
 			} else {
 				prev->next = curr->next;
 			}
-			print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
-					curr->cid, curr->port, curr->room, curr->time, curr->name);
+			if (vsock) {
+				print_debug(LOG_NOTICE, "del: %16d:%d room: %36s time: %d name: %s",
+						curr->address, curr->port, curr->room, curr->time, curr->name);
+			} else {
+				ip.s_addr = curr->address;
+				print_debug(LOG_NOTICE, "del: %16s:%d room: %36s time: %d name: %s",
+						inet_ntoa(ip), curr->port, curr->room, curr->time, curr->name);
+			}
 			free(curr);
 			print_debug(LOG_DEBUG, "removed stale node");
 			return;
@@ -1522,14 +1622,14 @@ void clear_inactive_nodes(void)
  *	@param srchost - CID of the guest
  *	@return returns the node
  */
-struct client *search_node_vmci(unsigned int srchost, int srcport)
+struct client *search_node(unsigned int srchost, int srcport)
 {
 	struct client *curr;
 
 	curr = head;
 
 	while (curr != NULL) {
-		if ((curr->cid == srchost) && (curr->port == srcport)) {
+		if ((curr->address == srchost) && (curr->port == srcport)) {
 			curr->time = time(NULL);
 			return curr;
 		}
@@ -1564,7 +1664,7 @@ struct client *search_node_name(char *name)
 
 void print_node(struct client *node)
 {
-	printf("%d\n", node->cid);
+	printf("%d\n", node->address);
 	printf("%d\n", node->port);
 	printf("%s\n", node->name);
 	printf("%s\n", node->room);
@@ -1581,11 +1681,13 @@ void print_node(struct client *node)
  *	@brief Lists the nodes in the linked list
  *	@return void
  */
-void list_nodes_vmci(void)
+void list_nodes(void)
 {
 	struct client *curr;
 	FILE *fp;
 	int age;
+	struct in_addr ip;
+	char *header = "%-16s %-5s %-5s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
@@ -1596,7 +1698,6 @@ void list_nodes_vmci(void)
 	}
 
 
-	char *header = "%-11s %-5s %-5s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
 	if (fp) {
 		fprintf(fp, header, "node:", "port:", "sd:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
 	} else {
@@ -1606,25 +1707,51 @@ void list_nodes_vmci(void)
 	while (curr != NULL) {
 		age = time(NULL) - curr->time;
 		if (fp) {
-			fprintf(fp, "%-11d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-				curr->cid, curr->port, curr->socket,
-				curr->room, age,
-				curr->loc.latitude, curr->loc.longitude,
-				curr->loc.altitude,
-				curr->loc.velocity,
-				curr->loc.heading,
-				curr->loc.pitch,
-				curr->name);
+			if (vsock) {
+				fprintf(fp, "%-16d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+					curr->address, curr->port, curr->socket,
+					curr->room, age,
+					curr->loc.latitude, curr->loc.longitude,
+					curr->loc.altitude,
+					curr->loc.velocity,
+					curr->loc.heading,
+					curr->loc.pitch,
+					curr->name);
+			} else {
+				ip.s_addr = curr->address;
+				fprintf(fp, "%-16s %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+					inet_ntoa(ip), curr->port, curr->socket,
+					curr->room, age,
+					curr->loc.latitude, curr->loc.longitude,
+					curr->loc.altitude,
+					curr->loc.velocity,
+					curr->loc.heading,
+					curr->loc.pitch,
+					curr->name);
+			}
 		} else {
-		printf("%-11d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-			curr->cid, curr->port, curr->socket,
-			curr->room, age,
-			curr->loc.latitude, curr->loc.longitude,
-			curr->loc.altitude,
-			curr->loc.velocity,
-			curr->loc.heading,
-			curr->loc.pitch,
-			curr->name);
+			if (vsock) {
+				printf("%-16d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+					curr->address, curr->port, curr->socket,
+					curr->room, age,
+					curr->loc.latitude, curr->loc.longitude,
+					curr->loc.altitude,
+					curr->loc.velocity,
+					curr->loc.heading,
+					curr->loc.pitch,
+					curr->name);
+			} else {
+				ip.s_addr = curr->address;
+					printf("%-16s %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+					inet_ntoa(ip), curr->port, curr->socket,
+					curr->room, age,
+					curr->loc.latitude, curr->loc.longitude,
+					curr->loc.altitude,
+					curr->loc.velocity,
+					curr->loc.heading,
+					curr->loc.pitch,
+					curr->name);
+			}
 		}
 		curr = curr->next;
 	}
@@ -1640,14 +1767,21 @@ void list_nodes_vmci(void)
  *	@param dstport - port of the guest connection
  *	@return void
  */
-void remove_node_vmci(unsigned int dsthost, int dstport)
+void remove_node(unsigned int dsthost, int dstport)
 {
-	print_debug(LOG_DEBUG, "remove_node_vmci %d %d", dsthost, dstport); 
+	if (vsock) {
+		print_debug(LOG_DEBUG, "remove_node %d:%d", dsthost, dstport); 
+	} else {
+		struct in_addr ip;
+		ip.s_addr = dsthost;
+		print_debug(LOG_DEBUG, "remove_node %s:%d", inet_ntoa(ip), dstport);
+	}
 	struct client *curr;
 	struct client *prev;
 	char name[NAME_LEN];
 	char room[UUID_LEN];
 	int time;
+	struct in_addr ip;
 
 	time = 0;
 	memset(name, 0, NAME_LEN);
@@ -1656,14 +1790,14 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
 	prev = NULL;
 
 	/* traverse while not null and no match */
-	while (curr != NULL && !((curr->cid == dsthost) && (curr->port == dstport))) {
+	while (curr != NULL && !((curr->address == dsthost) && (curr->port == dstport))) {
 		prev = curr;
 		curr = curr->next;
 	}
 
 	/* exit if we hit the end of the list */
 	if (curr == NULL) {
-		print_debug(LOG_INFO, "node not found: %11d:%d",
+		print_debug(LOG_INFO, "node not found: %16d:%d",
 				dsthost, dstport);
 		return;
 	}
@@ -1680,8 +1814,14 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
 	}
 	free(curr);
 
-	print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
-		dsthost, dstport, room, time, name);
+	if (vsock) {
+		print_debug(LOG_NOTICE, "del: %16d:%d room: %36s time: %d name: %s",
+				dsthost, dstport, room, time, name);
+	} else {
+		ip.s_addr = dsthost;
+		print_debug(LOG_NOTICE, "del: %16s:%d room: %36s time: %d name: %s",
+				inet_ntoa(ip), dstport, room, time, name);
+	}
 }
 
 /**
@@ -1689,9 +1829,9 @@ void remove_node_vmci(unsigned int dsthost, int dstport)
  *	@param socket - file descriptor for the socket
  *	@return void
  */
-void remove_node_vmci_socket(int socket)
+void remove_node_by_socket(int socket)
 {
-	print_debug(LOG_DEBUG, "remove_node_vmci_socket %d", socket);
+	print_debug(LOG_DEBUG, "remove_node_by_socket %d", socket);
 	struct client *curr;
 	struct client *prev;
 	char name[NAME_LEN];
@@ -1699,6 +1839,7 @@ void remove_node_vmci_socket(int socket)
 	unsigned int dsthost;
 	unsigned int dstport;
 	int time;
+	struct in_addr ip;
 
 	time = 0;
 	memset(name, 0, NAME_LEN);
@@ -1722,7 +1863,7 @@ void remove_node_vmci_socket(int socket)
 	strncpy(room, curr->room, strnlen(curr->room, UUID_LEN - 1));
 	strncpy(name, curr->name, strnlen(curr->name, NAME_LEN - 1));
 	time = curr->time;
-	dsthost = curr->cid;
+	dsthost = curr->address;
 	dstport = curr->port;
 
 	/* delete node */
@@ -1733,8 +1874,14 @@ void remove_node_vmci_socket(int socket)
 	}
 	free(curr);
 
-	print_debug(LOG_NOTICE, "del: %11d:%d room: %36s time: %d name: %s",
-		dsthost, dstport, room, time, name);
+	if (vsock) {
+		print_debug(LOG_NOTICE, "del: %16d:%d room: %36s time: %d name: %s",
+				dsthost, dstport, room, time, name);
+	} else {
+		ip.s_addr = dsthost;
+		print_debug(LOG_NOTICE, "del: %16s:%d room: %36s time: %d name: %s",
+				inet_ntoa(ip), dstport, room, time, name);
+	}
 }
 
 /**
@@ -1849,7 +1996,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
  *	@param node - the struct client node that sent the data
  *	@return void - assumes success
  */
-void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
+void send_to_nodes(char *buf, int bytes, struct client *node)
 {
 	struct client *curr;
 	struct client *temp;
@@ -1871,8 +2018,8 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 		/* skip node if room differs */
 		if (check_room && (strncmp(
 				curr->room, node->room, UUID_LEN - 1) != 0)) {
-			print_debug(LOG_INFO, "skipped: %11d:%d room: %36s\n",
-					curr->cid, curr->port, curr->room);
+			print_debug(LOG_INFO, "skipped: %16d:%d room: %36s\n",
+					curr->address, curr->port, curr->room);
 			curr = curr->next;
 			continue;
 		} else if (age > 300) {
@@ -1881,7 +2028,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 
 			/* remove stale node */
 			print_debug(LOG_DEBUG, "stale node found\n");
-			remove_node_vmci(curr->cid, curr->port);
+			remove_node(curr->address, curr->port);
 
 			/* go to next node */
 			curr = temp;
@@ -1890,7 +2037,7 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 
 		// TODO use existing sockets
 		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-		servaddr_vm.svm_cid = curr->cid;
+		servaddr_vm.svm_cid = curr->address;
 		servaddr_vm.svm_port = curr->port;
 		servaddr_vm.svm_family = af;
 
@@ -1930,18 +2077,18 @@ void send_to_nodes_vmci(char *buf, int bytes, struct client *node)
 			if (verbose) {
 				sock_error("wmasterd: sendto");
 				print_debug(LOG_ERR, "name %s cid %d port %d bytes %d\n",
-						curr->name, curr->cid, curr->port, bytes + 12);
+						curr->name, curr->address, curr->port, bytes + 12);
 				print_node(curr);
 			}
 			/* since powering off a VM results in this error
 			 * we should remove the node from list
 			 */
 			temp = curr->next;
-			remove_node_vmci(curr->cid, curr->port);
+			remove_node(curr->address, curr->port);
 			curr = temp;
 		} else {
-			print_debug(LOG_DEBUG, "sent %d bytes to node: %11d:%d room: %s",
-					bytes, curr->cid, curr->port, curr->room);
+			print_debug(LOG_DEBUG, "sent %d bytes to node: %16d:%d room: %s",
+					bytes, curr->address, curr->port, curr->room);
 
 			curr = curr->next;
 		}
@@ -2074,7 +2221,7 @@ void *recv_from_hosts(void *arg)
 		/* lock list and send */
 		pthread_mutex_lock(&list_mutex);
 		// TODO update this function to use existing sockets
-		//send_to_nodes_vmci(buffer, bytes, &node);
+		//send_to_nodes(buffer, bytes, &node);
 		pthread_mutex_unlock(&list_mutex);
 
 		/* cleanup */
@@ -2086,53 +2233,75 @@ void *recv_from_hosts(void *arg)
 #endif
 
 
-int process_connection(struct sockaddr_vm cliaddr_vmci, int addrlen, int socket)
+int process_connection(unsigned int src_addr, unsigned int src_port, int addrlen, int socket)
 {
 
-	unsigned int src_cid;
-	unsigned int src_port;
 	char room[UUID_LEN];
 	char old_room[UUID_LEN];
 	char name[NAME_LEN];
 	char uuid[UUID_LEN];
 	struct client *node;
 
-	src_cid = cliaddr_vmci.svm_cid;
-	src_port = cliaddr_vmci.svm_port;
-
-	print_debug(LOG_NOTICE, "adding new node for src host: %d port: %d",
-			src_cid, src_port);
-
+	if (vsock) {
+		print_debug(LOG_NOTICE, "adding new node for src host: %d port: %d",
+				src_addr, src_port);
+	} else {
+		struct in_addr ip;
+		ip.s_addr = src_addr;
+		print_debug(LOG_NOTICE, "adding new node for src host: %s port: %d",
+				inet_ntoa(ip), src_port);
+	}
 	memset(room, 0, UUID_LEN);
 	memset(old_room, 0, UUID_LEN);
 	memset(name, 0, NAME_LEN);
 	memset(uuid, 0, UUID_LEN);
 
-	node = search_node_vmci(src_cid, src_port);
+	node = search_node(src_addr, src_port);
 	if (!node) {
-		print_debug(LOG_DEBUG, "node %11d:%d does not exist", src_cid, src_port);
-		get_vm_info(src_cid, room, name, uuid);
-		add_node_vmci(src_cid, src_port, room, name, uuid, socket);
+		if (vsock) {
+			print_debug(LOG_DEBUG, "node %16d:%d does not exist", src_addr, src_port);
+		} else {
+			struct in_addr ip;
+			ip.s_addr = src_addr;
+			print_debug(LOG_DEBUG, "node %s:%d does not exist", inet_ntoa(ip), src_port);
+		}
+		get_vm_info(src_addr, room, name, uuid);
+		print_debug(LOG_DEBUG, "get_vm_info returned");
+		add_node(src_addr, src_port, room, name, uuid, socket);
 		/* make sure we added the node */
-		node = search_node_vmci(src_cid, src_port);
+		node = search_node(src_addr, src_port);
 		if (!node) {
-			print_debug(LOG_ERR, "adding node failed %11d:%d",
-					src_cid, src_port);
+			if (vsock) {
+				print_debug(LOG_ERR, "adding node failed %16d:%d",
+						src_addr, src_port);
+			} else {
+				struct in_addr ip;
+				ip.s_addr = src_addr;
+				print_debug(LOG_ERR, "adding node failed %s:%d",
+						inet_ntoa(ip), src_port);
+			}
 			return -1;
 		}
 	} else if (update_room && check_room) {
 		print_debug(LOG_DEBUG, "checking vmx for room update\n");
 		/* check for room change if room enforced */
 		strncpy(old_room, node->room, UUID_LEN - 1);
-		get_vm_info(src_cid, room, name, uuid);
+		get_vm_info(src_addr, room, name, uuid);
 		if (strncmp(old_room, room, UUID_LEN  - 1) != 0) {
-			remove_node_vmci(src_cid, src_port);
-			add_node_vmci(src_cid, src_port, room, name, uuid, socket);
+			remove_node(src_addr, src_port);
+			add_node(src_addr, src_port, room, name, uuid, socket);
 			/* make sure we updated the node */
-			node = search_node_vmci(src_cid, src_port);
+			node = search_node(src_addr, src_port);
 			if (!node) {
-				print_debug(LOG_ERR, "updating node failed %11d:%d\n",
-						src_cid, src_port);
+				if (vsock) {
+					print_debug(LOG_ERR, "updating node failed %16d:%d\n",
+							src_addr, src_port);
+				} else {
+					struct in_addr ip;
+					ip.s_addr = src_addr;
+					print_debug(LOG_ERR, "updating node failed %16d:%d\n",
+							inet_ntoa(ip), src_port);
+				}
 				return -1;
 			}
 		}
@@ -2149,10 +2318,10 @@ int main(int argc, char *argv[])
 {
 	int opt;
 	int cid;
+	int port;
 	struct timeval tv;
 	int ret;
 	int long_index;
-	fd_set fds;
 	int max_clients;
 	int gps;
 #ifndef _WIN32
@@ -2177,21 +2346,26 @@ int main(int argc, char *argv[])
 	send_pashr = 0;
 	max_clients = 1000;
 	gps = 1;
+	vsock = 1;
+	port = WMASTERD_PORT;
 
 	static struct option long_options[] = {
 		{"help",		no_argument, 0, 'h'},
 		{"version",		no_argument, 0, 'V'},
 		{"verbose",		no_argument, 0, 'v'},
+		{"broadcast",		no_argument, 0, 'b'},
 		{"no-check-room",	no_argument, 0, 'r'},
 		{"update-room",		no_argument, 0, 'u'},
+		{"nogps",	       no_argument, 0, 'n'},
 		{"distance",		no_argument, 0, 'd'},
 		{"pashr",		no_argument, 0, 'p'},
+		{"ip",		  no_argument, 0, 'i'},
+		{"listen-port",	 required_argument, 0, 'l'},
 		{"debug",		required_argument, 0, 'D'},
-		{"cache",		required_argument, 0, 'c'},
-		{"nogps",		required_argument, 0, 'n'}
+		{"cache-file",		required_argument, 0, 'c'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvbrundpD:c:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvbrundpil:D:c:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2220,6 +2394,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'D':
 			loglevel = atoi(optarg);
+			if ((loglevel < 0) || (loglevel > 7)) {
+				show_usage(EXIT_FAILURE);
+			}
 			printf("wmasterd: syslog level set to %d\n", loglevel);
 			break;
 		case 'p':
@@ -2240,6 +2417,15 @@ int main(int argc, char *argv[])
 				show_usage(EXIT_FAILURE);
 			}
 			break;
+		case 'i':
+			vsock = 0;
+			break;
+		case 'l':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
+			break;
 		case '?':
 			printf("wmasterd: Error - No such option: `%c'\n\n",
 				optopt);
@@ -2251,65 +2437,69 @@ int main(int argc, char *argv[])
 	if (optind < argc) {
 		show_usage(EXIT_FAILURE);
 	}
-	#ifdef _WIN32
+#ifdef _WIN32
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
 	if (broadcast) {
 		printf("broadcast not implemented on windows\n");
 		show_usage(EXIT_FAILURE);
 	}
+	if (vsock) {
 	/* TODO: use vm_sockets and ioctl to get cid */
-	af = VMCISock_GetAFValue();
-	cid = VMCISock_GetLocalCID();
+		af = VMCISock_GetAFValue();
+		cid = VMCISock_GetLocalCID();
+	} else {
+		af = AF_INET;
+	}
 
-	#else
+#else
 	uname(&uts_buf);
 	if (strncmp(uts_buf.sysname, "VMkernel", 8) == 0) {
 		esx = 1;
 	}
 
-	#ifndef _WIN32
 	if (loglevel >= 0) {
 		openlog("wmasterd", LOG_PID, LOG_USER);
 	}
-	#endif
 
-	print_debug(LOG_NOTICE, "Starting, version %s\n", VERSION_STR);
 
-	/* TODO: add check for other hypervisors */
+	if (vsock) {
+		/* TODO: add check for other hypervisors */
+		vsock_dev_fd = open("/dev/vsock", 0);
+		if (vsock_dev_fd < 0) {
+			sock_error("wmasterd: open");
+			print_debug(LOG_ERR, "could not open /dev/vsock\n");
+			_exit(EXIT_FAILURE);
+		}
+		if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
+			perror("wmasterd: ioctl IOCTL_VM_SOCKETS_GET_LOCAL_CID");
+		}
+		if (ioctl(vsock_dev_fd, IOCTL_VMCI_SOCKETS_GET_AF_VALUE, &af) < 0) {
+			perror("wmasterd: ioctl IOCTL_VMCI_SOCKETS_GET_AF_VALUE");
+			af = -1;
+		}
 
-	vsock_dev_fd = open("/dev/vsock", 0);
-	if (vsock_dev_fd < 0) {
-		sock_error("wmasterd: open");
-		print_debug(LOG_ERR, "could not open /dev/vsock\n");
-		_exit(EXIT_FAILURE);
+		if (af == -1) {
+			/* take a guess */
+			if (esx)
+				af = 53;
+			else
+				af = 40;
+		}
+	} else {
+		af = AF_INET;
 	}
-	if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
-		perror("wmasterd: ioctl IOCTL_VM_SOCKETS_GET_LOCAL_CID");
-	}
-	if (ioctl(vsock_dev_fd, IOCTL_VMCI_SOCKETS_GET_AF_VALUE, &af) < 0) {
-		perror("wmasterd: ioctl IOCTL_VMCI_SOCKETS_GET_AF_VALUE");
-		af = -1;
-	}
-
-	if (af == -1) {
-		/* take a guess */
-		if (esx)
-			af = 53;
-		else
-			af = 40;
-	}
-	#endif
-	printf("wmasterd: CID: %u\n", cid);
+#endif
+	print_debug(LOG_NOTICE, "Starting, version %s", VERSION_STR);
 
 	/*Handle kill signals*/
 	running = 1;
-	#ifndef _WIN32
+#ifndef _WIN32
 	signal(SIGINT, (void *)signal_handler);
 	signal(SIGTERM, (void *)signal_handler);
 	signal(SIGQUIT, (void *)signal_handler);
 	signal(SIGUSR1, (void *)usr1_handler);
 	signal(SIGHUP, SIG_IGN);
-	#endif
+#endif
 
 #ifndef _WIN32
 	char udp_int[8];
@@ -2335,11 +2525,10 @@ int main(int argc, char *argv[])
 		strncpy(broadcast_addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr), 15);
 		print_debug(LOG_NOTICE, "relay to broadcast address: %s\n", broadcast_addr);
 	}
+	/* TODO: add a udp socket for nmea stream/coordinate input */
 #endif
 
-	/* TODO: add a udp socket for nmea stream/coordinate input */
-
-	/* create vmci server socket */
+	/* create server socket */
 	myservfd = socket(af, SOCK_STREAM, 0);
 	if (myservfd < 0) {
 		sock_error("wmasterd: socket");
@@ -2349,18 +2538,27 @@ int main(int argc, char *argv[])
 	opt = 1;
 	if (setsockopt(myservfd, SOL_SOCKET, SO_REUSEADDR,
 			(char *)&opt, sizeof(opt)) < 0) {
-        sock_error("wmasterd: setsockopt");
+	sock_error("wmasterd: setsockopt");
 		print_debug(LOG_ERR, "cannot set socket options");
 		return EXIT_FAILURE;
 	}
 
 	/* we can initalize this struct because it never changes */
-	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
-	myservaddr_vm.svm_cid = cid;
-	myservaddr_vm.svm_port = WMASTERD_PORT;
-	myservaddr_vm.svm_family = af;
-	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
-			sizeof(struct sockaddr));
+	if (vsock) {
+		memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
+		myservaddr_vm.svm_cid = cid;
+		myservaddr_vm.svm_port = port;
+		myservaddr_vm.svm_family = af;
+		ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
+				sizeof(struct sockaddr));
+	} else {
+		memset(&myservaddr_in, 0, sizeof(myservaddr_in));
+		myservaddr_in.sin_addr.s_addr = INADDR_ANY;
+		myservaddr_in.sin_port = port;
+		myservaddr_in.sin_family = af; /* AF_INET */
+		ret = bind(myservfd, (struct sockaddr *)&myservaddr_in,
+				sizeof(struct sockaddr));
+	}
 
 	if (ret < 0) {
 		sock_error("wmasterd: myservaddr");
@@ -2375,8 +2573,13 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	printf("wmasterd: listening on vsock %u:%d\n",
-		myservaddr_vm.svm_cid, myservaddr_vm.svm_port);
+	if (vsock) {
+		print_debug(LOG_NOTICE, "listening on vsock %u:%d",
+				myservaddr_vm.svm_cid, myservaddr_vm.svm_port);
+	} else {
+		print_debug(LOG_NOTICE, "listening on IP %s:%d",
+				inet_ntoa(myservaddr_in.sin_addr), myservaddr_in.sin_port);
+	}
 
 	pthread_mutex_init(&list_mutex, NULL);
 	pthread_mutex_init(&file_mutex, NULL);
@@ -2414,7 +2617,6 @@ int main(int argc, char *argv[])
 
 	// for reading data from clients
 	fd_set readfds;
-	int nreadfds;
 	int client_socket[max_clients];
 	int i;
 	int max_sd;
@@ -2431,7 +2633,7 @@ int main(int argc, char *argv[])
 		if (print_status) {
 			pthread_mutex_lock(&list_mutex);
 			print_debug(LOG_INFO, "status requested");
-			list_nodes_vmci();
+			list_nodes();
 			pthread_mutex_unlock(&list_mutex);
 			print_status = 0;
 		}
@@ -2442,19 +2644,19 @@ int main(int argc, char *argv[])
 
 		/* add child sockets to set */
 		int sd;
-        	for (i = 0; i < max_clients; i++) {
-                	/* socket descriptor */
-            		sd = client_socket[i];
+		for (i = 0; i < max_clients; i++) {
+			/* socket descriptor */
+	    		sd = client_socket[i];
 
-            		// if valid socket descriptor then add to read list
+	    		// if valid socket descriptor then add to read list
 			// if it is set, just re-add it
-            		if (sd > 0) {
+	    		if (sd > 0) {
 				//print_debug(LOG_DEBUG, "adding socket %d to fd set", sd);
-                		FD_SET(sd, &readfds);
+				FD_SET(sd, &readfds);
 			}
-            		/* highest file descriptor number, need it for the select function */
-            		if (sd > max_sd) {
-                		max_sd = sd;
+	    		/* highest file descriptor number, need it for the select function */
+	    		if (sd > max_sd) {
+				max_sd = sd;
 			}
 		}
 
@@ -2468,105 +2670,160 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
+		socklen_t client_len;
+		int client_fd;
 		struct sockaddr_vm client_vm;
-		int client_len = sizeof(client_vm);
+		struct sockaddr_in client_in;
+		void *client_info;
+		unsigned int src_addr;
+		unsigned int src_port;
 
+		if (vsock) {
+			client_len = sizeof(client_vm);
+			client_info = &client_vm;
+		} else {
+			client_len = sizeof(client_in);
+			client_info = &client_in;
+		}
 		if (FD_ISSET(myservfd, &readfds)) {
 			print_debug(LOG_DEBUG, "connection attempt");
 
-			int vsock_client_fd;
-
 			/* clear/reset client address information */
-			memset(&client_vm, 0, sizeof(client_vm));
-			vsock_client_fd = -1;
+			memset(client_info, 0, client_len);
 
-			/* accept vsock connection */
-			vsock_client_fd = accept(myservfd,
-					(struct sockaddr *)&client_vm, &client_len);
+			client_fd = -1;
 
-			if (vsock_client_fd < 0) {
-				print_debug(LOG_ERR, "vsock accept failed\n");
-				sock_error("vtunnel: accept");
+			/* accept connection */
+			client_fd = accept(myservfd, (struct sockaddr *)&client_info, &client_len);
+
+			if (client_fd < 0) {
+				print_debug(LOG_ERR, "accept failed\n");
+				sock_error("wmasterd: accept");
 				continue;
 			}
-			print_debug(LOG_INFO, "vsock connection accepted from %d:%d",
-					client_vm.svm_cid, client_vm.svm_port);
+			if (vsock) {
+				ret = getpeername(client_fd, (struct sockaddr *)&client_vm,
+						(socklen_t *)&client_len);
+			} else {
+				ret = getpeername(client_fd, (struct sockaddr *)&client_in,
+						(socklen_t *)&client_len);
+			}
+
+			if (vsock) {
+				src_addr = client_vm.svm_cid;
+				src_port = client_vm.svm_port;
+				print_debug(LOG_INFO, "vsock connection accepted from %d:%d",
+						src_addr, src_port);
+			} else {
+				src_addr = client_in.sin_addr.s_addr;
+				src_port = client_in.sin_port;
+				struct in_addr ip;
+				ip.s_addr = client_in.sin_addr.s_addr;
+				print_debug(LOG_INFO, "ip connection accepted from %s:%d",
+						inet_ntoa(client_in.sin_addr), client_in.sin_port);
+			}
 			/* add new socket to array of sockets */
 			for (i = 0; i < max_clients; i++) {
 				/* if position is empty */
 				if (client_socket[i] == 0) {
-					client_socket[i] = vsock_client_fd;
+					client_socket[i] = client_fd;
 					print_debug(LOG_INFO, "adding %d to list of sockets at %d",
-							vsock_client_fd, i);
+							client_fd, i);
 					break;
 				}
 			}
 
-
 			/* process new connection (add to node linked list) */
-			ret = process_connection(client_vm, client_len, vsock_client_fd);
+			ret = process_connection(src_addr, src_port, client_len, client_fd);
 			if (ret < 0) {
-				print_debug(LOG_ERR, "vsock connection processing failed");
+				print_debug(LOG_ERR, "connection processing failed");
 			}
 		}
 
-        	/* an IO operation on some other socket */
-        	for (i = 0; i < max_clients; i++) {
-                	sd = client_socket[i];
+		/* an IO operation on some other socket */
+		for (i = 0; i < max_clients; i++) {
+			sd = client_socket[i];
 
-                	if (FD_ISSET(sd, &readfds)) {
+			if (FD_ISSET(sd, &readfds)) {
 				print_debug(LOG_DEBUG, "got event on socket %d at %d", sd, i);
-				unsigned int src_cid;
-				int src_port;
-				memset(&client_vm, 0, sizeof(client_vm));
-				ret = getpeername(sd, (struct sockaddr *)&client_vm,
-                    				(socklen_t *)&client_len);
+				memset(&client_info, 0, sizeof(client_info));
+				if (vsock) {
+					ret = getpeername(sd, (struct sockaddr *)&client_vm,
+		    					(socklen_t *)&client_len);
+				} else {
+					ret = getpeername(sd, (struct sockaddr *)&client_in,
+							(socklen_t *)&client_len);
+				}
 				if (ret < 0) {
 					print_debug(LOG_INFO, "client disconnected on socket %d", sd);
 					close(sd);
 					client_socket[i] = 0;
-					remove_node_vmci_socket(sd);
+					remove_node_by_socket(sd);
 				} else {
 					/* process data on connection */
-					src_cid = client_vm.svm_cid;
-					src_port = client_vm.svm_port;
-					print_debug(LOG_DEBUG, "reading from %d:%d on socket %d" ,
-							src_cid, src_port, sd);
+					if (vsock) {
+						src_addr = client_vm.svm_cid;
+						src_port = client_vm.svm_port;
+						print_debug(LOG_DEBUG, "reading from %d:%d on socket %d" ,
+								src_addr, src_port, sd);
+					} else {
+						src_addr = client_in.sin_addr.s_addr;
+						src_port = client_in.sin_port;
+						print_debug(LOG_DEBUG, "reading from %s:%d on socket %d" ,
+								inet_ntoa(client_in.sin_addr), src_port, sd);
+					}
 					char buf[VMCI_BUFF_LEN];
 					int bytes;
-					char room[UUID_LEN];
 					struct client *node;
 
 					bytes = recv(sd, (char *)buf, VMCI_BUFF_LEN, 0);
 					if (bytes < 0) {
 						sock_error("wmasterd: recv");
-						printf("bytes %d\n", bytes);
-						print_debug(LOG_ERR, "host %d:%d disconnected in recv error on sock %d" ,
-								src_cid, src_port, sd);
+						if (vsock) {
+							print_debug(LOG_ERR, "host %u:%d disconnected in recv error on sock %d",
+									src_addr, src_port, sd);
+						} else {
+							print_debug(LOG_ERR, "host %s:%d disconnected in recv error on sock %d",
+									inet_ntoa(client_in.sin_addr), src_port, sd);
+						}
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at i", sd, i);
 						client_socket[i] = 0;
-						remove_node_vmci(src_cid, src_port);
+						remove_node(src_addr, src_port);
 						continue;
 					} else if (bytes == 0) {
-						print_debug(LOG_INFO, "host %d:%d disconnected on sock %d" ,
-								src_cid, src_port, sd);
+						if (vsock) {
+							print_debug(LOG_INFO, "host %u:%d disconnected on sock %d",
+									src_addr, src_port, sd);
+						} else {
+							print_debug(LOG_INFO, "host %s:%d disconnected on sock %d",
+									inet_ntoa(client_in.sin_addr), src_port, sd);
+						}
 						/* close the socket and mark for reuse */
 						close(sd);
 						print_debug(LOG_INFO, "removing socket %d from sd set at %d", sd, i);
 						client_socket[i] = 0;
-						remove_node_vmci(src_cid, src_port);
+						remove_node(src_addr, src_port);
 						continue;
 					}
 
-					node = search_node_vmci(src_cid, src_port);
-					print_debug(LOG_DEBUG, "received %d bytes from %11d:%d on socket %d",
-							bytes, src_cid, src_port, sd);
-
+					node = search_node(src_addr, src_port);
+					if (vsock) {
+						print_debug(LOG_DEBUG, "received %d bytes from %16d:%d on socket %d",
+								bytes, src_addr, src_port, sd);
+					} else {
+						print_debug(LOG_DEBUG, "received %d bytes from %s:%d on socket %d",
+								bytes, inet_ntoa(client_in.sin_addr), src_port, sd);
+					}
 
 					if ((bytes == 2) || (bytes == 5)) {
-						print_debug(LOG_INFO, "node %11d:%d has sent status",
-								src_cid, src_port);
+						if (vsock) {
+							print_debug(LOG_INFO, "node %16d:%d has sent status",
+									src_addr, src_port);
+						} else {
+							print_debug(LOG_INFO, "node %s:%d has sent status",
+								inet_ntoa(client_in.sin_addr), src_port);
+						}
 						continue;
 					}
 
@@ -2583,43 +2840,25 @@ int main(int argc, char *argv[])
 						*	from the old into the new buf
 						*/
 
-						print_debug(LOG_INFO, "gelled update received from %11d:%d",
-								src_cid, src_port);
+						print_debug(LOG_INFO, "gelled update received from %16d:%d",
+								src_addr, src_port);
 
 						struct update_2 data_2;
 
 						/*
-						* update_1 is size 1100
 						* update_2 is size 1136
 						*/
 
-						if (bytes == (sizeof(struct update) + 7)) {
-							print_debug(LOG_INFO, "update version 1 from %11d",
-									src_cid, src_port);
-							struct update data_1;
-							/* pull loc from the buffer */
-							memcpy(&data_1, buf + 7, sizeof(struct update));
-							/* convert update to update_2 */
-							strncpy(data_2.version, "1", 8);
-							strncpy(data_2.follow, data_1.follow, FOLLOW_LEN - 1);
-							data_2.latitude = data_1.latitude;
-							data_2.longitude = data_1.longitude;
-							data_2.altitude = data_1.altitude;
-							data_2.velocity = data_1.velocity;
-							data_2.heading = data_1.heading;
-							snprintf(data_2.room, UUID_LEN, "%d", data_1.room_id);
-							strncpy(data_2.name, data_1.name, NAME_LEN - 1);
-							data_2.cid = data_1.cid;
-						} else if (bytes == (sizeof(struct update_2) + 7)) {
-							print_debug(LOG_INFO, "update version 2 from %11d:%d",
-									src_cid, src_port);
+						if (bytes == (sizeof(struct update_2) + 7)) {
+							print_debug(LOG_INFO, "update version 2 from %16d:%d",
+									src_addr, src_port);
 							print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
 									sizeof(struct update_2), sizeof(data_2));
 							/* pull loc from the buffer */
 							memcpy(&data_2, buf + 7, sizeof(struct update_2));
 						} else {
-							print_debug(LOG_ERR, "update version unknown from %11d:%d",
-									src_cid, src_port);
+							print_debug(LOG_ERR, "update version unknown from %16d:%d",
+									src_addr, src_port);
 							continue;
 						}
 						update_node_info(node, &data_2);
@@ -2640,14 +2879,14 @@ int main(int argc, char *argv[])
 								/* close the socket and mark for reuse */
 								close(sd);
 								client_socket[i] = 0;
-								remove_node_vmci_socket(sd);
+								remove_node_by_socket(sd);
 								continue;
 							} else if (bytes == 0) {
 								print_debug(LOG_INFO, "client disconnected on socket %d", sd);
 								/* close the socket and mark for reuse */
 								close(sd);
 								client_socket[i] = 0;
-								remove_node_vmci_socket(sd);
+								remove_node_by_socket(sd);
 								continue;
 							}
 							print_debug(LOG_INFO, "sent %d bytes to socket %d", bytes, sd);
