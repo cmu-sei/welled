@@ -241,25 +241,25 @@ gelled-ctrl-x86_64-w64-mingw32:
 # default is 64 bit
 gelled:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl
+	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
-	cp $(OUTDIR)/gelled ../dist/x86_64-Linux/
+	cp $(OUTDIR)/$@ ../dist/x86_64-Linux/
 
 gelled-i386-Linux:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl -m32
+	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl -m32
 	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/gelled ../dist/i386-Linux/
+	cp $(OUTDIR)/$@ ../dist/i386-Linux/
 
 gelled-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
-	cp $(OUTDIR)/gelled-x86_64-w64-mingw32 ../dist/x86_64-w64-mingw32/
+	cp $(OUTDIR)/$@ ../dist/x86_64-w64-mingw32/
 
 gelled-i686-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/i686-w64-mingw32/sys-root/mingw/lib/libws2_32.a
 	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/gelled-i686-w64-mingw32 ../dist/i686-w64-mingw32/
+	cp $(OUTDIR)/$@ ../dist/i686-w64-mingw32/
 
 # default is 64 bit
 wmasterd:
@@ -277,9 +277,9 @@ wmasterd-esx:
 
 wmasterd-i386-Linux:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -lm -lpthread -m32
+	$(CC) -o $(OUTDIR)/$@ wmasterd.c $(CFLAGS) -lm -lpthread -m32
 	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/wmasterd ../dist/i386-Linux/
+	cp $(OUTDIR)/$@ ../dist/i386-Linux/
 
 wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
