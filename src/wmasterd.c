@@ -345,7 +345,7 @@ void update_cache_file_info(struct client *node)
 		if (vsock) {
 			ret = sscanf(buf, "%d %d", &address, &port);
 		} else {
-			ret = sscanf(buf, "%s %d", &ip_address, &port);
+			ret = sscanf(buf, "%s %d", ip_address, &port);
 		}
 		// TODO handle ip.. should this not look for 2?
 		if (ret != 1) {
@@ -433,7 +433,7 @@ void update_cache_file_location(struct client *node)
 		if (vsock) {
 			ret = sscanf(buf, "%d %d", &address, &port);
 		} else {
-			ret = sscanf(buf, "%s %d", &ip_address, &port);
+			ret = sscanf(buf, "%s %d", ip_address, &port);
 		}
 		// TODO parse for ip ... should this not look for 2?
 		if (ret != 1) {
@@ -1020,8 +1020,7 @@ void *read_console(void *arg)
 	while (running) {
 		/* read console */
 		char ch;
-		scanf("%c", &ch);
-		if (ch == 'p') {
+		if (scanf("%c", &ch) && (ch == 'p')) {
 			print_status = 1;
 		}
 	}
@@ -1487,7 +1486,7 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 						&pit, name);
 			} else {
 				ret = sscanf(buf, "%s %d %s %lf %lf %lf %lf %lf %lf %s",
-						&ip_address, &port, room, &lat, &lon, &alt, &sog, &cog,
+						ip_address, &port, room, &lat, &lon, &alt, &sog, &cog,
 						&pit, name);
 			}
 			if ((ret != 9) && (ret != 10)) {
@@ -2727,8 +2726,6 @@ int main(int argc, char *argv[])
 			} else {
 				src_addr = client_in.sin_addr.s_addr;
 				src_port = client_in.sin_port;
-				struct in_addr ip;
-				ip.s_addr = client_in.sin_addr.s_addr;
 				print_debug(LOG_INFO, "ip connection accepted from %s:%d",
 						inet_ntoa(client_in.sin_addr), client_in.sin_port);
 			}
