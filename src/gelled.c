@@ -200,11 +200,42 @@ void print_debug(int level, char *format, ...)
 	va_start(args, format);
 	vsprintf(buffer, format, args);
 	va_end(args);
-	#ifndef _WIN32
-	syslog(level, buffer);
-	#else
-	printf("gelled: %s\n", buffer);
-	#endif
+
+	char *lev;
+	switch(level) {
+		case 0:
+		lev = "emerg";
+		case 1:
+		lev = "alert";
+		case 2:
+		lev = "crit";
+		case 3:
+		lev = "error";
+		case 4:
+		lev = "err";
+		case 5:
+		lev = "notice";
+		case 6:
+		lev = "info";
+		case 7:
+		lev= "debug";
+	}
+
+#ifndef _WIN32
+	syslog(level, "%s: %s", lev, buffer);
+#else
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
+
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - gelled: %s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("gelled: %s: %s\n", lev, buffer);
+	}
+#endif
 }
 
 /**

@@ -202,6 +202,7 @@ void print_debug(int level, char *format, ...)
 	if (level > loglevel) {
 		return;
 	}
+
 	va_list args;
 	va_start(args, format);
 	vsprintf(buffer, format, args);
@@ -227,12 +228,21 @@ void print_debug(int level, char *format, ...)
 		lev= "debug";
 	}
 
-	#ifndef _WIN32
+#ifndef _WIN32
 	syslog(level, "%s: %s", lev, buffer);
-	#else
+#else
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
 
-	printf("wmasterd: %s: %s\n", lev, buffer);
-	#endif
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - wmasterd: %s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("wmasterd: %s: %s\n", lev, buffer);
+	}
+#endif
 }
 
 /**
