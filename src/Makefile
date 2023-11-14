@@ -54,9 +54,7 @@ gelled-ctrl-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 gelled-ctrl-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-ctrl-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 rpm-x86_64-Linux: ARCH=x86_64
-rpm-i386-Linux: ARCH=i386
 debian-x86_64-Linux: ARCH=amd64
-debian-i386-Linux: ARCH=i386
 
 # on kali, install:
 # libnl-genl-3-dev libnl-3-dev libnl-genl-3 libnl-route-3-dev
@@ -112,9 +110,7 @@ LDFLAGS += -lpthread
 # does not include openwrt
 all: esx linux windows vyos offline-bundle
 
-linux: x86_64-Linux #i386-Linux
-
-i386-Linux: welled-i386-Linux gelled-i386-Linux gelled-ctrl-i386-Linux wmasterd-i386-Linux
+linux: x86_64-Linux
 
 x86_64-Linux: welled gelled gelled-ctrl wmasterd
 
@@ -152,14 +148,6 @@ welled-x86_64-Linux-vyos:
 	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
 	test -d ../dist/x86_64-Linux-vyos || mkdir ../dist/x86_64-Linux-vyos/
 	cp $(OUTDIR)/welled ../dist/x86_64-Linux-vyos/
-
-welled-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) -m32 $(CFLAGS)
-	$(CC) nodes.c -c $(LDFLAGS) -m32 $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm -m32
-	test -d ../dist/i386-Linux/ || mkdir ../dist/i386-Linux/
-	cp $(OUTDIR)/welled ../dist/i386-Linux/
 
 welled-x86_64-openwrt-linux-uclibc:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
@@ -206,12 +194,6 @@ gelled-ctrl-x86_64-Linux-vyos:
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled-ctrl ../dist/x86_64-Linux/
 
-gelled-ctrl-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -lglib-2.0 -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/gelled-ctrl ../dist/i386-Linux/
-
 gelled-ctrl-x86_64-openwrt-linux-uclibc:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
@@ -245,12 +227,6 @@ gelled:
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/$@ ../dist/x86_64-Linux/
 
-gelled-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/$@ ../dist/i386-Linux/
-
 gelled-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
@@ -264,22 +240,16 @@ gelled-i686-w64-mingw32:
 # default is 64 bit
 wmasterd:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -lm -lpthread
+	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -lm -lpthread -Wno-stringop-truncation -Wno-format-truncation
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/wmasterd ../dist/x86_64-Linux/
 
 # differs because of older libc version
 wmasterd-esx:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -D_ESX -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -lm -lpthread
+	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -D_ESX -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -lm -lpthread -Wno-stringop-truncation -Wno-format-truncation
 	test -d ../dist/esx || mkdir ../dist/esx
 	cp $(OUTDIR)/wmasterd ../dist/esx/
-
-wmasterd-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/$@ wmasterd.c $(CFLAGS) -lm -lpthread -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/$@ ../dist/i386-Linux/
 
 wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
@@ -420,10 +390,6 @@ debian-x86_64-Linux: x86_64-Linux debian
 	mv welled-$(VERSION).deb ../dist/x86_64-Linux/
 	rm -rf welled-$(VERSION) welled-$(VERSION).deb
 
-debian-i386-Linux: i386-Linux debian
-	mv welled-$(VERSION).deb ../dist/i386-Linux/
-	rm -rf welled-$(VERSION) welled-$(VERSION).deb
-
 debian-vyos:
 	mkdir -p welled-$(VERSION)-vyos/DEBIAN/
 	mkdir -p welled-$(VERSION)-vyos/etc/
@@ -479,10 +445,6 @@ rpm:
 
 rpm-x86_64-Linux: x86_64-Linux rpm
 	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc30.x86_64.rpm ../dist/x86_64-Linux/
-	rm -rf ../rpmbuild
-
-rpm-i386-Linux: i386-Linux rpm
-	cp ../rpmbuild/RPMS/i386/welled-$(VERSION)-1.fc30.i386.rpm ../dist/i386-Linux/
 	rm -rf ../rpmbuild
 
 
