@@ -313,7 +313,7 @@ options:
 		printf("CID: %d\n", cid);
 		printf("af: %d\n", afVMCI);
 	}
-	data.cid = cid;
+	data.address = cid;
 
 	/* setup vmci client socket */
 	sockfd = socket(afVMCI, SOCK_DGRAM, 0);
