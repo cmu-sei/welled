@@ -1588,19 +1588,18 @@ void *process_master(void *arg)
 	servaddr_in.sin_family = af;
 
 connect:
-	do {
-		/* setup socket */
-		if (vsock) {
-			sockfd = socket(af, SOCK_STREAM, 0);
-		} else {
-			sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
-		}
-		/* we can initalize this struct because it never changes */
-		if (sockfd < 0) {
-			perror("socket");
-			free_mem();
-			_exit(EXIT_FAILURE);
-		}
+	/* setup socket */
+	if (vsock) {
+		sockfd = socket(af, SOCK_STREAM, 0);
+	} else {
+		sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+	}
+	if (sockfd < 0) {
+		perror("socket");
+		free_mem();
+		_exit(EXIT_FAILURE);
+	}
+        do {
 		if (vsock) {
 			ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
 		} else {

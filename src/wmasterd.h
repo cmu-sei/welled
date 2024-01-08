@@ -134,7 +134,7 @@ void remove_node(unsigned int, int);
 void remove_node_bu_socket(int);
 void clear_inactive_nodes(void);
 void list_nodes(void);
-void send_to_nodes(char *, int, struct client *);
+void relay_to_nodes(char *, int, struct client *);
 void send_to_hosts(char *, int, char *);
 void send_gps_to_nodes(void);
 void *produce_nmea(void *);

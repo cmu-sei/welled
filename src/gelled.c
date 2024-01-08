@@ -74,11 +74,9 @@
 	#define VMADDR_CID_HOST 2
 #endif
 /** Port used to send data to wmasterd */
-#define SEND_PORT_G		1111
-/** Port used to receive NMEA sentences from wmasterd */
-#define RECV_PORT_G		3333
+#define WMASTERD_PORT		1111
 /** Buffer size for VMCI datagrams */
-#define VMCI_BUFF_LEN		4096
+#define WMASTERD_BUFF_LEN		4096
 /** Buffer size for UDP datagrams */
 #define BUFF_LEN		4096
 /** Zoom level to use when requesting tiles from OSM server */
@@ -94,29 +92,35 @@ typedef struct {
 	png_bytep *row_pointers;
 } png_data;
 
+/** address family for mockfd */
+int af;
+/** wmasterd port */
+int port;
+/** for wmasterd IP */
+struct in_addr wmasterd_address;
+/** whether to use vsock */
+int vsock;
 /** Whether to print verbose output */
 int verbose;
 /** Whether to break loop after signal */
 int running;
-/** FD for vmci send */
+/** FD for wmasterd connection */
 int sockfd;
-/** FD for vmci receive */
-int myservfd;
-/** sockaddr_vm for vmci send */
-struct sockaddr_vm servaddr_vmci;
-/** sockaddr_vm for vmci receive */
-struct sockaddr_vm myservaddr_vmci;
+/** sockaddr_vm for vmci */
+struct sockaddr_vm servaddr_vm;
+/** sockaddr_vm for ip */
+struct sockaddr_in servaddr_in;
 /** server address for OSM tiles */
 char *mapserver;
 /** device path for write */
 char *dev_path;
 /** for tracking our VMCI CID and sending in velocty change */
 int cid;
-/** whether our gps device needs to stay at sea */
-int sea;
+/** whether our gps device needs to stay at water */
+int water;
 /** whether our gps device needs to stay on land */
 int land;
-/** whether or not we want to check land or sea position */
+/** whether or not we want to check land or water position */
 int check_position;
 /** current latitude */
 double lat;
@@ -164,7 +168,7 @@ void show_usage(int exval)
 
 	printf("gelled - gelled, GPS emulation link layer exchange daemon \n\n");
 
-	printf("Usage: gelled [-hVv] [-d<device>] [-m<url>] [-s|-l]\n\n");
+	printf("Usage: gelled [-hVv] [-d<device>] [-m<url>] [-w|-l]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
@@ -172,7 +176,7 @@ void show_usage(int exval)
 	printf("  -v, --verbose		verbose output\n");
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
-	printf("  -s, --sea		gps should only travel on water\n");
+	printf("  -w, --water		gps should only travel on water\n");
 	printf("  -d, --device		use this device as GPS\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
@@ -393,19 +397,19 @@ int read_png(png_data *pixels, char *filename)
 
 
 /**
- *	@brief determines whether the specified color is on land or sea
- *	this is used to stop a ship when crossing from sea to land or from
- *	land to sea.
+ *	@brief determines whether the specified color is on land or water
+ *	this is used to stop a ship when crossing from water to land or from
+ *	land to water.
  *	@param red - the red component of the color
  *	@param green - the green component of the color
  *	@param blue - the blue component of the color
- *	@return - 1 if at sea, 0 if on land, -1 on unknown/error
+ *	@return - 1 if at water, 0 if on land, -1 on unknown/error
  */
-int land_or_sea_check_color(int red, int green, int blue)
+int land_or_water_check_color(int red, int green, int blue)
 {
 
 	if (red == 181 && green == 208 && blue == 208) {
-		/* sea, blue */
+		/* water, blue */
 		print_debug(LOG_DEBUG, "This tile is Sea\n");
 		return 1;
 	} else if (red == 181 && green == 253 && blue == 253) {
@@ -462,13 +466,13 @@ int land_or_sea_check_color(int red, int green, int blue)
 
 
 /**
- *	@brief checks whether position is sea or land
- *	calls download_osm_tile and land_or_sea_check_color
+ *	@brief checks whether position is water or land
+ *	calls download_osm_tile and land_or_water_check_color
  *	@param lat - double decimal degrees
  *	@param lon - double decimal degrees
- *	@return - 1 if at sea, 0 if on land, -1 on unknown/error
+ *	@return - 1 if at water, 0 if on land, -1 on unknown/error
  */
-int check_if_sea(double lat, double lon)
+int check_if_water(double lat, double lon)
 {
 
 	double x, y;
@@ -496,7 +500,7 @@ int check_if_sea(double lat, double lon)
 
 	/* Check pixel color */
 	px = &((pixels.row_pointers[ypixel])[xpixel * 4]);
-	ret = land_or_sea_check_color(px[0], px[1], px[2]);
+	ret = land_or_water_check_color(px[0], px[1], px[2]);
 
 	for (i = 0; i < pixels.height; i++)
 		free(pixels.row_pointers[i]);
@@ -556,7 +560,7 @@ void process_rmc(char *line)
 /**
  *	@brief stop movement if we crashed
  *      sends velocity change of 0 to wmasterd
- *      to be used when we move from land to sea or sea to land
+ *      to be used when we move from land to water or water to land
  *      this is basically gelled-ctrl
  *	TODO: adjust altitude if we have a plane crash
  */
@@ -601,13 +605,12 @@ void send_stop(void)
  *      @brief parse vmci data from wmastered.
  *      @return void
  */
-void recv_from_master(void)
+int recv_from_master(void)
 {
-	char buf[VMCI_BUFF_LEN];
-	struct sockaddr_vm cliaddr_vmci;
-	struct sockaddr_in cliaddr;
+	char buf[WMASTERD_BUFF_LEN];
+	struct sockaddr_vm cliaddr_vm;
+	struct sockaddr_in cliaddr_in;
 	socklen_t addrlen;
-	struct timeval tv; /* timer to break us out of the recvfrom function */
 	int bytes;
 	char *srchost;
 	FILE *fp;
@@ -615,44 +618,32 @@ void recv_from_master(void)
 	struct stat buf_stat;
 
 	addrlen = sizeof(struct sockaddr);
-	memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
-	memset(&cliaddr, 0, sizeof(cliaddr));
-	memset(buf, 0, VMCI_BUFF_LEN);
-
-	tv.tv_sec = 10;
-	tv.tv_usec = 0;
-
-	#ifdef _WIN32
-	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &tv,
-			sizeof(tv)) < 0) {
-		printf("setsockopt: %ld\n", WSAGetLastError());
-	}
-	#else
-	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
-			 sizeof(tv)) < 0) {
-		perror("setsockopt");
-		print_debug(LOG_ERR, "Error: could not set server socket timeout");
-	}
-	#endif
+	memset(&cliaddr_vm, 0, sizeof(cliaddr_vm));
+	memset(&cliaddr_in, 0, sizeof(cliaddr_in));
+	memset(buf, 0, WMASTERD_BUFF_LEN);
 
 	/* receive packets from wmasterd */
-	bytes = recvfrom(myservfd, (char *)buf, VMCI_BUFF_LEN, 0,
-			(struct sockaddr *)&cliaddr_vmci, &addrlen);
+	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
 
 	if (bytes < 0) {
-		if (verbose) {
-			#ifdef _WIN32
-			printf("setsockopt: %ld\n", WSAGetLastError());
-			#else
-			perror("recvfrom");
-			print_debug(LOG_ERR, "Error: recvfrom failed");
-			#endif
+		if (errno == EWOULDBLOCK) {
+			/* nonblocking socket triggers this */
+			goto out;
 		}
-		goto out;
+#ifdef _WIN32
+		printf("setsockopt: %ld\n", WSAGetLastError());
+#else
+		perror("recv");
+#endif
+		print_debug(LOG_ERR, "host disconnected in recv error");
+		return -1;
+	} else if (bytes == 0) {
+		print_debug(LOG_INFO, "host disconnected");
+		return -1;
 	}
 
-	print_debug(LOG_INFO, "received %d bytes packet from src host: %u\n",
-			bytes, cliaddr_vmci.svm_cid);
+	print_debug(LOG_INFO, "received %d bytes packet from wmasterd",
+			bytes);
 
 	print_debug(LOG_DEBUG, "Received NMEA: '%s'\n", buf);
 
@@ -707,20 +698,20 @@ void recv_from_master(void)
 	#endif
 
 	#ifndef _WIN32
-	/* check if we should stop moving based on land or sea */
+	/* check if we should stop moving based on land or water */
 	if (check_position && strncmp(buf, "$GPRMC", 6) == 0) {
 		process_rmc(buf);
 		if (velocity != 0) {
 			if (verbose) {
 				printf("velocity: %f\n", velocity);
 			}
-			ret = check_if_sea(lat, lon);
+			ret = check_if_water(lat, lon);
 			if (ret < 0) {
 				print_debug(LOG_ERR,
-						"Error: check_if_sea failed\n");
+						"Error: check_if_water failed\n");
 			} else if (land && ret) {
 				send_stop();
-			} else if (sea && !ret) {
+			} else if (water && !ret) {
 				send_stop();
 			}
 		}
@@ -730,6 +721,7 @@ void recv_from_master(void)
 out:
 	if (verbose)
 		printf("#################### master recv done #####################\n");
+	return 0;
 }
 
 /***
@@ -756,13 +748,11 @@ void *send_status(void *arg)
 
 	while (running) {
 
-		bytes = sendto(sockfd, msg, msg_len, 0,
-				(struct sockaddr *)&servaddr_vmci,
-				sizeof(struct sockaddr));
+		bytes = send(sockfd, msg, msg_len, 0);
 
 		/* this should be 8 bytes */
 		if (bytes != msg_len) {
-			perror("sendto");
+			perror("send");
 			print_debug(LOG_ERR, "Up notification failed");
 		} else {
 			print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
@@ -775,12 +765,47 @@ void *send_status(void *arg)
 	return ((void *)0);
 }
 
+void wmasterd_connect(int sockfd)
+{
+	int ret;
+
+	/* setup socket */
+        if (vsock) {
+                sockfd = socket(af, SOCK_STREAM, 0);
+        } else {
+                sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+        }
+        if (sockfd < 0) {
+                perror("socket");
+                _exit(EXIT_FAILURE);
+        }
+
+	do {
+		if (vsock) {
+			ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+		} else {
+			ret = connect(sockfd, (struct sockaddr *)&servaddr_in, sizeof(struct sockaddr));
+		}
+		if (ret < 0) {
+			if (vsock) {
+				print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+						servaddr_vm.svm_cid, servaddr_vm.svm_port);
+			} else {
+				print_debug(LOG_ERR, "could not connect to wmasterd on %s:%d",
+						inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+			}
+			sleep(1);
+		} else {
+			print_debug(LOG_INFO,  "connected to wmasterd");
+		}
+	} while(ret < 0);
+}
+
 /**
  *      @brief main function
  */
 int main(int argc, char *argv[])
 {
-	int af;
 	int opt;
 	int ret;
 	int long_index;
@@ -800,24 +825,29 @@ int main(int argc, char *argv[])
 	dev_path = "/dev/ttyUSB0";
 	#endif
 	mapserver = "127.0.0.1";
-	sea = 0;
+	water = 0;
 	land = 0;
 	err = 0;
 	ioctl_fd = 0;
 	loglevel = -1;
+	vsock = 1;
+	port = WMASTERD_PORT;
 
 	static struct option long_options[] = {
 		{"help",	no_argument, 0, 'h'},
 		{"version",     no_argument, 0, 'V'},
 		{"verbose",     no_argument, 0, 'v'},
-		{"debug",       required_argument, 0, 'D'},
-		{"device",	required_argument, 0, 'd'},
 		{"land",	no_argument, 0, 'l'},
-		{"sea",		no_argument, 0, 's'},
+		{"water",	no_argument, 0, 'w'},
+		//{"cid",	no_argument, 0, 'c'},
+		{"server",	required_argument, 0, 's'},
+		{"port",	required_argument, 0, 'p'},
 		{"mapserver",	required_argument, 0, 'm'},
+		{"debug",	required_argument, 0, 'D'},
+		{"device",	required_argument, 0, 'd'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvlsm:d:D:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvlws:p:m:D:d:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -839,14 +869,32 @@ int main(int argc, char *argv[])
 			loglevel = atoi(optarg);
 			printf("gelled: syslog level set to %d\n", loglevel);
 			break;
-		case 's':
-			sea = 1;
+		case 'w':
+			water = 1;
 			break;
 		case 'l':
 			land = 1;
 			break;
 		case 'm':
 			mapserver = optarg;
+			break;
+/*
+		case 'c':
+			wmasterd_cid = atoi(optarg);
+			break;
+*/
+		case 's':
+			vsock = 0;
+			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
+				printf("gelled: invalid ip address\n");
+				show_usage(EXIT_FAILURE);
+			}
+			break;
+		case 'p':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
 			break;
 		case '?':
 			printf("Error - No such option: `%c'\n\n",
@@ -864,6 +912,7 @@ int main(int argc, char *argv[])
 		openlog("gelled", LOG_PID, LOG_USER);
 	#endif
 
+	if (vsock) {
 	#ifdef _WIN32
 	/* old code for vmci_sockets.h */
 	af = VMCISock_GetAFValue();
@@ -887,11 +936,17 @@ int main(int argc, char *argv[])
 		printf("CID: %u\n", cid);
 	}
 	#endif
+	} else {
+		af = AF_INET;
+	}
 
-	if (sea || land)
+	if (water || land) {
 		check_position = 1;
-	else
+	} else {
 		check_position = 0;
+	}
+
+	// TODO maybe track netns
 
 	/* Handle signals */
 	signal(SIGINT, (void *)signal_handler);
@@ -903,52 +958,31 @@ int main(int argc, char *argv[])
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
 	#endif
 
-	/* setup vmci client socket */
-	sockfd = socket(af, SOCK_DGRAM, 0);
-	/* we can initalize this struct because it never changes */
-	memset(&servaddr_vmci, 0, sizeof(servaddr_vmci));
-	servaddr_vmci.svm_cid = VMADDR_CID_HOST;
-	servaddr_vmci.svm_port = SEND_PORT_G;
-	servaddr_vmci.svm_family = af;
-	if (sockfd < 0) {
-		perror("socket");
-		print_debug(LOG_ERR, "failed to bind client socket");
-		_exit(EXIT_FAILURE);
-	}
+	/* setup wmasterd details */
+	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+	servaddr_vm.svm_cid = VMADDR_CID_HOST;
+	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_family = af;
 
-	/* create vmci server socket */
-	myservfd = socket(af, SOCK_DGRAM, 0);
+	memset(&servaddr_in, 0, sizeof(servaddr_in));
+	servaddr_in.sin_addr = wmasterd_address;
+	servaddr_in.sin_port = port;
+	servaddr_in.sin_family = af;
 
-	/* we can initalize this struct because it never changes */
-	memset(&myservaddr_vmci, 0, sizeof(myservaddr_vmci));
-	myservaddr_vmci.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vmci.svm_port = RECV_PORT_G;
-	myservaddr_vmci.svm_family = af;
-	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vmci,
-		sizeof(struct sockaddr));
-
-	if (ret < 0) {
-		perror("bind");
-		close(sockfd);
-		print_debug(LOG_ERR, "failed to bind server socket");
-		_exit(EXIT_FAILURE);
-	}
+	wmasterd_connect(sockfd);
 
 	/* send up notification to wmasterd */
 	msg_len = 2;
 	msg = malloc(msg_len);
 	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "UP");
+	memcpy(msg, "UP", msg_len);
 
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vmci,
-			sizeof(struct sockaddr));
-
+	bytes = send(sockfd, msg, msg_len, 0);
 	free(msg);
 
 	/* this should be 2 bytes */
 	if (bytes != msg_len) {
-		perror("sendto");
+		perror("send");
 		print_debug(LOG_ERR, "Up notification failed");
 	} else {
 		print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
@@ -967,7 +1001,10 @@ int main(int argc, char *argv[])
 
 	/* We wait for incoming msg*/
 	while (running) {
-		recv_from_master();
+		if (recv_from_master() == -1) {
+			close(sockfd);
+			wmasterd_connect(sockfd);
+		}
 	}
 
 	/* code below here executes after signal */
@@ -981,7 +1018,6 @@ int main(int argc, char *argv[])
 	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
 
 	close(sockfd);
-	close(myservfd);
 
 	print_debug(LOG_DEBUG, "Sockets have been closed\n");
 

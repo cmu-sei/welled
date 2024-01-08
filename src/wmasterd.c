@@ -87,13 +87,11 @@ char broadcast_addr[16];
 /** Whether to broadcast frames to host subnet */
 int broadcast;
 /** Port used to receive frames from welled or gelled */
-#define WMASTERD_PORT       1111
-/** Port used to send frames to welled */
-#define SEND_PORT       2222
+#define WMASTERD_PORT_WELLED       1111
 /** Port used to send frames to gelled */
-#define SEND_PORT_G     3333
-/** Buffer size for VMCI datagrams */
-#define VMCI_BUFF_LEN   10000
+#define WMASTERD_PORT_GELLED	2222
+/** Buffer size */
+#define CONN_BUFF_LEN   10000
 /** Buffer size for UDP datagrams */
 #define BUFF_LEN	10000
 /** Buffer size for VMX config file */
@@ -136,16 +134,16 @@ FILE *cache_fp;
 int loglevel;
 
 int af;
-int sockfd;
+int welled_sockfd;
 /* vmci server socket */
 int myservfd;
-/** sockaddr_vm for vmci send */
+/** sockaddr_vm for vmci clients */
 struct sockaddr_vm servaddr_vm;
-/** sockaddr_vm for vmci receive */
+/** sockaddr_vm for vmci server */
 struct sockaddr_vm myservaddr_vm;
-/** sockaddr_in for ip send */
+/** sockaddr_in for ip clients */
 struct sockaddr_in servaddr_in;
-/** sockaddr_in for ip receive */
+/** sockaddr_in for ip server */
 struct sockaddr_in myservaddr_in;
 
 struct client *head;
@@ -1056,11 +1054,11 @@ void send_gps_to_nodes(void)
 		/* rmc is minumum required nav data */
 		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 		servaddr_vm.svm_cid = curr->address;
-		servaddr_vm.svm_port = SEND_PORT_G;
+		servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
 		servaddr_vm.svm_family = af;
 
 		/* send frame to this welled client */
-		ret = sendto(sockfd, (char *)buf, bytes, 0,
+		ret = sendto(welled_sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 		if (ret < 0) {
@@ -1082,7 +1080,7 @@ void send_gps_to_nodes(void)
 			/* gga provides altitude */
 			buf = curr->loc.nmea_gga;
 			bytes = strlen(buf);
-			sendto(sockfd, (char *)buf, bytes, 0,
+			sendto(welled_sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 
@@ -1090,7 +1088,7 @@ void send_gps_to_nodes(void)
 				/* send the PASHR message with pitch */
 				buf = curr->loc.nmea_pashr;
 				bytes = strlen(buf);
-				sendto(sockfd, (char *)buf, bytes, 0,
+				sendto(welled_sockfd, (char *)buf, bytes, 0,
 					(struct sockaddr *)&servaddr_vm,
 					sizeof(struct sockaddr));
 			}
@@ -2005,7 +2003,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
  *	@param node - the struct client node that sent the data
  *	@return void - assumes success
  */
-void send_to_nodes(char *buf, int bytes, struct client *node)
+void relay_to_nodes(char *buf, int bytes, struct client *node)
 {
 	struct client *curr;
 	struct client *temp;
@@ -2071,14 +2069,14 @@ void send_to_nodes(char *buf, int bytes, struct client *node)
 			memcpy(send_buf, buf, bytes);
 			snprintf(temp, sizeof(temp), "welled:%04d:", distance);
 			memcpy(send_buf + bytes, temp, 12);
-			bytes_sent = sendto(sockfd, (char *)send_buf,
+			bytes_sent = sendto(welled_sockfd, (char *)send_buf,
 				bytes + 12, 0,
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 			free(send_buf);
 		} else {
 			/* send frame to this welled client */
-			bytes_sent = sendto(sockfd, (char *)buf, bytes, 0,
+			bytes_sent = sendto(welled_sockfd, (char *)buf, bytes, 0,
 				(struct sockaddr *)&servaddr_vm,
 				sizeof(struct sockaddr));
 		}
@@ -2230,7 +2228,7 @@ void *recv_from_hosts(void *arg)
 		/* lock list and send */
 		pthread_mutex_lock(&list_mutex);
 		// TODO update this function to use existing sockets
-		//send_to_nodes(buffer, bytes, &node);
+		//relay_to_nodes(buffer, bytes, &node);
 		pthread_mutex_unlock(&list_mutex);
 
 		/* cleanup */
@@ -2356,7 +2354,7 @@ int main(int argc, char *argv[])
 	max_clients = 1000;
 	gps = 1;
 	vsock = 1;
-	port = WMASTERD_PORT;
+	port = WMASTERD_PORT_WELLED;
 
 	static struct option long_options[] = {
 		{"help",		no_argument, 0, 'h'},
@@ -2779,11 +2777,11 @@ int main(int argc, char *argv[])
 						print_debug(LOG_DEBUG, "reading from %s:%d on socket %d" ,
 								inet_ntoa(client_in.sin_addr), src_port, sd);
 					}
-					char buf[VMCI_BUFF_LEN];
+					char buf[CONN_BUFF_LEN];
 					int bytes;
 					struct client *node;
 
-					bytes = recv(sd, (char *)buf, VMCI_BUFF_LEN, 0);
+					bytes = recv(sd, (char *)buf, CONN_BUFF_LEN, 0);
 					if (bytes < 0) {
 						sock_error("wmasterd: recv");
 						if (vsock) {
