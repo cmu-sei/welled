@@ -177,7 +177,9 @@ void show_usage(int exval)
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -w, --water		gps should only travel on water\n");
-	printf("  -d, --device		use this device as GPS\n");
+	printf("  -d, --device		serial device to write NMEA GPS data\n");
+	printf("  -s, --server          wmasterd server address\n");
+	printf("  -p, --port	        wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
 	printf("Copyright (C) 2016 Carnegie Mellon University\n\n");
@@ -227,7 +229,7 @@ void print_debug(int level, char *format, ...)
 
 #ifndef _WIN32
 	syslog(level, "%s: %s", lev, buffer);
-#else
+#endif
 	time_t now;
 	struct tm *mytime;
 	char timebuff[128];
@@ -239,7 +241,6 @@ void print_debug(int level, char *format, ...)
 	} else {
 		printf("gelled: %s: %s\n", lev, buffer);
 	}
-#endif
 }
 
 /**
@@ -608,6 +609,7 @@ void send_stop(void)
 int recv_from_master(void)
 {
 	char buf[WMASTERD_BUFF_LEN];
+        struct timeval tv; /* timer to break out of recvfrom function */
 	struct sockaddr_vm cliaddr_vm;
 	struct sockaddr_in cliaddr_in;
 	socklen_t addrlen;
@@ -621,6 +623,14 @@ int recv_from_master(void)
 	memset(&cliaddr_vm, 0, sizeof(cliaddr_vm));
 	memset(&cliaddr_in, 0, sizeof(cliaddr_in));
 	memset(buf, 0, WMASTERD_BUFF_LEN);
+
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+
+        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
+                        sizeof(tv)) < 0) {
+                perror("setsockopt");
+        }
 
 	/* receive packets from wmasterd */
 	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
@@ -765,7 +775,7 @@ void *send_status(void *arg)
 	return ((void *)0);
 }
 
-void wmasterd_connect(int sockfd)
+void wmasterd_connect()
 {
 	int ret;
 
@@ -798,7 +808,7 @@ void wmasterd_connect(int sockfd)
 		} else {
 			print_debug(LOG_INFO,  "connected to wmasterd");
 		}
-	} while(ret < 0);
+	} while (running && (ret < 0));
 }
 
 /**

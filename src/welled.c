@@ -1617,7 +1617,7 @@ connect:
 		} else {
 			print_debug(LOG_INFO,  "connected to wmasterd");
 		}
-	} while(running && (ret < 0));
+	} while (running && (ret < 0));
 
 	/* send up notification to wmasterd */
 	msg_len = 2;
