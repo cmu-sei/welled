@@ -49,6 +49,7 @@
   #ifndef _ANDROID
     #include <glib.h>
   #endif
+  #include <syslog.h>
   #include <sys/types.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
@@ -62,12 +63,22 @@
 #include "vmci_sockets.h"
 
 /** Port used to send frames to wmasterd */
-#define SEND_PORT		1111
+#define WMASTERD_PORT		1111
 /** Address used to send frames to wmasterd */
-#define SERVER_CID		2
+#ifndef VMADDR_CID_HOST
+	#define VMADDR_CID_HOST	 2
+#endif
 /** Buffer size for VMCI datagrams */
 #define VMCI_BUFF_LEN		4096
 
+/** address family for sockfd */
+int af;
+/** wmasterd port */
+int port;
+/** for wmasterd IP */
+struct in_addr wmasterd_address;
+/** whether to use vsock */
+int vsock;
 /** Whether to print verbose output */
 int verbose;
 /** Whether to break loop after signal */
@@ -75,7 +86,12 @@ int running;
 /** FD for vmci send */
 int sockfd;
 /** sockaddr_vm for vmci send */
-struct sockaddr_vm servaddr_vmci;
+struct sockaddr_vm servaddr_vm;
+/** sockaddr_vm for ip */
+struct sockaddr_in servaddr_in;
+
+/** for the desired log level */
+int loglevel;
 
 /**
  *	@brief Prints the CLI help
@@ -103,6 +119,8 @@ void show_usage(int exval)
 	printf("  -p, --pitch      new pitch angle in degrees\n");
 	printf("  -f, --follow     follow gps feed of this vm ip/name\n");
 	printf("  -n, --name       name for this this machine\n");
+	printf("  -s, --server	   wmasterd server address\n");
+	printf("  -p, --port	   wmasterd server port\n");
 
 	printf("\n");
 	printf("Copyright (C) 2021 Carnegie Mellon University\n\n");
@@ -113,6 +131,57 @@ void show_usage(int exval)
 	printf("Report bugs to <arwelle@cert.org>\n\n");
 
 	_exit(exval);
+}
+
+void print_debug(int level, char *format, ...)
+{
+	char buffer[1024];
+
+	if (loglevel < 0)
+		return;
+
+	if (level > loglevel)
+		return;
+
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
+	va_end(args);
+
+	char *lev;
+	switch(level) {
+		case 0:
+		lev = "emerg";
+		case 1:
+		lev = "alert";
+		case 2:
+		lev = "crit";
+		case 3:
+		lev = "error";
+		case 4:
+		lev = "err";
+		case 5:
+		lev = "notice";
+		case 6:
+		lev = "info";
+		case 7:
+		lev= "debug";
+	}
+
+#ifndef _WIN32
+	syslog(level, "%s: %s", lev, buffer);
+#endif
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
+
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - gelled: %s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("gelled: %s: %s\n", lev, buffer);
+	}
 }
 
 /**
@@ -177,6 +246,8 @@ int main(int argc, char *argv[])
 	int msg_len;
 	int bytes;
 	struct update_2 data;
+	int err;
+	int ioctl_fd;
 	#ifndef ANDROID
 	GKeyFile* gkf;
 	gchar *key_value;
@@ -190,11 +261,19 @@ int main(int argc, char *argv[])
 		{"altitude",	required_argument, 0, 'a'},
 		{"knots",       required_argument, 0, 'k'},
 		{"degrees",     required_argument, 0, 'd'},
-		{"pitch",       required_argument, 0, 'p'},
+		{"pitch",       required_argument, 0, 'P'},
 		{"follow",      required_argument, 0, 'f'},
 		{"name",	required_argument, 0, 'n'},
+		{"server",      required_argument, 0, 's'},
+		{"port",	required_argument, 0, 'p'},
+		{"debug",       required_argument, 0, 'D'},
 		{0, 0, 0, 0}
 	};
+
+	err = 0;
+	loglevel = -1;
+	vsock = 1;
+	port = WMASTERD_PORT;
 
 	memset(&data, 0, sizeof(struct update_2));
 	data.latitude = 9999;
@@ -230,7 +309,7 @@ int main(int argc, char *argv[])
 	#endif
 
 options:
-	while ((opt = getopt_long(argc, argv, "hVvy:x:a:k:d:f:n:p:",
+	while ((opt = getopt_long(argc, argv, "hVvs:p:y:x:a:k:d:f:n:P:D:",
 			long_options, &long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -280,7 +359,7 @@ options:
 			data.heading = strtof(optarg, NULL);
 			// check bounds
 			break;
-		case 'p':
+		case 'P':
 			data.pitch = strtof(optarg, NULL);
 			// check bounds
 			break;
@@ -290,6 +369,23 @@ options:
 			break;
 		case 'n':
 			strncpy(data.name, optarg, NAME_LEN);
+			break;
+		case 'D':
+			loglevel = atoi(optarg);
+			printf("gelled: syslog level set to %d\n", loglevel);
+			break;
+		case 's':
+			vsock = 0;
+			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
+				printf("gelled: invalid ip address\n");
+				show_usage(EXIT_FAILURE);
+			}
+			break;
+		case 'p':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
 			break;
 		case ':':
 		case '?':
@@ -307,24 +403,77 @@ options:
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
 	#endif
 
-	afVMCI = VMCISock_GetAFValue();
-	cid = VMCISock_GetLocalCID();
-	if (verbose) {
+	if (vsock) {
+		#ifdef _WIN32
+		/* old code for vmci_sockets.h */
+		af = VMCISock_GetAFValue();
+		cid = VMCISock_GetLocalCID();
 		printf("CID: %d\n", cid);
-		printf("af: %d\n", afVMCI);
+		#else
+		/* new code for vm_sockets */
+		af = AF_VSOCK;
+		ioctl_fd = open("/dev/vsock", 0);
+		if (ioctl_fd < 0) {
+			perror("open");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
+			_exit(EXIT_FAILURE);
+		}
+		err = ioctl(ioctl_fd, VMCI_SOCKETS_GET_LOCAL_CID, &cid);
+		if (err < 0) {
+			perror("ioctl: Cannot get local CID");
+			print_debug(LOG_ERR, "could not get local CID");
+		} else {
+			printf("CID: %u\n", cid);
+		}
+		#endif
+		data.address = cid;
+	} else {
+		af = AF_INET;
 	}
-	data.address = cid;
 
-	/* setup vmci client socket */
-	sockfd = socket(afVMCI, SOCK_DGRAM, 0);
-	/* we can initalize this struct because it never changes */
-	memset(&servaddr_vmci, 0, sizeof(servaddr_vmci));
-	servaddr_vmci.svm_cid = SERVER_CID;
-	servaddr_vmci.svm_port = SEND_PORT;
-	servaddr_vmci.svm_family = afVMCI;
+	/* setup wmasterd details */
+	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+	servaddr_vm.svm_cid = VMADDR_CID_HOST;
+	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_family = af;
+
+	memset(&servaddr_in, 0, sizeof(servaddr_in));
+	servaddr_in.sin_addr = wmasterd_address;
+	servaddr_in.sin_port = port;
+	servaddr_in.sin_family = af;
+
+	if (vsock) {
+		print_debug(LOG_ERR, "connecting to wmasterd on VSOCK %u:%d",
+				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+	} else {
+		print_debug(LOG_ERR, "connecting to wmasterd on IP %s:%d",
+				inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+	}
+
+	/* setup socket */
+	if (vsock) {
+		sockfd = socket(af, SOCK_STREAM, 0);
+	} else {
+		sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+	}
 	if (sockfd < 0) {
 		perror("socket");
 		_exit(EXIT_FAILURE);
+	}
+
+	if (vsock) {
+		ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
+	} else {
+		ret = connect(sockfd, (struct sockaddr *)&servaddr_in, sizeof(struct sockaddr));
+	}
+	if (ret < 0) {
+		if (vsock) {
+			print_debug(LOG_ERR, "could not connect to wmasterd on %u:%d",
+					servaddr_vm.svm_cid, servaddr_vm.svm_port);
+		} else {
+			print_debug(LOG_ERR, "could not connect to wmasterd on %s:%d",
+					inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+		}
 	}
 
 	msg_len = 7 + sizeof(struct update_2);
@@ -336,9 +485,7 @@ options:
 //	if (verbose)
 //		hex_dump(msg, msg_len);
 
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vmci,
-			sizeof(struct sockaddr));
+	bytes = send(sockfd, msg, msg_len, 0);
 
 	if (bytes != msg_len) {
 		perror("sendto");
