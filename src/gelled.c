@@ -249,7 +249,7 @@ void print_debug(int level, char *format, ...)
  */
 void signal_handler(void)
 {
-	print_debug(LOG_INFO, "signal handler invoked\n");
+	print_debug(LOG_INFO, "signal handler invoked");
 
 	running = 0;
 }
@@ -277,13 +277,13 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 	if (curl) {
 		png_write = fopen(filename, "wb");
 		if (png_write == NULL) {
-			print_debug(LOG_ERR, "Error: failed to open %s for writing\n", filename);
+			print_debug(LOG_ERR, "Error: failed to open %s for writing", filename);
 			return -1;
 		}
 		snprintf(url, 1024, "http://%s/%d/%d/%d.png",
 			mapserver, zoom, x, y);
 
-		print_debug(LOG_DEBUG, "downloading tile from %s\n", url);
+		print_debug(LOG_DEBUG, "downloading tile from %s", url);
 
 		curl_easy_setopt(curl, CURLOPT_URL, url);
 		curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -292,11 +292,11 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 		curl_easy_cleanup(curl);
 		fclose(png_write);
 		if (res) {
-			print_debug(LOG_ERR, "Error: curl failed to retrieve tile\n");
+			print_debug(LOG_ERR, "Error: curl failed to retrieve tile");
 			return -1;
 		}
 	} else {
-		print_debug(LOG_ERR, "Error: failed to initialize curl.\n");
+		print_debug(LOG_ERR, "Error: failed to initialize curl");
 		return -1;
 	}
 
@@ -321,27 +321,27 @@ int read_png(png_data *pixels, char *filename)
 
 	png_read = fopen(filename, "r");
 	if (png_read == NULL) {
-		print_debug(LOG_ERR, "Error: failed to open %s for reading\n", filename);
+		print_debug(LOG_ERR, "Error: failed to open %s for reading", filename);
 		return -1;
 	}
 
 	png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	if (!png) {
-		print_debug(LOG_ERR, "Error: failed to create read struct for png\n");
+		print_debug(LOG_ERR, "Error: failed to create read struct for png");
 		fclose(png_read);
 		return -1;
 	}
 
 	info = png_create_info_struct(png);
 	if (!info) {
-		print_debug(LOG_ERR, "Error: failed to create info struct for png\n");
+		print_debug(LOG_ERR, "Error: failed to create info struct for png");
 		png_destroy_read_struct(&png, NULL, NULL);
 		fclose(png_read);
 		return -1;
 	}
 
 	if (setjmp(png_jmpbuf(png))) {
-		print_debug(LOG_ERR, "Error: a png function failed\n");
+		print_debug(LOG_ERR, "Error: a png function failed");
 		png_destroy_read_struct(&png, &info, NULL);
 		fclose(png_read);
 		return -1;
@@ -411,7 +411,7 @@ int land_or_water_check_color(int red, int green, int blue)
 
 	if (red == 181 && green == 208 && blue == 208) {
 		/* water, blue */
-		print_debug(LOG_DEBUG, "This tile is Sea\n");
+		print_debug(LOG_DEBUG, "This tile is water");
 		return 1;
 	} else if (red == 181 && green == 253 && blue == 253) {
 		/* boundary, purple, shade 1 */
@@ -445,23 +445,23 @@ int land_or_water_check_color(int red, int green, int blue)
 		return -1;
 	} else if (red == 197 && green == 216 && blue == 214) {
 		/* boundary with land? */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
+		print_debug(LOG_DEBUG, "This tile is land");
 		return 0;
 	} else if (red == 241 && green == 238 && blue == 232) {
 		/* boundary with land? */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
+		print_debug(LOG_DEBUG, "This tile is land");
 		return 0;
 	} else if (red == 181 && green == 238 && blue == 232) {
 		/* land */
-		print_debug(LOG_DEBUG, "This is tile is Land\n");
+		print_debug(LOG_DEBUG, "This is tile is land");
 		return 0;
 	} else if (red == 242 && green == 239 && blue == 233) {
 		/* land */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
+		print_debug(LOG_DEBUG, "This tile is land");
 		return 0;
 	}
 
-	print_debug(LOG_DEBUG, "Tile Red: %d, Green: %d, Blue: %d\n", red, green, blue);
+	print_debug(LOG_DEBUG, "Tile Red: %d, Green: %d, Blue: %d", red, green, blue);
 	return -1;
 }
 
@@ -568,7 +568,7 @@ void process_rmc(char *line)
 void send_stop(void)
 {
 	if (verbose) {
-		printf("stopping the vm\n");
+		print_debug(LOG_DEBUG, "stopping the vm from moving");
 	}
 
 	pid_t pid;
@@ -590,7 +590,7 @@ void send_stop(void)
 					"-k", "0", NULL);
 			}
 		} else {
-			printf("couldnt find gelled-ctrl\n");
+			print_debug(LOG_ERR, "could not find gelled-ctrl");
 			_exit(EXIT_FAILURE);
 		}
 	} else {
@@ -655,7 +655,7 @@ int recv_from_master(void)
 	print_debug(LOG_INFO, "received %d bytes packet from wmasterd",
 			bytes);
 
-	print_debug(LOG_DEBUG, "Received NMEA: '%s'\n", buf);
+	print_debug(LOG_DEBUG, "Received NMEA: '%s'", buf);
 
 	/* write to device */
 	if (stat(dev_path, &buf_stat) < 0) {
@@ -701,7 +701,7 @@ int recv_from_master(void)
 		ret = fprintf(fp, "%s\n", buf);
 		if (ret == EOF) {
 			perror("fprintf");
-			print_debug(LOG_ERR, "Error: couldnt open %s\n", dev_path);
+			print_debug(LOG_ERR, "Error: couldnt open %s", dev_path);
 		}
 		fclose(fp);
 	}
@@ -713,12 +713,12 @@ int recv_from_master(void)
 		process_rmc(buf);
 		if (velocity != 0) {
 			if (verbose) {
-				printf("velocity: %f\n", velocity);
+				print_debug(LOG_DEBUG, "velocity: %f", velocity);
 			}
 			ret = check_if_water(lat, lon);
 			if (ret < 0) {
 				print_debug(LOG_ERR,
-						"Error: check_if_water failed\n");
+						"Error: check_if_water failed");
 			} else if (land && ret) {
 				send_stop();
 			} else if (water && !ret) {
@@ -765,7 +765,7 @@ void *send_status(void *arg)
 			perror("send");
 			print_debug(LOG_ERR, "Up notification failed");
 		} else {
-			print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+			print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 		}
 		sleep(10);
 	}
@@ -923,29 +923,28 @@ int main(int argc, char *argv[])
 	#endif
 
 	if (vsock) {
-	#ifdef _WIN32
-	/* old code for vmci_sockets.h */
-	af = VMCISock_GetAFValue();
-	cid = VMCISock_GetLocalCID();
-	printf("CID: %d\n", cid);
-	#else
-
-	/* new code for vm_sockets */
-	af = AF_VSOCK;
-	ioctl_fd = open("/dev/vsock", 0);
-	if (ioctl_fd < 0) {
-		perror("open");
-		print_debug(LOG_ERR, "could not open /dev/vsock\n");
-		_exit(EXIT_FAILURE);
-	}
-	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
-	if (err < 0) {
-		perror("ioctl: Cannot get local CID");
-		print_debug(LOG_ERR, "could not get local CID");
-	} else {
-		printf("CID: %u\n", cid);
-	}
-	#endif
+		#ifdef _WIN32
+		/* old code for vmci_sockets.h */
+		af = VMCISock_GetAFValue();
+		cid = VMCISock_GetLocalCID();
+		printf("CID: %d\n", cid);
+		#else
+		/* new code for vm_sockets */
+		af = AF_VSOCK;
+		ioctl_fd = open("/dev/vsock", 0);
+		if (ioctl_fd < 0) {
+			perror("open");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
+			_exit(EXIT_FAILURE);
+		}
+		err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
+		if (err < 0) {
+			perror("ioctl: Cannot get local CID");
+			print_debug(LOG_ERR, "could not get local CID");
+		} else {
+			printf("CID: %u\n", cid);
+		}
+		#endif
 	} else {
 		af = AF_INET;
 	}
@@ -995,7 +994,7 @@ int main(int argc, char *argv[])
 		perror("send");
 		print_debug(LOG_ERR, "Up notification failed");
 	} else {
-		print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
 	}
 
 	if (verbose)
@@ -1019,20 +1018,18 @@ int main(int argc, char *argv[])
 
 	/* code below here executes after signal */
 
-	print_debug(LOG_DEBUG, "Shutting down...\n");
+	print_debug(LOG_DEBUG, "Shutting down...");
 
 	pthread_cancel(status_tid);
 
 	pthread_join(status_tid, NULL);
 
-	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
+	print_debug(LOG_DEBUG, "Threads have been cancelled");
 
 	close(sockfd);
 
-	print_debug(LOG_DEBUG, "Sockets have been closed\n");
-
-	print_debug(LOG_DEBUG, "Memory has been cleared\n");
-
+	print_debug(LOG_DEBUG, "Sockets have been closed");
+	print_debug(LOG_DEBUG, "Memory has been cleared");
 	print_debug(LOG_NOTICE, "Exiting");
 
 	_exit(EXIT_SUCCESS);
