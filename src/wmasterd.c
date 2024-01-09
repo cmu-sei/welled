@@ -1258,7 +1258,6 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 	if (!fp) {
 		perror("wmasterd: fopen");
 		print_debug(LOG_ERR, "could not open vmx %s", vmx_file);
-		list_nodes();
 		return 0;
 	}
 
@@ -1478,8 +1477,6 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 		pthread_mutex_lock(&file_mutex);
 
 		fseek(cache_fp, 0, SEEK_SET);
-
-		/* TODO: update the cache file to include alt and pitch */
 
 		while (((fgets(buf, 1024, cache_fp)) != NULL) && (!matched)) {
 			if (vsock) {
@@ -2026,7 +2023,6 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			continue;
 		}
 
-		// TODO use existing sockets
 		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 		servaddr_vm.svm_cid = curr->address;
 		servaddr_vm.svm_port = curr->port;
@@ -2482,7 +2478,7 @@ int main(int argc, char *argv[])
 #endif
 	print_debug(LOG_NOTICE, "Starting, version %s", VERSION_STR);
 
-	/*Handle kill signals*/
+	/* Handle kill signals */
 	running = 1;
 #ifndef _WIN32
 	signal(SIGINT, (void *)signal_handler);
@@ -2539,7 +2535,7 @@ int main(int argc, char *argv[])
 		memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
 		myservaddr_vm.svm_cid = cid;
 		myservaddr_vm.svm_port = port;
-		myservaddr_vm.svm_family = af;
+		myservaddr_vm.svm_family = af; /* AF_VSOCK */
 		ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
 				sizeof(struct sockaddr));
 	} else {
@@ -2805,17 +2801,6 @@ int main(int argc, char *argv[])
 								bytes, inet_ntoa(client_in.sin_addr), src_port, sd);
 					}
 
-					if (bytes == 2) {
-						if (vsock) {
-							print_debug(LOG_INFO, "node %16d:%d has sent status",
-									src_addr, src_port);
-						} else {
-							print_debug(LOG_INFO, "node %s:%d has sent status",
-									inet_ntoa(client_in.sin_addr), src_port);
-						}
-						continue;
-					}
-					
 					if ((bytes >= 6) && (strncmp(buf, "gelled", 6) == 0)) {
 						if (vsock) {
 							print_debug(LOG_INFO, "node %16d:%d is gelled",
@@ -2825,7 +2810,15 @@ int main(int argc, char *argv[])
 									inet_ntoa(client_in.sin_addr), src_port);
 						}
 						node->gelled_socket = sd;
-						list_nodes();
+						continue;
+					} else if ((bytes >= 6) && (strncmp(buf, "welled", 6) == 0)) {
+						if (vsock) {
+							print_debug(LOG_INFO, "node %16d:%d is welled",
+									src_addr, src_port);
+						} else {
+							print_debug(LOG_INFO, "node %s:%d is welled",
+									inet_ntoa(client_in.sin_addr), src_port);
+						}
 						continue;
 					}
 

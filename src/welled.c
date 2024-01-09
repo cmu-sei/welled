@@ -1620,17 +1620,17 @@ connect:
 	} while (running && (ret < 0));
 
 	/* send up notification to wmasterd */
-	msg_len = 2;
+	msg_len = 6;
 	msg = malloc(msg_len);
 	memset(msg, 0, msg_len);
-	memcpy(msg, "UP", msg_len);
+	memcpy(msg, "welled", msg_len);
 
 	pthread_mutex_lock(&send_mutex);
 	bytes = send(sockfd, msg, msg_len, 0);
 	pthread_mutex_unlock(&send_mutex);
 	free(msg);
 
-	/* this should be 8 bytes */
+	/* this should be 6 bytes */
 	if (bytes != msg_len) {
 		perror("send");
 		print_debug(LOG_ERR, "Up notification failed");
@@ -1868,10 +1868,10 @@ void *send_status(void *arg)
 	 *   state of interfaces (monitor, up, down)
 	 */
 
-	msg_len = 2;
+	msg_len = 6;
 	msg = malloc(msg_len);
 	memset(msg, 0, msg_len);
-	memcpy(msg, "UP", msg_len);
+	memcpy(msg, "welled", msg_len);
 
 	while (running) {
 
@@ -1885,7 +1885,7 @@ void *send_status(void *arg)
 		bytes = send(sockfd, msg, msg_len, 0);
 		pthread_mutex_unlock(&send_mutex);
 
-		/* this should be 2 bytes */
+		/* this should be 6 bytes */
 		if (bytes != msg_len) {
 			perror("send");
 			print_debug(LOG_ERR, "Up notification failed");
