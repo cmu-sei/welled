@@ -426,10 +426,10 @@ options:
 			printf("CID: %u\n", cid);
 		}
 		#endif
-		data.address = cid;
 	} else {
 		af = AF_INET;
 	}
+	strncpy(data.version, (const char *)VERSION_STR, 8);
 
 	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
@@ -482,8 +482,8 @@ options:
 	snprintf(msg, msg_len, "gelled:");
 	memcpy(msg + 7, &data, sizeof(struct update_2));
 
-//	if (verbose)
-//		hex_dump(msg, msg_len);
+	if (verbose)
+		hex_dump(msg, msg_len);
 
 	bytes = send(sockfd, msg, msg_len, 0);
 

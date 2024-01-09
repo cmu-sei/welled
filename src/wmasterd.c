@@ -316,6 +316,8 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
  */
 void update_cache_file_info(struct client *node)
 {
+	print_debug(LOG_DEBUG, "update_cache_file_info");
+
 	char buf[1024];
 	unsigned int address;
 	int port;
@@ -325,6 +327,8 @@ void update_cache_file_info(struct client *node)
 	int matched;
 	struct in_addr ip;
 	char ip_address[16];
+
+	ip.s_addr = node->address;
 
 	if (node == NULL) {
 		return;
@@ -338,20 +342,26 @@ void update_cache_file_info(struct client *node)
 	pos = 0;
 	line_num = 0;
 	matched = 0;
+	struct in_addr ipmatch;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
 		if (vsock) {
-			ret = sscanf(buf, "%d %d", &address, &port);
+			ret = sscanf(buf, "%d %d", address, &port);
 		} else {
-			ret = sscanf(buf, "%s %d", ip_address, &port);
+			ret = sscanf(buf, "%s %d", &ip_address, &port);
+			inet_pton(AF_INET, ip_address, &ipmatch);
 		}
 		// TODO handle ip.. should this not look for 2?
-		if (ret != 1) {
+		if (ret != 2) {
 			print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-		} else if ((address == node->address) && (port == node->port)) {
+		} else if (!vsock && (ip.s_addr == ipmatch.s_addr) && (port == node->port)) {
+			matched = 1;
+			break;
+		} else if (vsock && (address == node->address) && (port == node->port)) {
 			matched = 1;
 			break;
 		}
+		printf("'%s'\n", buf);
 		line_num++;
 		pos = ftell(cache_fp);
 	}
@@ -372,7 +382,6 @@ void update_cache_file_info(struct client *node)
 				node->loc.pitch,
 				node->name);
 		} else {
-			ip.s_addr = node->address;
 			fprintf(cache_fp,
 				"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
 				inet_ntoa(ip), node->port, node->room,
@@ -388,8 +397,6 @@ void update_cache_file_info(struct client *node)
 		if (vsock) {
 			print_debug(LOG_ERR, "no match for node %d:%d in cache file", node->address, node->port);
 		} else {
-			struct in_addr ip;
-			ip.s_addr = node->address;
 			print_debug(LOG_ERR, "no match for node %s:%d in cache file", inet_ntoa(ip), node->port);
 		}
 	}
@@ -402,6 +409,8 @@ void update_cache_file_info(struct client *node)
  */
 void update_cache_file_location(struct client *node)
 {
+	print_debug(LOG_DEBUG, "update_cache_file_location");
+
 	char buf[1024];
 	unsigned int address;
 	int port;
@@ -412,13 +421,14 @@ void update_cache_file_location(struct client *node)
 	char ip_address[16];
 	struct in_addr ip;
 
+	ip.s_addr = node->address;
+
 	if (!cache) {
 		return;
 	}
 	if (node == NULL) {
 		return;
 	}
-	print_debug(LOG_DEBUG, "updating cache file for node location");
 
 	pthread_mutex_lock(&file_mutex);
 
@@ -426,17 +436,21 @@ void update_cache_file_location(struct client *node)
 	pos = 0;
 	line_num = 0;
 	matched = 0;
+	struct in_addr ipmatch;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
 		if (vsock) {
 			ret = sscanf(buf, "%d %d", &address, &port);
 		} else {
 			ret = sscanf(buf, "%s %d", ip_address, &port);
+			inet_pton(AF_INET, ip_address, &ipmatch);
 		}
-		// TODO parse for ip ... should this not look for 2?
-		if (ret != 1) {
+		if (ret != 2) {
 			print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-		} else if (address == node->address) {
+		} else if (!vsock && (ip.s_addr == ipmatch.s_addr) && (port == node->port)) {
+			matched = 1;
+			break;
+		} else if (vsock && (address == node->address)) {
 			matched = 1;
 			break;
 		}
@@ -458,7 +472,6 @@ void update_cache_file_location(struct client *node)
 				node->loc.heading, node->loc.pitch,
 				node->name);
 		} else {
-			ip.s_addr = node->address;
 			fprintf(cache_fp,
 				"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
 				inet_ntoa(ip), node->port, node->room,
@@ -469,8 +482,13 @@ void update_cache_file_location(struct client *node)
 		}
 		fflush(cache_fp);
 	} else {
-		print_debug(LOG_WARNING, "no match for node %d:%d in cache file",
-				node->address, node->port);
+		if (vsock) {
+			print_debug(LOG_WARNING, "no match for node %d:%d in cache file",
+					node->address, node->port);
+		} else {
+			print_debug(LOG_WARNING, "no match for node %s:%d in cache file",
+					inet_ntoa(ip), node->port);
+		}
 	}
 
 	pthread_mutex_unlock(&file_mutex);
@@ -548,6 +566,8 @@ void update_node_location(struct client *node, struct update_2 *data)
 	float angle;
 	float ms;
 	float overage;
+	struct in_addr ip;
+	ip.s_addr = node->address;
 
 	/* radius of earth in meters */
 	r = 6378137;
@@ -560,14 +580,24 @@ void update_node_location(struct client *node, struct update_2 *data)
 		if (strnlen(data->follow, FOLLOW_LEN) > 0) {
 			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
-				print_debug(LOG_NOTICE, "clearing follow on %d:%d",
-						node->address, node->port);
+				if (vsock) {
+					print_debug(LOG_NOTICE, "clearing follow on %d:%d",
+							node->address, node->port);
+				} else {
+					print_debug(LOG_NOTICE, "clearing follow on %s:%d",
+							inet_ntoa(ip), node->port);
+				}
 				memset(node->loc.follow, 0, FOLLOW_LEN);
 			} else {
 				strncpy(node->loc.follow,
 						data->follow, FOLLOW_LEN - 1);
-				print_debug(LOG_NOTICE, "set follow to %s on %d:%d",
-						node->loc.follow, node->address, node->port);
+				if (vsock) {
+					print_debug(LOG_NOTICE, "set follow to %s on %d:%d",
+							node->loc.follow, node->address, node->port);
+				} else {
+					print_debug(LOG_NOTICE, "set follow to %s on %s:%d",
+							node->loc.follow, inet_ntoa(ip), node->port);
+				}
 			}
 		}
 
@@ -582,8 +612,13 @@ void update_node_location(struct client *node, struct update_2 *data)
 			 */
 
 			if (!master) {
-				print_debug(LOG_INFO, "no master for follow on %d:%d",
-						node->address, node->port);
+				if (vsock) {
+					print_debug(LOG_INFO, "no master for follow on %d:%d",
+							node->address, node->port);
+				} else {
+					print_debug(LOG_INFO, "no master for follow on %s:%d",
+							inet_ntoa(ip), node->port);
+				}
 			} else {
 				print_debug(LOG_DEBUG, "node set to follow %s", node->loc.follow);
 				print_debug(LOG_DEBUG, "update master instead");
@@ -641,16 +676,34 @@ void update_node_location(struct client *node, struct update_2 *data)
 			node->loc.pitch = 0;
 		}
 
+		if (verbose) {
+			printf("new position: %.8f %.8f\n",
+					node->loc.latitude, node->loc.longitude);
+			printf("new heading:  %f\n", node->loc.heading);
+			printf("new velocity: %f\n", node->loc.velocity);
+			printf("new altitude: %f\n", node->loc.altitude);
+			printf("new pitch:    %f\n", node->loc.pitch);
+		}
+
 		int age = time(NULL) - node->time;
 
-		print_debug(LOG_NOTICE,
-				"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-				node->address, node->port, node->room, age,
-				node->loc.latitude, node->loc.longitude,
-				node->loc.altitude, node->loc.velocity,
-				node->loc.heading, node->loc.pitch,
-				node->name);
-
+		if (vsock) {
+			print_debug(LOG_NOTICE,
+					"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+					node->address, node->port, node->room, age,
+					node->loc.latitude, node->loc.longitude,
+					node->loc.altitude, node->loc.velocity,
+					node->loc.heading, node->loc.pitch,
+					node->name);
+		} else {
+			print_debug(LOG_NOTICE,
+					"%-16s %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+					inet_ntoa(ip), node->port, node->room, age,
+					node->loc.latitude, node->loc.longitude,
+					node->loc.altitude, node->loc.velocity,
+					node->loc.heading, node->loc.pitch,
+					node->name);
+		}
 		update_cache_file_location(node);
 		update_followers(node);
 
@@ -700,7 +753,7 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 	node->loc.latitude += (dy / r) * (180 / M_PI);
 	node->loc.longitude += (dx / r) * (180 / M_PI) /
-		cosf(node->loc.latitude * (M_PI / 180));
+			cosf(node->loc.latitude * (M_PI / 180));
 
 	/* adjust heading, lat and lon as we cross north pole */
 	if (node->loc.latitude > 90) {
@@ -760,13 +813,23 @@ void update_node_location(struct client *node, struct update_2 *data)
 	}
 
 	int age = time(NULL) - node->time;
-	print_debug(LOG_NOTICE,
-			"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
-			node->address, node->port, node->room, age,
-			node->loc.latitude, node->loc.longitude,
-			node->loc.altitude, node->loc.velocity,
-			node->loc.heading, node->loc.pitch,
-			node->name);
+	if (vsock) {
+		print_debug(LOG_NOTICE,
+				"%-16d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+				node->address, node->port, node->room, age,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
+				node->name);
+	} else {
+		print_debug(LOG_NOTICE,
+				"%-16s %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s",
+				inet_ntoa(ip), node->port, node->room, age,
+				node->loc.latitude, node->loc.longitude,
+				node->loc.altitude, node->loc.velocity,
+				node->loc.heading, node->loc.pitch,
+				node->name);
+	}
 
 	update_cache_file_location(node);
 	update_followers(node);
@@ -2810,7 +2873,6 @@ int main(int argc, char *argv[])
 									inet_ntoa(client_in.sin_addr), src_port);
 						}
 						node->gelled_socket = sd;
-						continue;
 					} else if ((bytes >= 6) && (strncmp(buf, "welled", 6) == 0)) {
 						if (vsock) {
 							print_debug(LOG_INFO, "node %16d:%d is welled",
@@ -2824,44 +2886,30 @@ int main(int argc, char *argv[])
 
 					/*
 					* format of this message:
-					* gelled:<struct client>
+					* gelled:<struct update_2>
 					*/
 
 					// TODO handle gelled-ctrl connections
 
 					/* check for gelled updates from gelled-ctrl */
-					if (strncmp(buf, "gelled:", 7) == 0) {
-						/*
-						* if new size, copy into new buf
-						* if old size, copy into old buf, then copy
-						*	from the old into the new buf
-						*/
+					if ((bytes == sizeof(struct update_2) + 7) && (strncmp(buf, "gelled:", 7) == 0)) {
 						if (vsock) {
-							print_debug(LOG_INFO, "gelled update received from %16d:%d",
+							print_debug(LOG_INFO, "gelled update version 2 received from %16d:%d",
 									src_addr, src_port);
 						} else {
-							print_debug(LOG_INFO, "gelled update received from %s:%d",
+							print_debug(LOG_INFO, "gelled update version 2 received from %s:%d",
 									inet_ntoa(client_in.sin_addr), src_port);
 						}
 
 						struct update_2 data_2;
 
 						/*
-						 * update_2 is size 1136
+						 * update_2 is size 2160
 						*/
 
-						if (bytes == (sizeof(struct update_2) + 7)) {
-							print_debug(LOG_INFO, "update version 2 from %16d:%d",
-									src_addr, src_port);
-							print_debug(LOG_DEBUG, "copying %d bytes from buf to data_2 which is size %d",
-									sizeof(struct update_2), sizeof(data_2));
-							/* pull loc from the buffer */
-							memcpy(&data_2, buf + 7, sizeof(struct update_2));
-						} else {
-							print_debug(LOG_ERR, "update version unknown from %16d:%d",
-									src_addr, src_port);
-							continue;
-						}
+						/* pull loc from the buffer */
+						memcpy(&data_2, buf + 7, sizeof(struct update_2));
+						print_debug(LOG_INFO, "client is gelled version %s", data_2.version);
 						update_node_info(node, &data_2);
 						update_node_location(node, &data_2);
 						continue;
