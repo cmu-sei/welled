@@ -60,7 +60,6 @@
 #endif
 #include <png.h>
 #include <curl/curl.h>
-#include <pthread.h>
 #include <errno.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -128,8 +127,6 @@ double lat;
 double lon;
 /** current velocity */
 double velocity;
-/** thread ID for keepalive thread */
-pthread_t status_tid;
 /** for the desired log level */
 int loglevel;
 
@@ -178,8 +175,8 @@ void show_usage(int exval)
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -w, --water		gps should only travel on water\n");
 	printf("  -d, --device		serial device to write NMEA GPS data\n");
-	printf("  -s, --server          wmasterd server address\n");
-	printf("  -p, --port	        wmasterd server port\n");
+	printf("  -s, --server	  wmasterd server address\n");
+	printf("  -p, --port		wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
 	printf("Copyright (C) 2016 Carnegie Mellon University\n\n");
@@ -609,7 +606,7 @@ void send_stop(void)
 int recv_from_master(void)
 {
 	char buf[WMASTERD_BUFF_LEN];
-        struct timeval tv; /* timer to break out of recvfrom function */
+	struct timeval tv; /* timer to break out of recvfrom function */
 	struct sockaddr_vm cliaddr_vm;
 	struct sockaddr_in cliaddr_in;
 	socklen_t addrlen;
@@ -624,13 +621,13 @@ int recv_from_master(void)
 	memset(&cliaddr_in, 0, sizeof(cliaddr_in));
 	memset(buf, 0, WMASTERD_BUFF_LEN);
 
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
 
-        if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
-                        sizeof(tv)) < 0) {
-                perror("setsockopt");
-        }
+	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
+			sizeof(tv)) < 0) {
+		perror("setsockopt");
+	}
 
 	/* receive packets from wmasterd */
 	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
@@ -734,61 +731,23 @@ out:
 	return 0;
 }
 
-/***
- *      @brief send status message to wmasterd at some interval
- *	this is a heartbeat to let wmasterd know we are still since gelled
- *	rarely sends data back to wmasterd
- *      @return void
- */
-void *send_status(void *arg)
-{
-	/* send up notification to wmasterd */
-	char *msg;
-	int msg_len;
-	int bytes;
-
-	/* TODO: add debug detail to message. wmastered would require an
-	 * adjustment to the size check it performs. this info could be:
-	 */
-
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "UP");
-
-	while (running) {
-
-		bytes = send(sockfd, msg, msg_len, 0);
-
-		/* this should be 8 bytes */
-		if (bytes != msg_len) {
-			perror("send");
-			print_debug(LOG_ERR, "Up notification failed");
-		} else {
-			print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
-		}
-		sleep(10);
-	}
-
-	free(msg);
-
-	return ((void *)0);
-}
-
 void wmasterd_connect()
 {
 	int ret;
+	int bytes;
+	char *msg;
+	int msg_len;
 
 	/* setup socket */
-        if (vsock) {
-                sockfd = socket(af, SOCK_STREAM, 0);
-        } else {
-                sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
-        }
-        if (sockfd < 0) {
-                perror("socket");
-                _exit(EXIT_FAILURE);
-        }
+	if (vsock) {
+		sockfd = socket(af, SOCK_STREAM, 0);
+	} else {
+		sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+	}
+	if (sockfd < 0) {
+		perror("socket");
+		_exit(EXIT_FAILURE);
+	}
 
 	do {
 		if (vsock) {
@@ -809,6 +768,23 @@ void wmasterd_connect()
 			print_debug(LOG_INFO,  "connected to wmasterd");
 		}
 	} while (running && (ret < 0));
+
+	/* send up notification to wmasterd */
+	msg_len = 6;
+	msg = malloc(msg_len);
+	memset(msg, 0, msg_len);
+	memcpy(msg, "gelled", msg_len);
+
+	bytes = send(sockfd, msg, msg_len, 0);
+	free(msg);
+
+	/* this should be 6 bytes */
+	if (bytes != msg_len) {
+		perror("send");
+		print_debug(LOG_ERR, "Up notification failed");
+	} else {
+		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
+	}
 }
 
 /**
@@ -819,9 +795,6 @@ int main(int argc, char *argv[])
 	int opt;
 	int ret;
 	int long_index;
-	char *msg;
-	int msg_len;
-	int bytes;
 	int err;
 	int ioctl_fd;
 
@@ -980,33 +953,8 @@ int main(int argc, char *argv[])
 
 	wmasterd_connect(sockfd);
 
-	/* send up notification to wmasterd */
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	memcpy(msg, "UP", msg_len);
-
-	bytes = send(sockfd, msg, msg_len, 0);
-	free(msg);
-
-	/* this should be 2 bytes */
-	if (bytes != msg_len) {
-		perror("send");
-		print_debug(LOG_ERR, "Up notification failed");
-	} else {
-		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
-	}
-
 	if (verbose)
 		printf("################################################################################\n");
-
-	/* start thread to transmit up status message to wmasterd */
-	ret = pthread_create(&status_tid, NULL, send_status, NULL);
-	if (ret < 0) {
-		perror("pthread_create");
-		print_debug(LOG_ERR, "error: pthread_create send_status");
-		running = 0;
-	}
 
 	/* We wait for incoming msg*/
 	while (running) {
@@ -1020,16 +968,9 @@ int main(int argc, char *argv[])
 
 	print_debug(LOG_DEBUG, "Shutting down...");
 
-	pthread_cancel(status_tid);
-
-	pthread_join(status_tid, NULL);
-
-	print_debug(LOG_DEBUG, "Threads have been cancelled");
-
 	close(sockfd);
 
 	print_debug(LOG_DEBUG, "Sockets have been closed");
-	print_debug(LOG_DEBUG, "Memory has been cleared");
 	print_debug(LOG_NOTICE, "Exiting");
 
 	_exit(EXIT_SUCCESS);

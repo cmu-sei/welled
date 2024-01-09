@@ -103,8 +103,10 @@ struct client {
 	unsigned int address;
 	/** Port */
 	unsigned int port;
-	/* socket descriptor */
-	int socket;
+	/* socket descriptor for welled frames */
+	int welled_socket;
+        /* socket descriptor for gelled nmea */
+        int gelled_socket;
 	/** Isolation Tag */
 	char isolation_tag[UUID_LEN];
 	/** GUID for Room */
@@ -128,15 +130,16 @@ void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
 void add_node(unsigned int, int, char *, char *, char *, int);
-struct client *search_node(unsigned int, int);
-struct client *search_node_name(char *);
+struct client *get_node_by_address(unsigned int, int);
+struct client *get_node_by_name(char *);
+struct client *get_node_by_socket(int);
 void remove_node(unsigned int, int);
-void remove_node_bu_socket(int);
+void remove_node_by_socket(int);
 void clear_inactive_nodes(void);
 void list_nodes(void);
 void relay_to_nodes(char *, int, struct client *);
 void send_to_hosts(char *, int, char *);
-void send_gps_to_nodes(void);
+void send_nmea_to_nodes(void);
 void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);

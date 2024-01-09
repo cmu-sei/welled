@@ -223,7 +223,7 @@ gelled-ctrl-x86_64-w64-mingw32:
 # default is 64 bit
 gelled:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl
+	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -lm -lpng -lcurl
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/$@ ../dist/x86_64-Linux/
 
