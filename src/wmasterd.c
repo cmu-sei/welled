@@ -361,7 +361,9 @@ void update_cache_file_info(struct client *node)
 			matched = 1;
 			break;
 		}
-		printf("'%s'\n", buf);
+		if (verbose) {
+			printf("'%s'\n", buf);
+		}
 		line_num++;
 		pos = ftell(cache_fp);
 	}
@@ -1553,21 +1555,23 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 			}
 			if ((ret != 9) && (ret != 10)) {
 				print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-				printf("only matched %d variables:\n", ret);
+				print_debug(LOG_DEBUG, "only matched %d variables:", ret);
 				if (vsock) {
-					printf("addr: %d\n", address);
+					print_debug(LOG_ERR, "addr: %d", address);
 				} else {
-					printf("addr: %s\n", ip_address);
+					print_debug(LOG_ERR, "addr: %s", ip_address);
 				}
-				printf("port: %d\n", port);
-				printf("room: %s\n", room);
-				printf("lat:  %f\n", lat);
-				printf("lon:  %f\n", lon);
-				printf("alt:  %f\n", alt);
-				printf("sog:  %f\n", sog);
-				printf("cog:  %f\n", cog);
-				printf("pit:  %f\n", pit);
-				printf("name: %s\n", name);
+				if (verbose) {
+					printf("port: %d\n", port);
+					printf("room: %s\n", room);
+					printf("lat:  %f\n", lat);
+					printf("lon:  %f\n", lon);
+					printf("alt:  %f\n", alt);
+					printf("sog:  %f\n", sog);
+					printf("cog:  %f\n", cog);
+					printf("pit:  %f\n", pit);
+					printf("name: %s\n", name);
+				}
 				continue;
 			} else if (((address == srchost) && (port == srcport)) ||
 					(strncmp(ip_address, inet_ntoa(ip), 16) && (port == srcport))) {
@@ -1781,27 +1785,27 @@ void list_nodes(void)
 		} else {
 			if (vsock) {
 				printf("%-16d %-5d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-					curr->address, curr->port,
-					curr->welled_socket, curr->gelled_socket,
-					curr->room, age,
-					curr->loc.latitude, curr->loc.longitude,
-					curr->loc.altitude,
-					curr->loc.velocity,
-					curr->loc.heading,
-					curr->loc.pitch,
-					curr->name);
+						curr->address, curr->port,
+						curr->welled_socket, curr->gelled_socket,
+						curr->room, age,
+						curr->loc.latitude, curr->loc.longitude,
+						curr->loc.altitude,
+						curr->loc.velocity,
+						curr->loc.heading,
+						curr->loc.pitch,
+						curr->name);
 			} else {
 				ip.s_addr = curr->address;
-					printf("%-16s %-5d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
-					inet_ntoa(ip), curr->port,
-					curr->welled_socket, curr->gelled_socket,
-					curr->room, age,
-					curr->loc.latitude, curr->loc.longitude,
-					curr->loc.altitude,
-					curr->loc.velocity,
-					curr->loc.heading,
-					curr->loc.pitch,
-					curr->name);
+				printf("%-16s %-5d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+						inet_ntoa(ip), curr->port,
+						curr->welled_socket, curr->gelled_socket,
+						curr->room, age,
+						curr->loc.latitude, curr->loc.longitude,
+						curr->loc.altitude,
+						curr->loc.velocity,
+						curr->loc.heading,
+						curr->loc.pitch,
+						curr->name);
 			}
 		}
 		curr = curr->next;
@@ -1945,6 +1949,10 @@ void remove_node_by_socket(int socket)
  */
 void hex_dump(void *addr, int len)
 {
+	if (!verbose) {
+		return;
+	}
+
 	int i;
 	unsigned char buff[17];
 	unsigned char *pc;
@@ -2424,7 +2432,7 @@ int main(int argc, char *argv[])
 		case 'V':
 			/* allow help2man to read this */
 			setbuf(stdout, NULL);
-			printf("wmasterd version %s\n", VERSION_STR);
+			printf("wmasterd: version %s\n", VERSION_STR);
 			exit(EXIT_SUCCESS);
 			break;
 		case 'b':
