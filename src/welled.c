@@ -321,8 +321,8 @@ void signal_handler(void)
 	pthread_cancel(status_tid);
 	pthread_cancel(hwsim_tid);
 	pthread_cancel(dev_tid);
-*/
 	pthread_cancel(master_tid);
+*/
 }
 
 /**

@@ -2196,7 +2196,6 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 						curr->address, curr->port, curr->room);
 			} else {
 				struct in_addr ip;
-				ip.s_addr = curr->address;
 				print_debug(LOG_ERR, "skipped %16s:%d room: %36s",
 						inet_ntoa(ip), curr->port, curr->room);
 			}
@@ -2240,17 +2239,11 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		/* add the distance to the buf */
 		struct message_hdr *hdr = (struct message_hdr *)buf;
 		hdr->distance = distance;
-		hdr->distance = distance;
-		print_debug(LOG_DEBUG, "distance set to %d", hdr->distance);
 		/* add the dest radio id to the message */
 		hdr->dest_radio_id = curr->radio_id;
-		print_debug(LOG_DEBUG, "dest radio set to %d", hdr->dest_radio_id);
-		if (hdr->dest_radio_id > 100) {
-			_exit(EXIT_FAILURE);
-		}
 
 		/* send frame to this welled client */
-		bytes_sent = send(node->welled_socket, (char *)buf, bytes, 0);
+		bytes_sent = send(curr->welled_socket, (char *)buf, bytes, 0);
 		if (bytes_sent < 0) {
 			if (verbose) {
 				sock_error("wmasterd: sendto");
@@ -2269,11 +2262,11 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			curr = temp;
 		} else {
 			if (vsock) {
-				print_debug(LOG_INFO, "sent %d bytes to node: %16d:%d room: %s radio: %d",
-						bytes, curr->address, curr->port, curr->room, curr->radio_id);
+				print_debug(LOG_INFO, "sent %d bytes to node: %16d:%d room: %6s radio: %3d distance: %d socket: %5d",
+						bytes, curr->address, curr->port, curr->room, hdr->dest_radio_id, hdr->distance, curr->welled_socket);
 			} else {
-				print_debug(LOG_INFO, "sent %d bytes to node: %16s:%d room: %s radio: %d",
-						bytes, inet_ntoa(ip), curr->port, curr->room, curr->radio_id);
+				print_debug(LOG_INFO, "sent %d bytes to node: %16s:%d room: %6s radio: %3d distance: %d socket: %5d",
+						bytes, inet_ntoa(ip), curr->port, curr->room, hdr->dest_radio_id, hdr->distance, curr->welled_socket);
 			}
 			curr = curr->next;
 		}
@@ -2759,7 +2752,7 @@ int main(int argc, char *argv[])
 		print_debug(LOG_NOTICE, "listening on vsock %u:%d",
 				myservaddr_vm.svm_cid, myservaddr_vm.svm_port);
 	} else {
-		print_debug(LOG_NOTICE, "listening on IP %s:%d",
+		print_debug(LOG_NOTICE, "listening on ipv4 %s:%d",
 				inet_ntoa(myservaddr_in.sin_addr), myservaddr_in.sin_port);
 	}
 
