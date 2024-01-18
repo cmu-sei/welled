@@ -55,7 +55,6 @@ static struct {
 #define VERSION_NR 1
 #define __packed __attribute__((packed))
 #include "mac80211_hwsim.h"
-
 #include <netlink/netlink.h>
 
 void show_usage(int);

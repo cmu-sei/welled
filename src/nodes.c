@@ -51,7 +51,7 @@ struct device_node *head;
  *      @param node - the new device node
  *      @return void - success always assumed
  */
-void add_node(struct device_node *node)
+void add_device_node(struct device_node *node)
 {
 	struct device_node *curr;
 
@@ -76,7 +76,7 @@ void add_node(struct device_node *node)
  *      @param name - name of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_name(char *name)
+struct device_node *get_device_node_by_name(char *name)
 {
 	struct device_node *curr;
 
@@ -97,7 +97,7 @@ struct device_node *get_node_by_name(char *name)
  *      @param index - index of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_index(int index)
+struct device_node *get_device_node_by_index(int index)
 {
 	struct device_node *curr;
 
@@ -118,7 +118,7 @@ struct device_node *get_node_by_index(int index)
  *      @param index - index of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_radio_id(int id)
+struct device_node *get_device_node_by_radio_id(int id)
 {
 	struct device_node *curr;
 
@@ -139,7 +139,7 @@ struct device_node *get_node_by_radio_id(int id)
  *      @param index - index of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_perm_addr(char *perm_addr)
+struct device_node *get_device_node_by_perm_addr(char *perm_addr)
 {
 	struct device_node *curr;
 
@@ -162,7 +162,7 @@ struct device_node *get_node_by_perm_addr(char *perm_addr)
  *      @param index - index of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_wiphy(int id)
+struct device_node *get_device_node_by_wiphy(int id)
 {
 	struct device_node *curr;
 
@@ -183,7 +183,7 @@ struct device_node *get_node_by_wiphy(int id)
  *      @param pos - position of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_pos(int pos)
+struct device_node *get_device_node_by_pos(int pos)
 {
 	struct device_node *curr;
 	int i;
@@ -205,7 +205,7 @@ struct device_node *get_node_by_pos(int pos)
  *	@brief Searches the linked list until a monitor mode device is found
  *	@return true if device is in monitor mode
  */
-int monitor_mode(void)
+int monitor_mode_active(void)
 {
 	struct device_node *curr;
 
@@ -224,7 +224,7 @@ int monitor_mode(void)
  *      @brief Lists the nodes in the linked list
  *      @return void
  */
-void list_nodes(void)
+void list_device_nodes(void)
 {
 	struct device_node *curr;
 	int i;
@@ -234,13 +234,13 @@ void list_nodes(void)
 	curr = head;
 
 	while (curr != NULL) {
-		print_node(i, curr);
+		print_device_node(i, curr);
 		i++;
 		curr = curr->next;
 	}
 }
 
-void print_node(int i, struct device_node *curr)
+void print_device_node(int i, struct device_node *curr)
 {
 	printf("N[%d]:name:      %s\n", i, curr->name);
 	printf("N[%d]:index:     %d\n", i, curr->index);
@@ -279,7 +279,7 @@ void print_node(int i, struct device_node *curr)
  *      @param name - name of interface to be removed
  *      @return success or failure
  */
-int remove_node_by_name(char *name)
+int remove_device_node_by_name(char *name)
 {
 	struct device_node *curr;
 	struct device_node *prev;
@@ -314,7 +314,7 @@ int remove_node_by_name(char *name)
  *      @param index - index of interface to be removed
  *      @return success or failure
  */
-int remove_node_by_index(int index)
+int remove_device_node_by_index(int index)
 {
 	struct device_node *curr;
 	struct device_node *prev;

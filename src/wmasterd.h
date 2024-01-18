@@ -34,10 +34,13 @@
 
 /** Buffer size for NMEA sentences */
 #define NMEA_LEN	100
-
+/** Buffer size for follow name */
 #define FOLLOW_LEN	1024
 #define NAME_LEN	1024
+/** Buffer size for GUID and UUID */
 #define UUID_LEN	37
+/** Buffer size for connection to wmasterd and clients */
+#define WMASTERD_BUFF_LEN		64000
 
 #ifdef _WIN32
 #define LOG_EMERG       0       /* system is unusable */
@@ -93,6 +96,28 @@ struct update_2 {
 };
 
 /**
+ *      \brief Structure for messages from from clients
+ *      This will have client app name, version, message length,
+ *      network namespace, radio id, and distance from TX to RX
+ */
+struct message_hdr {
+	/* app name */
+	char name[6];
+	/* app version */
+    char version[8];
+    /* radio_id sending the message */
+    int src_radio_id;
+    /* radio_id receiving the message */
+    int dest_radio_id;
+    /* netns of the app */
+    int netns;
+	/* distance from receiver */
+	int distance;
+	/* length of message */
+	int len;
+};
+
+/**
  *      \brief Structure for tracking welled nodes
  *
  *      This is the node used to track welled clients in a linked list
@@ -107,6 +132,10 @@ struct client {
 	int welled_socket;
         /* socket descriptor for gelled nmea */
         int gelled_socket;
+	/* radio_id */
+	int radio_id;
+	/* netns */
+	int netns;
 	/** Isolation Tag */
 	char isolation_tag[UUID_LEN];
 	/** GUID for Room */
@@ -129,12 +158,13 @@ void print_node(struct client *);
 void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
-void add_node(unsigned int, int, char *, char *, char *, int);
 struct client *get_node_by_address(unsigned int, int);
+struct client *get_node_by_radio(unsigned int, int, int);
 struct client *get_node_by_name(char *);
 struct client *get_node_by_socket(int);
-void remove_node(unsigned int, int);
-void remove_node_by_socket(int);
+void remove_node(unsigned int, int, int);
+void remove_nodes_by_socket(int);
+int remove_node_by_socket(int);
 void clear_inactive_nodes(void);
 void list_nodes(void);
 void relay_to_nodes(char *, int, struct client *);
@@ -144,7 +174,7 @@ void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);
 void signal_handler(void);
-int process_connection(unsigned int, unsigned int, int, int);
+struct client *process_connection(unsigned int, int, int, int, int);
 void *recv_from_hosts(void *);
 void update_node_location(struct client *, struct update_2 *);
 void update_node_info(struct client *, struct update_2 *);
@@ -158,6 +188,8 @@ double rad2deg(double);
 double deg2rad(double);
 void dec_deg_to_dec_min(float, char *, int);
 void print_debug(int, char *, ...);
+int process_message(char *);
+void add_node(unsigned int, int, char *, char *, char *, int, int, int);
 
 #endif  /* WMASTERD_H_ */
 
