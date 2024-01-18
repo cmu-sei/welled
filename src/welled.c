@@ -229,9 +229,9 @@ void print_debug(int level, char *format, ...)
 	mytime = gmtime(&now);
 
 	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
-		printf("%s - welled: %s: %s\n", timebuff, lev, buffer);
+		printf("%s - welled: %8s: %s\n", timebuff, lev, buffer);
 	} else {
-		printf("welled: %s: %s\n", lev, buffer);
+		printf("welled: %8s: %s\n", lev, buffer);
 	}
 }
 
@@ -1685,19 +1685,20 @@ void *process_master(void *arg)
 	servaddr_in.sin_family = af;
 
 connect:
-	print_debug(LOG_DEBUG, "attempting to connect");
-	/* setup socket */
-	if (vsock) {
-		sockfd = socket(af, SOCK_STREAM, 0);
-	} else {
-		sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
-	}
-	if (sockfd < 0) {
-		perror("socket");
-		free_mem();
-		_exit(EXIT_FAILURE);
-	}
+
 	do {
+		/* setup socket */
+		if (vsock) {
+			sockfd = socket(af, SOCK_STREAM, 0);
+		} else {
+			sockfd = socket(af, SOCK_STREAM, IPPROTO_TCP);
+		}
+		if (sockfd < 0) {
+			perror("socket");
+			free_mem();
+			_exit(EXIT_FAILURE);
+		}
+			print_debug(LOG_DEBUG, "attempting to connect");
 		if (vsock) {
 			ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
 		} else {
@@ -1712,6 +1713,7 @@ connect:
 				print_debug(LOG_ERR, "could not connect to wmasterd on %s:%d",
 						inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
 			}
+			close(sockfd);
 			sleep(1);
 		} else {
 			if (vsock) {

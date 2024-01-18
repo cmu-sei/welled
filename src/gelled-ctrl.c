@@ -47,7 +47,7 @@
   WSADATA wsa_data;
 #else
   #ifndef _ANDROID
-    #include <glib.h>
+   #include <glib.h>
   #endif
   #include <syslog.h>
   #include <sys/types.h>
@@ -89,9 +89,14 @@ int sockfd;
 struct sockaddr_vm servaddr_vm;
 /** sockaddr_vm for ip */
 struct sockaddr_in servaddr_in;
-
 /** for the desired log level */
 int loglevel;
+/** the radio id to receive location info from */
+int radio_id;
+/** netns of this process */
+long int mynetns;
+/** whether this process is inside a netns */
+int inside_netns;
 
 /**
  *	@brief Prints the CLI help
@@ -105,12 +110,13 @@ void show_usage(int exval)
 
 	printf("gelled-ctrl - control program for GPS emulation\n\n");
 
-	printf("Usage: gelled-ctrl [-hVv] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-p<pitch>] [-f<vm_name>] [-n <name>]\n\n");
+	printf("Usage: gelled-ctrl [-hVv] [-r<radio_id>] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-p<pitch>] [-f<vm_name>] [-n <name>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help       print this help and exit\n");
 	printf("  -V, --version    print version and exit\n");
 	printf("  -v, --verbose    verbose output\n");
+	printf("  -r, --radio	   radio id\n");
 	printf("  -y, --latitude   new latitude in decimal degrees\n");
 	printf("  -x, --longitude  new longitude in decimal degrees\n");
 	printf("  -a, --altitude   new altitude in meters\n");
@@ -123,7 +129,7 @@ void show_usage(int exval)
 	printf("  -p, --port	   wmasterd server port\n");
 
 	printf("\n");
-	printf("Copyright (C) 2021 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2023 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -151,21 +157,32 @@ void print_debug(int level, char *format, ...)
 	char *lev;
 	switch(level) {
 		case 0:
-		lev = "emerg";
+			lev = "emerg";
+			break;
 		case 1:
-		lev = "alert";
+			lev = "alert";
+			break;
 		case 2:
-		lev = "crit";
+			lev = "crit";
+			break;
 		case 3:
-		lev = "error";
+			lev = "error";
+			break;
 		case 4:
-		lev = "err";
+			lev = "err";
+			break;
 		case 5:
-		lev = "notice";
+			lev = "notice";
+			break;
 		case 6:
-		lev = "info";
+			lev = "info";
+			break;
 		case 7:
-		lev= "debug";
+			lev = "debug";
+			break;
+		default:
+			lev = "unknown";
+			break;
 	}
 
 #ifndef _WIN32
@@ -178,9 +195,9 @@ void print_debug(int level, char *format, ...)
 	mytime = gmtime(&now);
 
 	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
-		printf("%s - gelled: %s: %s\n", timebuff, lev, buffer);
+		printf("%s - gelled: %8s: %s\n", timebuff, lev, buffer);
 	} else {
-		printf("gelled: %s: %s\n", lev, buffer);
+		printf("gelled: %8s: %s\n", lev, buffer);
 	}
 }
 
@@ -232,6 +249,23 @@ void hex_dump(void *addr, int len)
 	printf("  %s\n", buff);
 }
 
+int get_mynetns(void)
+{
+        char *nspath = "/proc/self/ns/net";
+        char pathbuf[256];
+        int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+        if (len < 0) {
+                perror("readlink");
+                return -1;
+        }
+        if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+                perror("sscanf");
+                return -1;
+        }
+        print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+        return 0;
+}
+
 /**
  *      @brief main function
  */
@@ -248,10 +282,14 @@ int main(int argc, char *argv[])
 	struct update_2 data;
 	int err;
 	int ioctl_fd;
+
 	#ifndef ANDROID
 	GKeyFile* gkf;
 	gchar *key_value;
 	#endif
+
+	radio_id = 0;
+
 	static struct option long_options[] = {
 		{"help",	no_argument, 0, 'h'},
 		{"version",     no_argument, 0, 'V'},
@@ -266,6 +304,7 @@ int main(int argc, char *argv[])
 		{"name",	required_argument, 0, 'n'},
 		{"server",      required_argument, 0, 's'},
 		{"port",	required_argument, 0, 'p'},
+                {"radio",       required_argument, 0, 'r'},
 		{"debug",       required_argument, 0, 'D'},
 		{0, 0, 0, 0}
 	};
@@ -305,11 +344,12 @@ int main(int argc, char *argv[])
 
 	if (key_value)
 		free(key_value);
+
 	g_key_file_free(gkf);
 	#endif
 
 options:
-	while ((opt = getopt_long(argc, argv, "hVvs:p:y:x:a:k:d:f:n:P:D:",
+	while ((opt = getopt_long(argc, argv, "hVvs:p:y:x:a:k:d:f:n:P:D:r:",
 			long_options, &long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -324,9 +364,12 @@ options:
 		case 'v':
 			verbose = 1;
 			break;
+                case 'r':
+                        radio_id = atoi(optarg);
+                        break;
 		case 'y':
 			data.latitude = strtof(optarg, NULL);
-			// check bounds
+			// check boundsa
 			if ((data.latitude < -90) ||
 					(data.latitude > 90)) {
 				printf("latitude invalid\n");
@@ -429,6 +472,65 @@ options:
 	} else {
 		af = AF_INET;
 	}
+
+        inside_netns = 0;
+
+        /* get my netns */
+        if (get_mynetns() < 0) {
+                        mynetns = 0;
+        };
+        /* get all netns */
+        DIR *d;
+        struct dirent *file;
+        struct stat *statbuf;
+        d = opendir("/run/netns");
+        if (d) {
+                while ((file = readdir(d)) != NULL) {
+                        if (strcmp(file->d_name, ".") == 0)
+                                continue;
+                        if (strcmp(file->d_name, "..") == 0)
+                                continue;
+
+                        statbuf = malloc(sizeof(struct stat));
+                        if (!statbuf) {
+                                perror("malloc");
+                                exit(1);
+                        }
+                        int maxlen = strlen("/run/netns/") + strlen(file->d_name) + 1;
+                        char *fullpath = malloc(maxlen);
+                        if (!fullpath) {
+                                perror("malloc");
+                                exit(1);
+                        }
+                        snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+                        int fd = open(fullpath, O_RDONLY);
+                        if (fd < 0) {
+                                perror("open");
+                        }
+                        if (fstat(fd, statbuf) < 0) {
+                                perror("fstat");
+                        }
+                        long int inode = statbuf->st_ino;
+                        print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+
+                        if (inode == mynetns) {
+                                inside_netns = 1;
+                        }
+                        close(fd);
+                        free(statbuf);
+                        free(fullpath);
+                }
+                closedir(d);
+        } else {
+                print_debug(LOG_ERR, "cannot open /run/netns");
+        }
+
+        if (inside_netns) {
+                print_debug(LOG_INFO, "running inside netns %ld", mynetns);
+        } else {
+                print_debug(LOG_INFO, "not runnning inside netns");
+        }
+
 	strncpy(data.version, (const char *)VERSION_STR, 8);
 
 	/* setup wmasterd details */
@@ -476,11 +578,19 @@ options:
 		}
 	}
 
-	msg_len = 7 + sizeof(struct update_2);
+    struct message_hdr hdr;
+    msg_len = sizeof(struct message_hdr);
+    memcpy(hdr.name, "gelled", 6);
+    strncpy(hdr.version, (const char *)VERSION_STR, 8);
+    hdr.len = msg_len;
+    hdr.src_radio_id = radio_id;
+    hdr.netns = mynetns;
+
+	msg_len = sizeof(struct message_hdr) + sizeof(struct update_2);
 	msg = (char *)malloc(msg_len);
 	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "gelled:");
-	memcpy(msg + 7, &data, sizeof(struct update_2));
+	memcpy(msg, &hdr, sizeof(struct message_hdr));
+        memcpy(msg + sizeof(struct message_hdr), &data, sizeof(struct update_2));
 
 	if (verbose)
 		hex_dump(msg, msg_len);
@@ -488,7 +598,7 @@ options:
 	bytes = send(sockfd, msg, msg_len, 0);
 
 	if (bytes != msg_len) {
-		perror("sendto");
+		perror("send");
 	} else {
 		printf("gelled-ctrl: sent %d bytes to wmasterd\n", bytes);
 		if (verbose) {

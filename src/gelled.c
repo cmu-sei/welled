@@ -36,6 +36,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <string.h>
+#include <dirent.h>
 #ifdef _WIN32
   #ifndef _WIN32_WINNT
     #define _WIN32_WINNT 0x0501  /* Windows XP. */
@@ -74,8 +75,6 @@
 #endif
 /** Port used to send data to wmasterd */
 #define WMASTERD_PORT		1111
-/** Buffer size for VMCI datagrams */
-#define WMASTERD_BUFF_LEN		4096
 /** Buffer size for UDP datagrams */
 #define BUFF_LEN		4096
 /** Zoom level to use when requesting tiles from OSM server */
@@ -129,6 +128,12 @@ double lon;
 double velocity;
 /** for the desired log level */
 int loglevel;
+/** the radio id to receive location info from */
+int radio_id;
+/** netns of this process */
+long int mynetns;
+/** whether this process is inside a netns */
+int inside_netns;
 
 #ifdef _WIN32
 #ifndef HAVE_STRSEP
@@ -165,21 +170,22 @@ void show_usage(int exval)
 
 	printf("gelled - gelled, GPS emulation link layer exchange daemon \n\n");
 
-	printf("Usage: gelled [-hVv] [-d<device>] [-m<url>] [-w|-l]\n\n");
+	printf("Usage: gelled [-hVv] [-r<radio_id>] [-d<device>] [-m<url>] [-w|-l]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
 	printf("  -V, --version		print version and exit\n");
 	printf("  -v, --verbose		verbose output\n");
+	printf("  -r, --radio		radio id\n");
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -w, --water		gps should only travel on water\n");
 	printf("  -d, --device		serial device to write NMEA GPS data\n");
-	printf("  -s, --server	  wmasterd server address\n");
+	printf("  -s, --server		wmasterd server address\n");
 	printf("  -p, --port		wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
-	printf("Copyright (C) 2016 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2023 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -207,21 +213,32 @@ void print_debug(int level, char *format, ...)
 	char *lev;
 	switch(level) {
 		case 0:
-		lev = "emerg";
+			lev = "emerg";
+			break;
 		case 1:
-		lev = "alert";
+			lev = "alert";
+			break;
 		case 2:
-		lev = "crit";
+			lev = "crit";
+			break;
 		case 3:
-		lev = "error";
+			lev = "error";
+			break;
 		case 4:
-		lev = "err";
+			lev = "err";
+			break;
 		case 5:
-		lev = "notice";
+			lev = "notice";
+			break;
 		case 6:
-		lev = "info";
+			lev = "info";
+			break;
 		case 7:
-		lev= "debug";
+			lev = "debug";
+			break;
+		default:
+			lev = "unknown";
+			break;
 	}
 
 #ifndef _WIN32
@@ -234,9 +251,9 @@ void print_debug(int level, char *format, ...)
 	mytime = gmtime(&now);
 
 	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
-		printf("%s - gelled: %s: %s\n", timebuff, lev, buffer);
+		printf("%s - gelled: %8s: %s\n", timebuff, lev, buffer);
 	} else {
-		printf("gelled: %s: %s\n", lev, buffer);
+		printf("gelled: %8s: %s\n", lev, buffer);
 	}
 }
 
@@ -770,21 +787,38 @@ void wmasterd_connect()
 	} while (running && (ret < 0));
 
 	/* send up notification to wmasterd */
-	msg_len = 6;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	memcpy(msg, "gelled", msg_len);
+        struct message_hdr hdr;
+	msg_len = sizeof(struct message_hdr);
+	memcpy(hdr.name, "gelled", 6);
+	strncpy(hdr.version, (const char *)VERSION_STR, 8);
+	hdr.len = msg_len;
+	hdr.src_radio_id = radio_id;
+	hdr.netns = mynetns;
 
-	bytes = send(sockfd, msg, msg_len, 0);
-	free(msg);
+	bytes = send(sockfd, (char *)&hdr, msg_len, 0);
 
 	/* this should be 6 bytes */
 	if (bytes != msg_len) {
 		perror("send");
-		print_debug(LOG_ERR, "Up notification failed");
-	} else {
-		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
+		print_debug(LOG_ERR, "up notification failed");
 	}
+}
+
+int get_mynetns(void)
+{
+        char *nspath = "/proc/self/ns/net";
+        char pathbuf[256];
+        int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+        if (len < 0) {
+                perror("readlink");
+                return -1;
+        }
+        if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+                perror("sscanf");
+                return -1;
+        }
+        print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+        return 0;
 }
 
 /**
@@ -815,6 +849,7 @@ int main(int argc, char *argv[])
 	loglevel = -1;
 	vsock = 1;
 	port = WMASTERD_PORT;
+	radio_id = 0;
 
 	static struct option long_options[] = {
 		{"help",	no_argument, 0, 'h'},
@@ -825,12 +860,13 @@ int main(int argc, char *argv[])
 		//{"cid",	no_argument, 0, 'c'},
 		{"server",	required_argument, 0, 's'},
 		{"port",	required_argument, 0, 'p'},
+		{"radio",	required_argument, 0, 'r'},
 		{"mapserver",	required_argument, 0, 'm'},
 		{"debug",	required_argument, 0, 'D'},
 		{"device",	required_argument, 0, 'd'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvlws:p:m:D:d:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvlws:p:m:D:d:r:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -851,6 +887,9 @@ int main(int argc, char *argv[])
 		case 'D':
 			loglevel = atoi(optarg);
 			printf("gelled: syslog level set to %d\n", loglevel);
+			break;
+		case 'r':
+			radio_id = atoi(optarg);
 			break;
 		case 'w':
 			water = 1;
@@ -928,13 +967,71 @@ int main(int argc, char *argv[])
 		check_position = 0;
 	}
 
-	// TODO maybe track netns
+        inside_netns = 0;
+
+        /* get my netns */
+        if (get_mynetns() < 0) {
+                        mynetns = 0;
+        };
+
+        /* get all netns */
+        DIR *d;
+        struct dirent *file;
+        struct stat *statbuf;
+        d = opendir("/run/netns");
+        if (d) {
+                while ((file = readdir(d)) != NULL) {
+                        if (strcmp(file->d_name, ".") == 0)
+                                continue;
+                        if (strcmp(file->d_name, "..") == 0)
+                                continue;
+
+                        statbuf = malloc(sizeof(struct stat));
+                        if (!statbuf) {
+                                perror("malloc");
+                                exit(1);
+                        }
+                        int maxlen = strlen("/run/netns/") + strlen(file->d_name) + 1;
+                        char *fullpath = malloc(maxlen);
+                        if (!fullpath) {
+                                perror("malloc");
+                                exit(1);
+                        }
+                        snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+                        int fd = open(fullpath, O_RDONLY);
+                        if (fd < 0) {
+                                perror("open");
+                        }
+                        if (fstat(fd, statbuf) < 0) {
+                                perror("fstat");
+                        }
+                        long int inode = statbuf->st_ino;
+                        print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+
+                        if (inode == mynetns) {
+                                inside_netns = 1;
+                        }
+                        close(fd);
+                        free(statbuf);
+                        free(fullpath);
+                }
+                closedir(d);
+        } else {
+                print_debug(LOG_ERR, "cannot open /run/netns");
+        }
+
+        if (inside_netns) {
+                print_debug(LOG_INFO, "running inside netns %ld", mynetns);
+        } else {
+                print_debug(LOG_INFO, "not runnning inside netns");
+        }
 
 	/* Handle signals */
 	signal(SIGINT, (void *)signal_handler);
 	signal(SIGTERM, (void *)signal_handler);
 	signal(SIGQUIT, (void *)signal_handler);
 	signal(SIGHUP, SIG_IGN);
+	signal(SIGPIPE, SIG_IGN);
 
 	#ifdef _WIN32
 	WSAStartup(MAKEWORD(1,1), &wsa_data);

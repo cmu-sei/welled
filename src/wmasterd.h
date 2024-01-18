@@ -190,6 +190,7 @@ void dec_deg_to_dec_min(float, char *, int);
 void print_debug(int, char *, ...);
 int process_message(char *);
 void add_node(unsigned int, int, char *, char *, char *, int, int, int);
+void remove_newline(char *);
 
 #endif  /* WMASTERD_H_ */
 
