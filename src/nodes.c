@@ -240,6 +240,11 @@ void list_device_nodes(void)
 	}
 }
 
+/**	@brief print device node data
+ *	@param i - index to be displayed in print
+ *	@param curr - pointer to the node
+ *	@return void - assumes success
+ */
 void print_device_node(int i, struct device_node *curr)
 {
 	printf("N[%d]:name:      %s\n", i, curr->name);
