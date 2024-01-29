@@ -141,6 +141,8 @@ pthread_t process_master_tid;
 /** for the desired log level */
 int loglevel;
 
+#define IEEE80211_MAX_DATA_LEN		2304
+
 /**
  *	@brief Prints the CLI help
  *	@param exval - exit code
@@ -705,6 +707,9 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 				int remaining = payload_len;
 				do {
 					printf("processing attribute in error message\n");
+					// could be invalid radio address
+					// could be invalid size
+					// could by off channel
 					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
 						int radio_id = nla_get_u32(attr);
 						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
@@ -721,6 +726,11 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 					}
 					if (attr->nla_type == HWSIM_ATTR_FRAME) {
 						printf("- HWSIM_ATTR_FRAME:\n");
+						int frame_data_len = nla_len(nla_data(attr));
+						if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
+							printf("- frame_data_len is not valid size\n");
+							_exit(EXIT_FAILURE);
+						}
 						char *data = nla_data(attr);
 						printf("- frame: \n");
 						hex_dump(data, nla_len(attr));
@@ -760,7 +770,6 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 					}
 					attr = nla_next(attr, &remaining);
 				} while(remaining > 0);
-				_exit(EXIT_FAILURE);
 			} else if (err->error == -2) {
 				/* driver unloaded */
 				print_debug(LOG_ERR, "-ENOENT from hwsim");
