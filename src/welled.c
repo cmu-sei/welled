@@ -684,6 +684,82 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 			if (err->error == -22) {
 				/* not sure of the cause */
 				print_debug(LOG_ERR, "-EINVAL from hwsim");
+				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+
+				//TODO check which cmd was returned, maybe it was 2 for a frame
+
+				//printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
+				//printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
+				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
+				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
+				//hex_dump(data, data_len);
+				// lets assume that the payload for this attribute has a header
+				// and after the header is the data we want to check for attributes
+
+				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
+				//printf("payload size is %d\n", payload_len); // 8 bytes
+
+				char *ptr = (char *)data + sizeof(struct nlmsghdr);
+				struct nlattr *attr = (struct nlattr *)ptr;
+
+				int remaining = payload_len;
+				do {
+					printf("processing attribute in error message\n");
+					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+						int radio_id = nla_get_u32(attr);
+						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_FRAME) {
+						printf("- HWSIM_ATTR_FRAME:\n");
+						char *data = nla_data(attr);
+						printf("- frame: \n");
+						hex_dump(data, nla_len(attr));
+					}
+					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+						printf("- HWSIM_ATTR_TX_INFO:\n");
+						struct hwsim_tx_rate *tx_rates;
+						tx_rates = (struct hwsim_tx_rate *)
+							nla_data(attr);
+						printf("- tx_rates: ");
+						hex_dump(tx_rates, nla_len(attr));
+					}
+					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+						printf("- HWSIM_ATTR_FLAGS:\n");
+						int flags = nla_get_u32(attr);
+						printf("- flags:     %u\n", flags);
+					}
+					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+						printf("- HWSIM_ATTR_SIGNAL:\n");
+						int signal = nla_get_u32(attr);
+						printf("- signal:    %d\n", signal);
+					}
+					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+						printf("- HWSIM_ATTR_COOKIE:\n");
+						unsigned long cookie = nla_get_u64(attr);
+						printf("- cookie:    %lu\n", cookie);
+					}
+					if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
+						printf("- HWSIM_ATTR_RX_RATE:\n");
+						int rate = nla_get_u32(attr);
+						printf("- rx rate:    %d\n", rate);
+					}
+					if (attr->nla_type == HWSIM_ATTR_FREQ) {
+						printf("- HWSIM_ATTR_FREQ:\n");
+						int freq = nla_get_u32(attr);
+						printf("- freq:    %d\n", freq);
+					}
+					attr = nla_next(attr, &remaining);
+				} while(remaining > 0);
 				_exit(EXIT_FAILURE);
 			} else if (err->error == -2) {
 				/* driver unloaded */
