@@ -128,16 +128,16 @@ struct sockaddr_in servaddr_in;
 pthread_mutex_t list_mutex;
 /** mutex for driver unload/load checking */
 pthread_mutex_t hwsim_mutex;
-/** mutex for access to send socket */
-pthread_mutex_t send_mutex;
+/** mutex for access to socket */
+pthread_mutex_t socket_mutex;
 /** thread id of heartbeat thread */
-pthread_t status_tid;
+pthread_t send_status_tid;
 /** thread id of device monitoring thread */
-pthread_t dev_tid;
+pthread_t monitor_devices_tid;
 /** thread id of hwsim driver status monitoring thread */
-pthread_t hwsim_tid;
+pthread_t monitor_hwsim_tid;
 /** thread id of thread processing data from wmasterd */
-pthread_t master_tid;
+pthread_t process_master_tid;
 /** for the desired log level */
 int loglevel;
 
@@ -317,12 +317,11 @@ void signal_handler(void)
 
 	running = 0;
 
-/*
-	pthread_cancel(status_tid);
-	pthread_cancel(hwsim_tid);
-	pthread_cancel(dev_tid);
-	pthread_cancel(master_tid);
-*/
+	pthread_cancel(send_status_tid);
+	pthread_cancel(monitor_hwsim_tid);
+	pthread_cancel(monitor_devices_tid);
+	pthread_cancel(process_master_tid);
+	print_debug(LOG_DEBUG, "cancelled threads");
 }
 
 /**
@@ -663,13 +662,191 @@ void attrs_print(struct nlattr *attrs[])
  *	@param arg - pointer to additional args
  *	@return success or failure
  */
-static int process_messages_cb(struct nl_msg *msg, void *arg)
+static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 {
+	print_debug(LOG_DEBUG, "process_hwsim_nl_event_cb");
+	struct nlmsghdr *nlh;
+	int len;
+	struct nlmsgerr *err;
+	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
+
+	nlh = nlmsg_hdr(msg);
+	len = nlh->nlmsg_len;
+
+	while (NLMSG_OK(nlh, (unsigned int)len)) {
+		switch (nlh->nlmsg_type) {
+		case NLMSG_DONE:
+			//nlmsg_end = 1;
+			print_debug(LOG_DEBUG, "done processing hwsim nl msgs");
+			break;
+		case NLMSG_ERROR:
+			err = nlmsg_data(nlh);
+			if (err->error == -22) {
+				/* not sure of the cause */
+				print_debug(LOG_ERR, "-EINVAL from hwsim");
+				_exit(EXIT_FAILURE);
+			} else if (err->error == -2) {
+				/* driver unloaded */
+				print_debug(LOG_ERR, "-ENOENT from hwsim");
+			} else if (err->error == -19) {
+				/* radio does not exist */
+				print_debug(LOG_ERR, "-ENODEV from hwsim");
+				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
+				char *ptr = (char *)data + sizeof(struct nlmsghdr);
+				struct nlattr *attr = (struct nlattr *)ptr;
+				if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+					int radio_id = nla_get_u32(attr);
+					print_debug(LOG_INFO, "device with radio id %d does not exist", radio_id);
+				}
+			} else if (err->error == -34) {
+				print_debug(LOG_ERR, "-ERANGE from hwsim");
+				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+				//printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
+				//printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
+				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
+				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
+				//hex_dump(data, data_len);
+				// lets assume that the payload for this attribute has a header
+				// and after the header is the data we want to check for attributes
+
+				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
+				//printf("payload size is %d\n", payload_len); // 8 bytes
+
+				char *ptr = (char *)data + sizeof(struct nlmsghdr);
+				struct nlattr *attr = (struct nlattr *)ptr;
+
+				int remaining = payload_len;
+				do {
+					printf("processing attribute in error message\n");
+					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+						int radio_id = nla_get_u32(attr);
+						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+						printf("- HWSIM_ATTR_TX_INFO:\n");
+						struct hwsim_tx_rate *tx_rates;
+						tx_rates = (struct hwsim_tx_rate *)
+							nla_data(attr);
+						printf("- tx_rates: ");
+						hex_dump(tx_rates, nla_len(attr));
+					}
+					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+						printf("- HWSIM_ATTR_FLAGS:\n");
+						int flags = nla_get_u32(attr);
+						printf("- flags:     %u\n", flags);
+					}
+					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+						printf("- HWSIM_ATTR_SIGNAL:\n");
+						int signal = nla_get_u32(attr);
+						printf("- signal:    %d\n", signal);
+					}
+					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+						printf("- HWSIM_ATTR_COOKIE:\n");
+						unsigned long cookie = nla_get_u64(attr);
+						printf("- cookie:    %lu\n", cookie);
+					}
+					attr = nla_next(attr, &remaining);
+				} while(remaining > 0);
+			} else {
+				/* unknown error */
+				print_debug(LOG_ERR, "NLMSG_ERROR: %d", err->error);
+				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+				printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
+				printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
+				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
+				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
+				//hex_dump(data, data_len);
+				// lets assume that the payload for this attribute has a header
+				// and after the header is the data we want to check for attributes
+
+				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
+				printf("payload size is %d\n", payload_len); // 8 bytes
+
+				char *ptr = (char *)data + sizeof(struct nlmsghdr);
+				struct nlattr *attr = (struct nlattr *)ptr;
+
+				int remaining = payload_len;
+				do {
+					printf("processing attribute in error message\n");
+					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+						int radio_id = nla_get_u32(attr);
+						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+						char addr[18];
+						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
+					}
+					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+						printf("- HWSIM_ATTR_TX_INFO:\n");
+						struct hwsim_tx_rate *tx_rates;
+						tx_rates = (struct hwsim_tx_rate *)
+							nla_data(attr);
+						printf("- tx_rates: ");
+						hex_dump(tx_rates, nla_len(attr));
+					}
+					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+						printf("- HWSIM_ATTR_FLAGS:\n");
+						int flags = nla_get_u32(attr);
+						printf("- flags:     %u\n", flags);
+					}
+					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+						printf("- HWSIM_ATTR_SIGNAL:\n");
+						int signal = nla_get_u32(attr);
+						printf("- signal:    %d\n", signal);
+					}
+					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+						printf("- HWSIM_ATTR_COOKIE:\n");
+						unsigned long cookie = nla_get_u64(attr);
+						printf("- cookie:    %lu\n", cookie);
+					}
+					attr = nla_next(attr, &remaining);
+				} while(remaining > 0);
+
+				list_device_nodes();
+				_exit(EXIT_FAILURE);
+			}
+			break;
+		default:
+			print_debug(LOG_DEBUG, "processing netlink type 0x%x %d", nlh->nlmsg_type, nlh->nlmsg_type);
+			int ret = process_hwsim_nl_msg(nlh);
+			print_debug(LOG_DEBUG, "process_hwsim_nl_msg returned %d", ret);
+			break;
+		}
+		nlh = NLMSG_NEXT(nlh, len);
+	}
+	print_debug(LOG_DEBUG, "finished parsing hwsim nl event");
+
+	if (verbose)
+		printf("#################### hwsim recv done ######################\n");
+
+	return NL_OK;
+
+}
+
+
+int process_hwsim_nl_msg(struct nlmsghdr *nlh)
+{
+	print_debug(LOG_DEBUG, "process_hwsim_nl_msg");
 	int msg_len;
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
-	struct nlmsghdr *nlh;
 	struct genlmsghdr *gnlh;
-	struct nlmsgerr *err;
 	struct ether_addr *src;
 	unsigned int flags;
 	struct hwsim_tx_rate *tx_rates;
@@ -688,39 +865,21 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	char perm_addr[ETH_ALEN];
 	int radio_id;
 
-	nlh = nlmsg_hdr(msg);
 	gnlh = nlmsg_data(nlh);
 	memset(addr, 0, 18);
 
 	/* get message length needed for send */
 	msg_len = nlh->nlmsg_len;
 
-	if (nlh->nlmsg_type != hwsim_genl_family_id) {
-		return 1;
-	} else if (nlh->nlmsg_type == NLMSG_ERROR) {
-		err = nlmsg_data(nlh);
-		if (verbose)
-			print_debug(LOG_ERR, "NLMSG_ERROR: %d\n", err->error);
-		if (err->error == -22) {
-			/* check hw - rx radio probably down */
-			print_debug(LOG_ERR, "-EINVAL from hwsim\n");
-		}
-		goto out;
+	if (nlh->nlmsg_type == NLMSG_ERROR) {
+		print_debug(LOG_ERR, "should not be here");
+		_exit(EXIT_FAILURE);
+	} else if (nlh->nlmsg_type != hwsim_genl_family_id) {
+		print_debug(LOG_ERR, "unknown msg type", nlh->nlmsg_type);
+		return NL_SKIP;
 	}
 
 	print_debug(LOG_INFO, "received %d bytes msg from hwsim", msg_len);
-	/*
-	if (nlh->nlmsg_type == NLMSG_NOOP)
-		printf("NLMSG_NOOP\n");
-	else if (nlh->nlmsg_type == NLMSG_DONE)
-		printf("NLMSG_DONE\n");
-	else if (nlh->nlmsg_type == NLMSG_MIN_TYPE)
-		printf("NLMSG_MIN_TYPE\n");
-	else if (nlh->nlmsg_type == hwsim_genl_family_id)
-		printf("MAC80211_HWSIM\n");
-	else
-		printf("NLMSG: %d\n", nlh->nlmsg_type);
-	*/
 
 	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
 		print_debug(LOG_ERR, "HWSIM_CMD_UNSPEC");
@@ -734,7 +893,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			printf("#### hwsim -> welled nlmsg end ####\n");
 		}
 		*/
-		goto out;
+		return NL_SKIP;
 	} else if ((gnlh->cmd == HWSIM_CMD_GET_RADIO) && (!genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL))) {
 		/* this is a response to a get radio request */
 		print_debug(LOG_DEBUG, "HWSIM_CMD_GET_RADIO");
@@ -746,19 +905,23 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 				printf("- got radio phy %s\n", data);
 			}
 			if (sscanf(data, "phy%d", &phy) != 1) {
-				print_debug(LOG_INFO, "unknown device for radio %d", radio_id);
-				goto out;
+				print_debug(LOG_ERR, "could not parse phy from HWSIM_ATTR_RADIO_NAME");
+				return NL_SKIP;
 			}
 			// TODO there may be more than one interface (device) on a radio (phy)
 			node = get_device_node_by_wiphy(phy);
 			if (!node) {
-				print_debug(LOG_INFO, "could not get node");
-				// TODO add node
-				goto out;
+				print_debug(LOG_ERR, "could not get device by phy %d", phy);
+				// TODO lookup node by perm_addr, maybe by radio id of perm_addr[4]
+				node = get_device_node_by_radio_id(radio_id);
+				if (!node) {
+					print_debug(LOG_ERR, "could not get device by radio %d", radio_id);
+					return NL_SKIP;
+				}
 			}
-			// TODO if we stop monitoring netlink or are not in the same netns
+			// TODO if we stop monitoring netlink
+			// or are not in the same netns
 			// we will not have any nodes yet
-			// TODO lookup node by perm_addr, maybe by radio id of perm_addr[4]
 			if (node->radio_id != radio_id) {
 				print_debug(LOG_INFO, "updating radio id for this device to %d", radio_id);
 				node->radio_id = radio_id;
@@ -769,7 +932,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			mac_address_to_string(addr, (struct ether_addr *)node->address);
 			print_debug(LOG_INFO, "radio %d on %s with address %s", radio_id, data, addr);
 		}
-		goto out;
+		return NL_SKIP;
 	} else if (gnlh->cmd == HWSIM_CMD_ADD_MAC_ADDR) {
 		/* we see this when an interface comes up */
 		print_debug(LOG_DEBUG, "HWSIM_CMD_ADD_MAC_ADDR");
@@ -791,7 +954,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 
 			// TODO update?
 		}
-		goto out;
+		return NL_OK;
 	} else if (gnlh->cmd == HWSIM_CMD_DEL_MAC_ADDR) {
 		/* we see this when an interface goes down */
 		print_debug(LOG_DEBUG, "HWSIM_CMD_DEL_MAC_ADDR");
@@ -813,7 +976,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 
 			// TODO update?
 		}
-		goto out;
+		return NL_OK;
 	} else if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
 		/* for example, notification of device up/down */
 		print_debug(LOG_DEBUG, "msg is not a frame, unhandled cmd is %d", gnlh->cmd);
@@ -827,7 +990,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 			printf("#### hwsim -> welled nlmsg end ####\n");
 		}
 		*/
-		goto out;
+		return NL_SKIP;
 	}
 	print_debug(LOG_DEBUG, "processing new frame from hwsim");
 
@@ -846,7 +1009,7 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	if (!(attrs[HWSIM_ATTR_ADDR_TRANSMITTER])) {
 		// TODO determine if this is always perm_addr
 		print_debug(LOG_INFO, "HWSIM_ATTR_ADDR_TRANSMITTER missing");
-		goto out;
+		return NL_SKIP;
 	}
 
 	/* get the node */
@@ -856,7 +1019,10 @@ static int process_messages_cb(struct nl_msg *msg, void *arg)
 	if (node) {
 		print_debug(LOG_INFO, "frame from device with radio id %d", node->radio_id);
 	} else {
+		get_radio(perm_addr[4]);
 		print_debug(LOG_ERR, "frame from unknown device");
+		list_device_nodes();
+		return NL_SKIP;
 	}
 
 	/* we get the attributes*/
@@ -972,7 +1138,7 @@ attempt idx, count: -1 0
 */
 	/* round -1 is the last element of the array */
 	/* this is the signal sent to the sender, not the receiver */
-	signal = -10;
+	signal = -11;
 	/* Let's flag this frame as ACK'ed */
 	/* whatever that means... */
 	flags |= HWSIM_TX_STAT_ACK;
@@ -980,7 +1146,7 @@ attempt idx, count: -1 0
 	/* what does the driver do with these values? can i remove them? */
 	send_tx_info_frame_nl(src, flags, signal, tx_attempts,
 			cookie);
-
+	print_debug(LOG_DEBUG, "sent tx_info frame to hwsim");
 	/*
 	 * no need to send a tx info frame indicating failure with a
 	 * signal of 0 - that was done in the tx code i took this from
@@ -1020,6 +1186,12 @@ attempt idx, count: -1 0
 		print_debug(LOG_ERR, "cannot malloc");
 		_exit(EXIT_FAILURE);
 	}
+
+	if (!node) {
+		print_debug(LOG_ERR, "unknown node");
+		_exit(EXIT_FAILURE);
+	}
+
 	struct message_hdr hdr;
 	memcpy(hdr.name, "welled", 6);
 	strncpy(hdr.version, (const char *)VERSION_STR, 8);
@@ -1029,9 +1201,9 @@ attempt idx, count: -1 0
 	memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
 	memcpy(message + sizeof(struct message_hdr), nlh, msg_len);
 
-	pthread_mutex_lock(&send_mutex);
+	//pthread_mutex_lock(&socket_mutex);
 	bytes = send(sockfd, message, len, 0);
-	pthread_mutex_unlock(&send_mutex);
+	//pthread_mutex_unlock(&socket_mutex);
 
 	free(message);
 
@@ -1041,13 +1213,10 @@ attempt idx, count: -1 0
 		print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+		return NL_OK;
 	}
 
-out:
-	if (verbose)
-		printf("#################### hwsim recv done ######################\n");
-
-	return 0;
+	return NL_SKIP;
 }
 
 
@@ -1058,59 +1227,70 @@ out:
  */
 int init_netlink(void)
 {
+	print_debug(LOG_DEBUG, "init_netlink");
 	int nlsockfd;
 	struct timeval tv;
 
+	/* setup callbacks */
 	if (cb != NULL) {
 		nl_cb_put(cb);
 		free(cb);
 	}
-	cb = nl_cb_alloc(NL_CB_CUSTOM);
+	if (loglevel == 7) {
+		cb = nl_cb_alloc(NL_CB_DEBUG);
+	} else if (verbose) {
+		cb = nl_cb_alloc(NL_CB_VERBOSE);
+	} else {
+		cb = nl_cb_alloc(NL_CB_CUSTOM);
+	}
 	if (!cb) {
-		print_debug(LOG_ERR, "Error allocating netlink callbacks\n");
+		print_debug(LOG_ERR, "Error allocating netlink callbacks");
 		running = 0;
 		return 0;
 	}
 
 	sock = nl_socket_alloc_cb(cb);
 	if (!sock) {
-		print_debug(LOG_ERR, "Error allocationg netlink socket\n");
+		print_debug(LOG_ERR, "Error allocating netlink socket");
 		running = 0;
 		return 0;
 	}
 
 	/* disable auto-ack from kernel to reduce load */
 	nl_socket_disable_auto_ack(sock);
+
+	/* get connected netlink socket */
 	genl_connect(sock);
 
-	hwsim_genl_family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
-
-	while ((hwsim_genl_family_id < 0) && running) {
-		print_debug(LOG_INFO, "Family MAC80211_HWSIM not registered");
-		sleep(1);
-		hwsim_genl_family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
-	}
-	if (!running) {
-		return 0;
-	}
-
-	nl_cb_set(cb, NL_CB_MSG_IN, NL_CB_CUSTOM, process_messages_cb, NULL);
+	/* get file descriptor for setsockopt */
 	nlsockfd = nl_socket_get_fd(sock);
-
+	if (nlsockfd < 0) {
+		print_debug(LOG_ERR, "cannot get nl socket fd to set socket options");
+	} else {
+		print_debug(LOG_DEBUG, "init_netlink setting options for socket %d", nlsockfd);
+	}
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
 	if (setsockopt(nlsockfd, SOL_SOCKET, SO_RCVTIMEO | SO_SNDTIMEO,
 			&tv, sizeof(tv)) < 0) {
 		perror("setsockopt");
+		print_debug(LOG_ERR, "netlink could not set timeout");
 	}
-	/* this may not be needed */
-	int opt = 1;
-	if (setsockopt(nlsockfd, SOL_NETLINK, NETLINK_LISTEN_ALL_NSID,
-				&opt, sizeof(opt)) < 0) {
-		perror("setsockopt");
-		print_debug(LOG_ERR, "netlink could not listen to all nsid");
+
+	do {
+		print_debug(LOG_DEBUG, "checking for MAC80211_HWSIM family");
+		hwsim_genl_family_id = genl_ctrl_resolve(sock, "MAC80211_HWSIM");
+		sleep(1);
+	} while((hwsim_genl_family_id < 0) && running);
+
+	if (!running) {
+		return 0;
 	}
+
+	//nl_cb_err(cb, NL_CB_DEBUG, NULL, NULL);
+	nl_cb_set(cb, NL_CB_MSG_IN, NL_CB_CUSTOM, process_hwsim_nl_event_cb, NULL);
+	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, NULL);
 
 	return 1;
 }
@@ -1146,6 +1326,11 @@ int send_register_msg(void)
 	return 0;
 }
 
+/**
+ * 	@brief requests radio info from hwsim driver
+ * 	@param id - radio id
+ * 	@return success or failure
+ */
 int get_radio(int id)
 {
 	struct nl_msg *msg;
@@ -1282,9 +1467,9 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	memcpy(message + sizeof(struct message_hdr), msg, msg_len);
 
 	/* send frame to wmasterd */
-	pthread_mutex_lock(&send_mutex);
+	//pthread_mutex_lock(&socket_mutex);
 	bytes = send(sockfd, (char *)message, len, 0);
-	pthread_mutex_unlock(&send_mutex);
+	//pthread_mutex_unlock(&socket_mutex);
 
 	if (bytes < 0) {
 		/* wmasterd probably down */
@@ -1304,7 +1489,7 @@ out:
  *	@brief parse data received from wmastered.
  *	At the moment, this will not
  *	include any txinfo messages since we immediately ack them inside
- *	the process_messages_cb function
+ *	the process_hwsim_nl_event_cb function
  *	TODO: figure out what to do about tx_info data to better ack
  *	@return void
  */
@@ -1324,7 +1509,9 @@ int recv_from_master(void)
 	}
 
 	/* receive packets from wmasterd */
+	//pthread_mutex_lock(&socket_mutex);
 	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
+	//pthread_mutex_unlock(&socket_mutex);
 
 	if (bytes < 0) {
 		if (errno == EWOULDBLOCK) {
@@ -1548,63 +1735,63 @@ int process_message(char *buf)
 		print_debug(LOG_INFO, "no devices registered");
 		goto out;
 	}
-	//pthread_mutex_lock(&list_mutex);
-	//for (i = 0; i < devices; i++) {
-		should_ack = 0;
+	should_ack = 0;
 
-		node = get_device_node_by_radio_id(hdr->dest_radio_id);
-		if (!node) {
-			print_debug(LOG_ERR, "dest radio %d not found", hdr->dest_radio_id);
-			if (verbose) {
-				hex_dump(hdr, sizeof (struct message_hdr));
-			}
-			goto out;
+	//pthread_mutex_lock(&list_mutex);
+
+	node = get_device_node_by_radio_id(hdr->dest_radio_id);
+	if (!node) {
+		print_debug(LOG_ERR, "dest radio %d not found", hdr->dest_radio_id);
+		if (verbose) {
+			hex_dump(hdr, sizeof (struct message_hdr));
 		}
-		dst = (struct ether_addr *)node->address;
-		if (dst == NULL) {
-			print_debug(LOG_ERR, "dst device has no address");
-			goto out;
-		}
-		/* compare frame dst to nlmsg src */
-		if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
-			/* this radio sent the frame, skip it */
-			if (verbose) {
-				mac_address_to_string(addr, dst);
-				printf("- skipping %s with dst %s because this radio sent this frame\n",
-						node->name, addr);
-			}
-			goto out;
-		}
+		goto out;
+	}
+	dst = (struct ether_addr *)node->address;
+	if (dst == NULL) {
+		print_debug(LOG_ERR, "dst device has no address");
+		goto out;
+	}
+	/* compare frame dst to nlmsg src */
+	if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
+		/* this radio sent the frame, skip it */
 		if (verbose) {
 			mac_address_to_string(addr, dst);
-			printf("- sending to %s dst %s\n", node->name, addr);
+			printf("- skipping %s with dst %s because this radio sent this frame\n",
+					node->name, addr);
 		}
+		goto out;
+	}
+	if (verbose) {
+		mac_address_to_string(addr, dst);
+		printf("- sending to %s dst %s\n", node->name, addr);
+	}
 
-		/* we should ack if:
-		 * the frame was sent to this radio's address
-		 * and this is not an ack packet itself
+	/* we should ack if:
+	 * the frame was sent to this radio's address
+	 * and this is not an ack packet itself
+	 */
+	if ((memcmp(&framedst, dst, ETH_ALEN) == 0) &&
+		(nlh->nlmsg_len != 56)) {
+		should_ack = 1;
+	}
+
+	if (any_mac) {
+		/* send without address modifications */
+		retval = send_cloned_frame_msg(dst, data, data_len,
+			rate_idx, signal, freq);
+		/*
+		 * if we sent it successfully, ack it for now. this
+		 * needs to get updated to check a queue and the kernel
+		 * response via netlink. only ack if the kernel accepted
 		 */
-		if ((memcmp(&framedst, dst, ETH_ALEN) == 0) &&
-			(nlh->nlmsg_len != 56)) {
-			should_ack = 1;
+		if (should_ack && !retval) {
+			if (verbose)
+				printf("- attempting to ack the frame\n");
+			generate_ack_frame(freq, src, dst);
 		}
-
-		if (any_mac) {
-			/* send without address modifications */
-			retval = send_cloned_frame_msg(dst, data, data_len,
-				rate_idx, signal, freq);
-			/*
-			 * if we sent it successfully, ack it for now. this
-			 * needs to get updated to check a queue and the kernel
-			 * response via netlink. only ack if the kernel accepted
-			 */
-			if (should_ack && !retval) {
-				if (verbose)
-					printf("- attempting to ack the frame\n");
-				generate_ack_frame(freq, src, dst);
-			}
-			goto out;
-		}
+		goto out;
+	}
 
 /*
  * we have a source of error here:
@@ -1626,41 +1813,40 @@ int process_message(char *buf)
  *	TODO: investigate changes mentioned above for dst/src
  */
 
-		memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
+	memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
 
-		/* check whether this radio mac matches our nl msg data */
-		if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
-			/* frame dst matches radio mac */
+	/* check whether this radio mac matches our nl msg data */
+	if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
+		/* frame dst matches radio mac */
+		if (verbose)
+			printf("- radio mac already mataches perm_addr dst\n");
+
+		send_cloned_frame_msg(dst, data, data_len, rate_idx,
+			signal, freq);
+	} else {
+		if (verbose)
+			printf("- we are changing radio mac to match perm_addr\n");
+		/* we need to update data inside nl msg
+		 * we could also look into updating the attribute
+		 * using the proper functions. unpacking/repacking nl
+		 */
+		memcpy((char *)nlh + 24, (char *)&radiomac, ETH_ALEN);
+
+		retval = send_cloned_frame_msg(&radiomac, data,
+			data_len, rate_idx, signal, freq);
+
+		if (should_ack && !retval) {
 			if (verbose)
-				printf("- radio mac already mataches perm_addr dst\n");
-
-			send_cloned_frame_msg(dst, data, data_len, rate_idx,
-				signal, freq);
-		} else {
-			if (verbose)
-				printf("- we are changing radio mac to match perm_addr\n");
-			/* we need to update data inside nl msg
-			 * we could also look into updating the attribute
-			 * using the proper functions. unpacking/repacking nl
-			 */
-			memcpy((char *)nlh + 24, (char *)&radiomac, ETH_ALEN);
-
-			retval = send_cloned_frame_msg(&radiomac, data,
-				data_len, rate_idx, signal, freq);
-
-			if (should_ack && !retval) {
-				if (verbose)
-					printf("- attempting to ack the frame\n");
-				/* TODO: determine correct values below */
-				generate_ack_frame(freq, src, dst);
-			}
-			goto out;
-
+				printf("- attempting to ack the frame\n");
+			/* TODO: determine correct values below */
+			generate_ack_frame(freq, src, dst);
 		}
-	//}
-	//pthread_mutex_unlock(&list_mutex);
+		goto out;
+
+	}
 
 out:
+	//pthread_mutex_unlock(&list_mutex);
 	return 0;
 }
 
@@ -1735,9 +1921,9 @@ connect:
 	hdr.len = msg_len;
 	hdr.netns = mynetns;
 
-	pthread_mutex_lock(&send_mutex);
+	//pthread_mutex_lock(&socket_mutex);
 	bytes = send(sockfd, (char *)&hdr, msg_len, 0);
-	pthread_mutex_unlock(&send_mutex);
+	//pthread_mutex_unlock(&socket_mutex);
 
 	/* this should be 6 bytes */
 	if (bytes != msg_len) {
@@ -1876,9 +2062,9 @@ void newlink(struct nlmsghdr *h)
 	}
 }
 
-static int process_nl_route_event(struct nl_msg *msg, void *arg)
+static int process_nl_route_event_cb(struct nl_msg *msg, void *arg)
 {
-	print_debug(LOG_DEBUG, "process_nl_route_event");
+	print_debug(LOG_DEBUG, "process_nl_route_event_cb");
 	struct nlmsghdr *nlh;
 	int len;
 
@@ -1905,7 +2091,8 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
 		}
 		nlh = NLMSG_NEXT(nlh, len);
 	}
-	return 0;
+	print_debug(LOG_DEBUG, "finished parsing nl route event");
+	return NL_OK;
 }
 
 
@@ -1917,17 +2104,25 @@ static int process_nl_route_event(struct nl_msg *msg, void *arg)
 void *monitor_devices(void *arg)
 {
 	print_debug(LOG_DEBUG, "monitor_devices running");
-	struct timeval tv;
 	struct nl_sock *sk;
+	struct timeval tv;
 	int nlsockfd;
 	int opt;
 
 	sk = nl_socket_alloc();
 	nl_socket_disable_seq_check(sk);
-	nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM, process_nl_route_event, NULL);
+	nl_socket_modify_cb(sk, NL_CB_VALID, NL_CB_CUSTOM, process_nl_route_event_cb, NULL);
+
 	nl_connect(sk, NETLINK_ROUTE);
 	nl_socket_add_memberships(sk, RTMGRP_LINK, RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, RTNLGRP_NSID, 0);
+
 	nlsockfd = nl_socket_get_fd(sk);
+
+	if (nlsockfd < 0) {
+		print_debug(LOG_ERR, "cannot set socket options");
+	} else {
+		print_debug(LOG_DEBUG, "monitor_devices setting options for socket %d", nlsockfd);
+	}
 
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
@@ -1946,7 +2141,12 @@ void *monitor_devices(void *arg)
 	}
 
 	while (running) {
-		nl_recvmsgs_default(sk);
+		int ret = nl_recvmsgs_default(sk);
+		if (ret == -NETLINK_SOCK_DIAG) {
+			print_debug(LOG_DEBUG, "monitor_devices nl_recvmsgs_default returned NETLINK_SOCK_DIAG");
+		} else {
+			print_debug(LOG_DEBUG, "monitor_devices nl_recvmsgs_default returned %d", ret);
+		}
 	}
 	nl_close(sk);
 	nl_socket_free(sk);
@@ -1966,32 +2166,38 @@ void *send_status(void *arg)
 	/* send up notification to wmasterd */
 	int msg_len;
 	int bytes;
-
-	/* send up notification to wmasterd */
-	struct message_hdr hdr = {};
-	msg_len = sizeof(struct message_hdr);
-	memcpy(hdr.name, "welled", 6);
-	strncpy(hdr.version, (const char *)VERSION_STR, 8);
-	hdr.src_radio_id = -1;
-	hdr.len = msg_len;
-	hdr.netns = mynetns;
+	struct device_node *node;
 
 	while (running) {
 
 		sleep(1);
 
+		if (verbose) {
+			list_device_nodes();
+		}
+
 		/* determine if a device is in monitor mode */
-		if (!monitor_mode_active())
+		node = monitor_mode_active();
+		if (!node) {
 			continue;
+		}
 
-		pthread_mutex_lock(&send_mutex);
+		/* send up notification to wmasterd */
+		struct message_hdr hdr = {};
+		msg_len = sizeof(struct message_hdr);
+		memcpy(hdr.name, "welled", 6);
+		strncpy(hdr.version, (const char *)VERSION_STR, 8);
+		hdr.src_radio_id = node->radio_id;
+		hdr.len = sizeof(struct message_hdr);
+		hdr.netns = node->netnsid;
+
+		//pthread_mutex_lock(&socket_mutex);
 		bytes = send(sockfd, (char *)&hdr, msg_len, 0);
-		pthread_mutex_unlock(&send_mutex);
+		//pthread_mutex_unlock(&socket_mutex);
 
-		/* this should be 6 bytes */
 		if (bytes != msg_len) {
 			perror("send");
-			print_debug(LOG_ERR, "up notification failed");
+			print_debug(LOG_ERR, "up notification failed for monitor mode node");
 		}
 		sleep(9);
 	}
@@ -2022,12 +2228,20 @@ void *monitor_hwsim(void *arg)
 
 			/*  we call init_netlink which returns when back up */
 			pthread_mutex_lock(&hwsim_mutex);
-			if (!init_netlink())
+			if (!init_netlink()) {
 				continue;
+			}
 			/* Send a register msg to the kernel */
-			if (send_register_msg() == 0)
+			if (send_register_msg() == 0) {
 				print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM");
+			}
 			pthread_mutex_unlock(&hwsim_mutex);
+			int id = 0;
+		    for (id = 0; id < 100; id++) {
+			get_radio(id);
+		    }
+		/* init list of interfaces */
+		nl80211_get_interface(0);
 		}
 	}
 	nl_close(sock2);
@@ -2096,25 +2310,31 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		return NL_SKIP;
 	}
 
-	if (tb_msg[NL80211_ATTR_IFNAME])
+	if (tb_msg[NL80211_ATTR_IFNAME]) {
 		ifname = nla_get_string(tb_msg[NL80211_ATTR_IFNAME]);
-	else
+		print_debug(LOG_DEBUG, "interface with ifname %s", ifname);
+	} else {
 		return NL_SKIP;
+	}
 
-	if (tb_msg[NL80211_ATTR_IFINDEX])
+	if (tb_msg[NL80211_ATTR_IFINDEX]) {
 		ifindex = nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
-	else
+		print_debug(LOG_DEBUG, "interface with ifindex %d", ifindex);
+	} else {
 		return NL_SKIP;
+	}
 
-	if (tb_msg[NL80211_ATTR_MAC])
+	if (tb_msg[NL80211_ATTR_MAC]) {
 		memcpy(&addr, nla_data(tb_msg[NL80211_ATTR_MAC]), ETH_ALEN);
-	else
+	} else {
 		return NL_SKIP;
+	}
 
-	if (tb_msg[NL80211_ATTR_IFTYPE])
+	if (tb_msg[NL80211_ATTR_IFTYPE]) {
 		iftype = nla_get_u32(tb_msg[NL80211_ATTR_IFTYPE]);
-	else
+	} else {
 		return NL_SKIP;
+	}
 
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
@@ -2194,8 +2414,8 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		add_device_node(node);
 		devices++;
 
+		print_debug(LOG_INFO, "added node, now %d devices", devices);
 		if (verbose) {
-			print_debug(LOG_INFO, "added node, now %d devices", devices);
 			list_device_nodes();
 		}
 	} else {
@@ -2206,23 +2426,23 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		}
 		/* update existing node if name changed */
 		if (strncmp(node->name, ifname, strlen(ifname)) != 0) {
+			print_debug(LOG_DEBUG, "name changed");
 			/* overwrite name */
 			strncpy(node->name, ifname, sizeof(node->name) + 1);
 			if (verbose) {
-				print_debug(LOG_DEBUG, "name changed");
 				list_device_nodes();
 			}
 		}
 		/* update existing node if address changed */
 		if (memcmp(&node->address, &addr, ETH_ALEN) != 0) {
+			print_debug(LOG_DEBUG, "name changed");
 			if (iftype == NL80211_IFTYPE_MONITOR) {
-				print_debug(LOG_DEBUG, "setting address to 00's");
+				print_debug(LOG_DEBUG, "monitor mode - setting address to 00's");
 				memset(&node->address, 0, ETH_ALEN);
 			} else {
 				memcpy(&node->address, &addr, ETH_ALEN);
 			}
 			if (verbose) {
-				print_debug(LOG_DEBUG, "address changed");
 				list_device_nodes();
 			}
 		}
@@ -2231,7 +2451,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		printf("#################################\n");
 	pthread_mutex_unlock(&list_mutex);
 
-	return NL_SKIP;
+	return NL_OK;
 }
 
 /**
@@ -2241,7 +2461,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
  */
 int nl80211_get_interface(int ifindex)
 {
-	print_debug(LOG_DEBUG, "nl80211_get_interface");
+	print_debug(LOG_DEBUG, "nl80211_get_interface index %d", ifindex);
 	struct nl_msg *nlmsg;
 	struct nl_cb *cb;
 	int err;
@@ -2296,8 +2516,10 @@ int nl80211_get_interface(int ifindex)
 		nl_recvmsgs(wifi.nls, cb);
 	} else {
 		err = 1;
-		while (err > 0)
+		while (err > 0) {
 			nl_recvmsgs(wifi.nls, cb);
+			print_debug(LOG_DEBUG, "nl_recvmsgs returned");
+		}
 	}
 
 	nlmsg_free(nlmsg);
@@ -2311,7 +2533,7 @@ int nl80211_get_interface(int ifindex)
 int get_mynetns(void)
 {
 	char *nspath = "/proc/self/ns/net";
-	char pathbuf[256];
+	char *pathbuf = calloc(256, 1);
 	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
 	if (len < 0) {
 		perror("readlink");
@@ -2321,6 +2543,7 @@ int get_mynetns(void)
 		perror("sscanf");
 		return -1;
 	}
+	free(pathbuf);
 	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
 	return 0;
 }
@@ -2502,7 +2725,7 @@ int main(int argc, char *argv[])
 		}
 		closedir(d);
 	} else {
-		print_debug(LOG_ERR, "cannot open /run/netns");
+		print_debug(LOG_INFO, "cannot open /run/netns");
 	}
 
 	if (inside_netns) {
@@ -2512,17 +2735,16 @@ int main(int argc, char *argv[])
 	}
 
 	/* Handle signals */
-	signal(SIGINT, (void *)signal_handler);
-	signal(SIGTERM, (void *)signal_handler);
-	signal(SIGQUIT, (void *)signal_handler);
-	signal(SIGHUP, SIG_IGN);
-	signal(SIGPIPE, SIG_IGN);
+	//signal(SIGINT, (void *)signal_handler);
+	//signal(SIGTERM, (void *)signal_handler);
+	//signal(SIGQUIT, (void *)signal_handler);
+	//signal(SIGHUP, SIG_IGN);
+	//signal(SIGPIPE, SIG_IGN);
 
 	/* init mutex */
 	pthread_mutex_init(&hwsim_mutex, NULL);
 	pthread_mutex_init(&list_mutex, NULL);
-	pthread_mutex_init(&send_mutex, NULL);
-
+	pthread_mutex_init(&socket_mutex, NULL);
 
 	/* init list of interfaces */
 	nl80211_get_interface(0);
@@ -2539,27 +2761,27 @@ int main(int argc, char *argv[])
 		_exit(EXIT_FAILURE);
 	}
 
-	/* Send a register msg to the kernel */
 	if (send_register_msg() == 0) {
 		print_debug(LOG_NOTICE, "Registered with family MAC80211_HWSIM");
 	} else {
+		print_debug(LOG_ERR, "could not register with family MAC80211_HWSIM");
 		nl_close(sock);
 		nl_socket_free(sock);
 		nl_cb_put(cb);
 		_exit(EXIT_FAILURE);
 	}
 
-	/* get radios from hwsim and update wiphy and radio_id in device nodes */
-	id = 0;
+	/* request information about all devices that may have been loaded */
+	print_debug(LOG_DEBUG, "requesting all devices from hwsim");
 	for (id = 0; id < 100; id++) {
 		get_radio(id);
 	}
-
-	if (verbose)
+	if (verbose) {
 		printf("################################################################################\n");
+	}
 
 	/* start thread to monitor devices */
-	ret = pthread_create(&dev_tid, NULL, monitor_devices, NULL);
+	ret = pthread_create(&monitor_devices_tid, NULL, monitor_devices, NULL);
 	if (ret < 0) {
 		perror("pthread_create");
 		print_debug(LOG_ERR, "error: pthread_create monitor_devices");
@@ -2567,7 +2789,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* start thread to monitor for hwsim netlink family changes */
-	ret = pthread_create(&hwsim_tid, NULL, monitor_hwsim, NULL);
+	ret = pthread_create(&monitor_hwsim_tid, NULL, monitor_hwsim, NULL);
 	if (ret < 0) {
 		perror("pthread_create");
 		print_debug(LOG_ERR, "error: pthread_create monitor_hwsim");
@@ -2575,7 +2797,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* start thread to transmit up status message to wmasterd */
-	ret = pthread_create(&status_tid, NULL, send_status, NULL);
+	ret = pthread_create(&send_status_tid, NULL, send_status, NULL);
 	if (ret < 0) {
 		perror("pthread_create");
 		print_debug(LOG_ERR, "error: pthread_create send_status");
@@ -2583,7 +2805,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* start thread to recv from wmasterd */
-	ret = pthread_create(&master_tid, NULL, process_master, NULL);
+	ret = pthread_create(&process_master_tid, NULL, process_master, NULL);
 	if (ret < 0) {
 		perror("pthread_create");
 		print_debug(LOG_ERR, "error: pthread_create process_master");
@@ -2592,17 +2814,17 @@ int main(int argc, char *argv[])
 
 	/* We wait for incoming msg from hwsim */
 	while (running) {
-		pthread_mutex_lock(&hwsim_mutex);
+		//pthread_mutex_lock(&hwsim_mutex);
 		nl_recvmsgs_default(sock);
-		pthread_mutex_unlock(&hwsim_mutex);
+		//pthread_mutex_unlock(&hwsim_mutex);
+		print_debug(LOG_DEBUG, "main thread hwsim nl_recvmsgs_default returned");
 	}
 
-	/* code below here executes after signal */
-
-	pthread_join(dev_tid, NULL);
-	pthread_join(hwsim_tid, NULL);
-	pthread_join(status_tid, NULL);
-	pthread_join(master_tid, NULL);
+	/* code below here executes after signaled to quit */
+	pthread_join(monitor_devices_tid, NULL);
+	pthread_join(monitor_hwsim_tid, NULL);
+	pthread_join(send_status_tid, NULL);
+	pthread_join(process_master_tid, NULL);
 
 	print_debug(LOG_DEBUG, "Threads have been cancelled");
 
@@ -2618,7 +2840,7 @@ int main(int argc, char *argv[])
 
 	pthread_mutex_destroy(&list_mutex);
 	pthread_mutex_destroy(&hwsim_mutex);
-	pthread_mutex_destroy(&send_mutex);
+	pthread_mutex_destroy(&socket_mutex);
 
 	print_debug(LOG_DEBUG, "Mutices have been destroyed");
 

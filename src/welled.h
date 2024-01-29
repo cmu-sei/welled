@@ -66,13 +66,13 @@ int get_signal_by_rate(int);
 void nlh_print(struct nlmsghdr *);
 void gnlh_print(struct genlmsghdr *);
 void attrs_print(struct nlattr *attrs[]);
-static int process_messages_cb(struct nl_msg *, void *);
+static int process_hwsim_nl_event_cb(struct nl_msg *, void *);
 int init_netlink(void);
 int send_register_msg(void);
 int recv_from_master(void);
 void dellink(struct nlmsghdr *);
 void newlink(struct nlmsghdr *);
-static int process_nl_route_event(struct nl_msg *, void *);
+static int process_nl_route_event_cb(struct nl_msg *, void *);
 void *monitor_devices(void *);
 void *monitor_hwsim(void *);
 static int finish_handler(struct nl_msg *, void *);
@@ -81,5 +81,7 @@ int nl80211_get_interface(int);
 static void generate_ack_frame(uint32_t, struct ether_addr*, struct ether_addr*);
 void mac_address_to_string(char *, struct ether_addr *);
 void print_debug(int, char *, ...);
+int get_radio(int);
+int process_hwsim_nl_msg(struct nlmsghdr *);
 
 #endif /* WELLED_H_ */

@@ -60,7 +60,7 @@ struct device_node *get_device_node_by_pos(int);
 struct device_node *get_device_node_by_wiphy(int);
 struct device_node *get_device_node_by_perm_addr(char *);
 void list_device_nodes(void);
-int monitor_mode_active(void);
+struct device_node *monitor_mode_active(void);
 void print_device_node(int, struct device_node *);
 int remove_device_node_by_name(char *);
 int remove_device_node_by_index(int);

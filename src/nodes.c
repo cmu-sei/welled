@@ -205,7 +205,7 @@ struct device_node *get_device_node_by_pos(int pos)
  *	@brief Searches the linked list until a monitor mode device is found
  *	@return true if device is in monitor mode
  */
-int monitor_mode_active(void)
+struct device_node *monitor_mode_active(void)
 {
 	struct device_node *curr;
 
@@ -213,11 +213,11 @@ int monitor_mode_active(void)
 
 	while (curr != NULL) {
 		if (curr->iftype == NL80211_IFTYPE_MONITOR)
-			return 1;
+			return curr;
 		curr = curr->next;
 	}
 
-    return 0;
+    return NULL;
 }
 
 /**
