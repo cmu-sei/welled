@@ -345,7 +345,7 @@ void set_all_rates_invalid(struct hwsim_tx_rate *tx_rate)
 }
 
 /**
- *      @brief Send a cloned frame to the kernel space driver.
+ *  @brief Send a cloned frame to the kernel space driver.
  *	This will send a frame to the driver using netlink.
  *	It is received by hwsim with hwsim_cloned_frame_received_nl()
  *	This is taken from wmediumd and modified. It is called after the
@@ -655,6 +655,83 @@ void attrs_print(struct nlattr *attrs[])
 		printf("freq:      %i\n", freq);
 	}
 }
+void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
+{
+	int remaining = payload_len;
+	do {
+		print_debug(LOG_DEBUG, "processing attribute in error message");
+		// could be invalid radio address
+		// could be invalid size
+		// could be off channel, and this is most likely the cause since
+		// we check the radio address before sending the frame but we
+		// do not check the channel
+		if (attr->nla_type == HWSIM_ATTR_FRAME) {
+			if (err == -EINVAL) {
+				print_debug(LOG_ERR, "frame rejected, likely off channel");
+			}
+			int frame_data_len = nla_len(nla_data(attr));
+			if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
+				print_debug(LOG_ERR, "frame_data_len is not valid size");
+				_exit(EXIT_FAILURE);
+			}
+			if (verbose) {
+				printf("- HWSIM_ATTR_FRAME:\n");
+				char *data = nla_data(attr);
+				printf("- frame: \n");
+				hex_dump(data, nla_len(attr));
+			}
+		}
+		if (verbose) {
+			if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+				int radio_id = nla_get_u32(attr);
+				printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
+			}
+			if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+				char addr[18];
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+				printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
+			}
+			if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+				char addr[18];
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+				printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
+			}
+			if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+				printf("- HWSIM_ATTR_TX_INFO:\n");
+				struct hwsim_tx_rate *tx_rates;
+				tx_rates = (struct hwsim_tx_rate *)nla_data(attr);
+				printf("- tx_rates: ");
+				hex_dump(tx_rates, nla_len(attr));
+			}
+			if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+				printf("- HWSIM_ATTR_FLAGS:\n");
+				int flags = nla_get_u32(attr);
+				printf("- flags:     %u\n", flags);
+			}
+			if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+				printf("- HWSIM_ATTR_SIGNAL:\n");
+				int signal = nla_get_u32(attr);
+				printf("- signal:    %d\n", signal);
+			}
+			if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+				printf("- HWSIM_ATTR_COOKIE:\n");
+				unsigned long cookie = nla_get_u64(attr);
+				printf("- cookie:    %lu\n", cookie);
+			}
+			if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
+				printf("- HWSIM_ATTR_RX_RATE:\n");
+				int rate = nla_get_u32(attr);
+				printf("- rx rate:    %d\n", rate);
+			}
+			if (attr->nla_type == HWSIM_ATTR_FREQ) {
+				printf("- HWSIM_ATTR_FREQ:\n");
+				int freq = nla_get_u32(attr);
+				printf("- freq:    %d\n", freq);
+			}
+	}
+		attr = nla_next(attr, &remaining);
+	} while(remaining > 0);
+}
 
 /**
  *	@brief Callback function to process messages received from kernel
@@ -667,10 +744,13 @@ void attrs_print(struct nlattr *attrs[])
 static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 {
 	print_debug(LOG_DEBUG, "process_hwsim_nl_event_cb");
+	int ret;
 	struct nlmsghdr *nlh;
 	int len;
 	struct nlmsgerr *err;
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
+
+	ret = NL_SKIP;
 
 	nlh = nlmsg_hdr(msg);
 	len = nlh->nlmsg_len;
@@ -678,242 +758,72 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 	while (NLMSG_OK(nlh, (unsigned int)len)) {
 		switch (nlh->nlmsg_type) {
 		case NLMSG_DONE:
-			//nlmsg_end = 1;
-			print_debug(LOG_DEBUG, "done processing hwsim nl msgs");
+			nlmsg_end = 1;
+			print_debug(LOG_DEBUG, "NLMSG_DONE processing hwsim nl msgs");
 			break;
 		case NLMSG_ERROR:
 			err = nlmsg_data(nlh);
+			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+			int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
+			char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
+			char *ptr = (char *)data + sizeof(struct nlmsghdr);
+			struct nlattr *attr = (struct nlattr *)ptr;
+			int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
+
 			if (err->error == -22) {
 				/* not sure of the cause */
 				print_debug(LOG_ERR, "-EINVAL from hwsim");
-				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 
 				//TODO check which cmd was returned, maybe it was 2 for a frame
 
-				//printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
-				//printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
-				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
-				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
-				//hex_dump(data, data_len);
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
-				//printf("payload size is %d\n", payload_len); // 8 bytes
+				parse_nl_error_attr(attr, payload_len, err->error);
 
-				char *ptr = (char *)data + sizeof(struct nlmsghdr);
-				struct nlattr *attr = (struct nlattr *)ptr;
-
-				int remaining = payload_len;
-				do {
-					printf("processing attribute in error message\n");
-					// could be invalid radio address
-					// could be invalid size
-					// could by off channel
-					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
-						int radio_id = nla_get_u32(attr);
-						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_FRAME) {
-						printf("- HWSIM_ATTR_FRAME:\n");
-						int frame_data_len = nla_len(nla_data(attr));
-						if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
-							printf("- frame_data_len is not valid size\n");
-							_exit(EXIT_FAILURE);
-						}
-						char *data = nla_data(attr);
-						printf("- frame: \n");
-						hex_dump(data, nla_len(attr));
-					}
-					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
-						printf("- HWSIM_ATTR_TX_INFO:\n");
-						struct hwsim_tx_rate *tx_rates;
-						tx_rates = (struct hwsim_tx_rate *)
-							nla_data(attr);
-						printf("- tx_rates: ");
-						hex_dump(tx_rates, nla_len(attr));
-					}
-					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
-						printf("- HWSIM_ATTR_FLAGS:\n");
-						int flags = nla_get_u32(attr);
-						printf("- flags:     %u\n", flags);
-					}
-					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
-						printf("- HWSIM_ATTR_SIGNAL:\n");
-						int signal = nla_get_u32(attr);
-						printf("- signal:    %d\n", signal);
-					}
-					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
-						printf("- HWSIM_ATTR_COOKIE:\n");
-						unsigned long cookie = nla_get_u64(attr);
-						printf("- cookie:    %lu\n", cookie);
-					}
-					if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
-						printf("- HWSIM_ATTR_RX_RATE:\n");
-						int rate = nla_get_u32(attr);
-						printf("- rx rate:    %d\n", rate);
-					}
-					if (attr->nla_type == HWSIM_ATTR_FREQ) {
-						printf("- HWSIM_ATTR_FREQ:\n");
-						int freq = nla_get_u32(attr);
-						printf("- freq:    %d\n", freq);
-					}
-					attr = nla_next(attr, &remaining);
-				} while(remaining > 0);
 			} else if (err->error == -2) {
 				/* driver unloaded */
 				print_debug(LOG_ERR, "-ENOENT from hwsim");
 			} else if (err->error == -19) {
 				/* radio does not exist */
 				print_debug(LOG_ERR, "-ENODEV from hwsim");
-				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
-				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
-				char *ptr = (char *)data + sizeof(struct nlmsghdr);
-				struct nlattr *attr = (struct nlattr *)ptr;
-				if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
-					int radio_id = nla_get_u32(attr);
-					print_debug(LOG_INFO, "device with radio id %d does not exist", radio_id);
-				}
+
+				parse_nl_error_attr(attr, payload_len, err->error);
 			} else if (err->error == -34) {
 				print_debug(LOG_ERR, "-ERANGE from hwsim");
-				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
-				//printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
-				//printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
-				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
-				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
-				//hex_dump(data, data_len);
+
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
-				//printf("payload size is %d\n", payload_len); // 8 bytes
-
-				char *ptr = (char *)data + sizeof(struct nlmsghdr);
-				struct nlattr *attr = (struct nlattr *)ptr;
-
-				int remaining = payload_len;
-				do {
-					printf("processing attribute in error message\n");
-					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
-						int radio_id = nla_get_u32(attr);
-						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
-						printf("- HWSIM_ATTR_TX_INFO:\n");
-						struct hwsim_tx_rate *tx_rates;
-						tx_rates = (struct hwsim_tx_rate *)
-							nla_data(attr);
-						printf("- tx_rates: ");
-						hex_dump(tx_rates, nla_len(attr));
-					}
-					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
-						printf("- HWSIM_ATTR_FLAGS:\n");
-						int flags = nla_get_u32(attr);
-						printf("- flags:     %u\n", flags);
-					}
-					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
-						printf("- HWSIM_ATTR_SIGNAL:\n");
-						int signal = nla_get_u32(attr);
-						printf("- signal:    %d\n", signal);
-					}
-					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
-						printf("- HWSIM_ATTR_COOKIE:\n");
-						unsigned long cookie = nla_get_u64(attr);
-						printf("- cookie:    %lu\n", cookie);
-					}
-					attr = nla_next(attr, &remaining);
-				} while(remaining > 0);
+				parse_nl_error_attr(attr, payload_len, err->error);
 			} else {
 				/* unknown error */
 				print_debug(LOG_ERR, "NLMSG_ERROR: %d", err->error);
-				genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
-				printf("nla len    %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_len);
-				printf("nla type   %u\n", attrs[HWSIM_ATTR_UNSPEC]->nla_type);
-				int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
-				char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
-				//hex_dump(data, data_len);
+
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
-				printf("payload size is %d\n", payload_len); // 8 bytes
-
-				char *ptr = (char *)data + sizeof(struct nlmsghdr);
-				struct nlattr *attr = (struct nlattr *)ptr;
-
-				int remaining = payload_len;
-				do {
-					printf("processing attribute in error message\n");
-					if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
-						int radio_id = nla_get_u32(attr);
-						printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
-						char addr[18];
-						mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-						printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
-					}
-					if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
-						printf("- HWSIM_ATTR_TX_INFO:\n");
-						struct hwsim_tx_rate *tx_rates;
-						tx_rates = (struct hwsim_tx_rate *)
-							nla_data(attr);
-						printf("- tx_rates: ");
-						hex_dump(tx_rates, nla_len(attr));
-					}
-					if (attr->nla_type == HWSIM_ATTR_FLAGS) {
-						printf("- HWSIM_ATTR_FLAGS:\n");
-						int flags = nla_get_u32(attr);
-						printf("- flags:     %u\n", flags);
-					}
-					if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
-						printf("- HWSIM_ATTR_SIGNAL:\n");
-						int signal = nla_get_u32(attr);
-						printf("- signal:    %d\n", signal);
-					}
-					if (attr->nla_type == HWSIM_ATTR_COOKIE) {
-						printf("- HWSIM_ATTR_COOKIE:\n");
-						unsigned long cookie = nla_get_u64(attr);
-						printf("- cookie:    %lu\n", cookie);
-					}
-					attr = nla_next(attr, &remaining);
-				} while(remaining > 0);
+				parse_nl_error_attr(attr, payload_len, err->error);
 
 				list_device_nodes();
 				_exit(EXIT_FAILURE);
 			}
 			break;
+		case NLMSG_NOOP:
+			print_debug(LOG_DEBUG, "NLMSG_NOOP");
+			_exit(EXIT_FAILURE);
+			break;
+		case NLMSG_OVERRUN:
+			print_debug(LOG_DEBUG, "NLMSG_OVERRUN");
+			_exit(EXIT_FAILURE);
+			break;
 		default:
 			print_debug(LOG_DEBUG, "processing netlink type 0x%x %d", nlh->nlmsg_type, nlh->nlmsg_type);
-			int ret = process_hwsim_nl_msg(nlh);
+			ret = process_hwsim_nl_msg(nlh);
 			print_debug(LOG_DEBUG, "process_hwsim_nl_msg returned %d", ret);
 			break;
 		}
+		print_debug(LOG_DEBUG, "calling NLMSG_NEXT");
 		nlh = NLMSG_NEXT(nlh, len);
 	}
 	print_debug(LOG_DEBUG, "finished parsing hwsim nl event");
@@ -921,8 +831,17 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 	if (verbose)
 		printf("#################### hwsim recv done ######################\n");
 
-	return NL_OK;
+	/*
+	NL_OK
+	Proceed with wathever would come next.
 
+	NL_SKIP
+	Skip this message.
+
+	NL_STOP
+	Stop parsing altogether and discard remaining messages.
+	*/
+	return ret;
 }
 
 
@@ -1061,7 +980,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 
 			// TODO update?
 		}
-		return NL_OK;
+		return NL_SKIP;
 	} else if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
 		/* for example, notification of device up/down */
 		print_debug(LOG_DEBUG, "msg is not a frame, unhandled cmd is %d", gnlh->cmd);
@@ -1298,7 +1217,6 @@ attempt idx, count: -1 0
 		print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
 	} else {
 		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
-		return NL_OK;
 	}
 
 	return NL_SKIP;
@@ -2228,6 +2146,7 @@ void *monitor_devices(void *arg)
 	while (running) {
 		int ret = nl_recvmsgs_default(sk);
 		if (ret == -NETLINK_SOCK_DIAG) {
+			/* timeout */
 			print_debug(LOG_DEBUG, "monitor_devices nl_recvmsgs_default returned NETLINK_SOCK_DIAG");
 		} else {
 			print_debug(LOG_DEBUG, "monitor_devices nl_recvmsgs_default returned %d", ret);
@@ -2345,6 +2264,7 @@ void *monitor_hwsim(void *arg)
  */
 static int finish_handler(struct nl_msg *msg, void *arg)
 {
+	print_debug(LOG_DEBUG, "finish_handler");
 	int *ret = arg;
 	*ret = 0;
 	return NL_SKIP;
@@ -2900,9 +2820,14 @@ int main(int argc, char *argv[])
 	/* We wait for incoming msg from hwsim */
 	while (running) {
 		//pthread_mutex_lock(&hwsim_mutex);
-		nl_recvmsgs_default(sock);
+		int ret = nl_recvmsgs_default(sock);
 		//pthread_mutex_unlock(&hwsim_mutex);
-		print_debug(LOG_DEBUG, "main thread hwsim nl_recvmsgs_default returned");
+		if (ret == -NETLINK_SOCK_DIAG) {
+			/* timeout */
+			print_debug(LOG_DEBUG, "main thread hwsim nl_recvmsgs_default returned NETLINK_SOCK_DIAG");
+		} else {
+			print_debug(LOG_DEBUG, "main thread hwsim nl_recvmsgs_default returned %d", ret);
+		}
 	}
 
 	/* code below here executes after signaled to quit */
