@@ -658,6 +658,11 @@ void attrs_print(struct nlattr *attrs[])
 void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 {
 	int remaining = payload_len;
+	int tx_info = 0;
+	int frame = 0;
+	int freq = 0;
+	int radio_id = -1;
+
 	do {
 		print_debug(LOG_DEBUG, "processing attribute in error message");
 		// could be invalid radio address
@@ -666,9 +671,6 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 		// we check the radio address before sending the frame but we
 		// do not check the channel
 		if (attr->nla_type == HWSIM_ATTR_FRAME) {
-			if (err == -EINVAL) {
-				print_debug(LOG_ERR, "frame rejected, likely off channel");
-			}
 			int frame_data_len = nla_len(nla_data(attr));
 			if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
 				print_debug(LOG_ERR, "frame_data_len is not valid size");
@@ -681,56 +683,82 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 				hex_dump(data, nla_len(attr));
 			}
 		}
-		if (verbose) {
-			if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
-				int radio_id = nla_get_u32(attr);
-				printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
-			}
-			if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
-				char addr[18];
-				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-				printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
-			}
-			if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
-				char addr[18];
-				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
-				printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
-			}
-			if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+		if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+			if (verbose) {
 				printf("- HWSIM_ATTR_TX_INFO:\n");
 				struct hwsim_tx_rate *tx_rates;
 				tx_rates = (struct hwsim_tx_rate *)nla_data(attr);
 				printf("- tx_rates: ");
 				hex_dump(tx_rates, nla_len(attr));
 			}
-			if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+		}
+		if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+			radio_id = nla_get_u32(attr);
+			if (verbose) {
+				printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
+			}
+		}
+		if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+			if (verbose) {
+				char addr[18];
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+				printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
+			}
+		}
+		if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+			if (verbose) {
+				char addr[18];
+				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+				printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
+			}
+		}
+		if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+			if (verbose) {
 				printf("- HWSIM_ATTR_FLAGS:\n");
 				int flags = nla_get_u32(attr);
 				printf("- flags:     %u\n", flags);
 			}
-			if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+		}
+		if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+			if (verbose) {
 				printf("- HWSIM_ATTR_SIGNAL:\n");
 				int signal = nla_get_u32(attr);
 				printf("- signal:    %d\n", signal);
 			}
-			if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+		}
+		if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+			if (verbose) {
 				printf("- HWSIM_ATTR_COOKIE:\n");
 				unsigned long cookie = nla_get_u64(attr);
 				printf("- cookie:    %lu\n", cookie);
 			}
-			if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
+		}
+		if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
+			if (verbose) {
 				printf("- HWSIM_ATTR_RX_RATE:\n");
 				int rate = nla_get_u32(attr);
 				printf("- rx rate:    %d\n", rate);
 			}
-			if (attr->nla_type == HWSIM_ATTR_FREQ) {
+		}
+		if (attr->nla_type == HWSIM_ATTR_FREQ) {
+			freq = nla_get_u32(attr);
+			if (verbose) {
 				printf("- HWSIM_ATTR_FREQ:\n");
-				int freq = nla_get_u32(attr);
 				printf("- freq:    %d\n", freq);
 			}
-	}
+		}
 		attr = nla_next(attr, &remaining);
 	} while(remaining > 0);
+
+	if ((err == -ERANGE) && tx_info) {
+		print_debug(LOG_ERR, "tx_info frame rejected");
+	}
+	if ((err == -ENODEV) && (radio_id >= 0)) {
+		print_debug(LOG_ERR, "device not present: %d", radio_id);
+	}
+	if ((err == -EINVAL) && frame && freq) {
+		print_debug(LOG_ERR, "frame rejected, likely off channel, channel: %d", freq);
+	}
 }
 
 /**
@@ -772,7 +800,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 
 			if (err->error == -22) {
 				/* not sure of the cause */
-				print_debug(LOG_ERR, "-EINVAL from hwsim");
+				//print_debug(LOG_ERR, "-EINVAL from hwsim");
 
 				//TODO check which cmd was returned, maybe it was 2 for a frame
 
@@ -783,14 +811,14 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 
 			} else if (err->error == -2) {
 				/* driver unloaded */
-				print_debug(LOG_ERR, "-ENOENT from hwsim");
+				print_debug(LOG_ERR, "-ENOENT from hwsim - driver unloaded");
 			} else if (err->error == -19) {
 				/* radio does not exist */
-				print_debug(LOG_ERR, "-ENODEV from hwsim");
+				//print_debug(LOG_ERR, "-ENODEV from hwsim");
 
 				parse_nl_error_attr(attr, payload_len, err->error);
 			} else if (err->error == -34) {
-				print_debug(LOG_ERR, "-ERANGE from hwsim");
+				//print_debug(LOG_ERR, "-ERANGE from hwsim");
 
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
