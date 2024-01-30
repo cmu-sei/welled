@@ -328,7 +328,8 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 }
 
 /**
- *
+ *	@brief updates node information stored in cache file
+ *	@param node - node to be updated
  */
 void update_cache_file_info(struct client *node)
 {
@@ -336,7 +337,6 @@ void update_cache_file_info(struct client *node)
 
 	char buf[1024];
 	unsigned int address;
-	int port;
 	int ret;
 	int line_num;
 	long pos;
@@ -2961,7 +2961,7 @@ int main(int argc, char *argv[])
 
 					struct message_hdr *hdr = (struct message_hdr *)buf;
 					// TODO what if we have invalid header?
-					if ((hdr->src_radio_id == -1) || (hdr->len == sizeof(struct message_hdr))) {
+					if (hdr->src_radio_id == -1) {
 						/* just an up message */
 						continue;
 					}
@@ -3064,9 +3064,24 @@ int main(int argc, char *argv[])
 								node = process_connection(src_addr, src_port, sd, 0, hdr->src_radio_id);
 								pthread_mutex_unlock(&list_mutex);
 							}
-							pthread_mutex_lock(&list_mutex);
-							relay_to_nodes(message, hdr->len, node);
-							pthread_mutex_unlock(&list_mutex);
+							if (hdr->cmd == WMASTERD_ADD) {
+								/* should alrady be added at this point */
+							} else if (hdr->cmd == WMASTERD_DELETE) {
+								print_debug(LOG_INFO, "removing node with radio id: %d", hdr->src_radio_id);
+								pthread_mutex_lock(&list_mutex);
+								remove_node(node->address, node->port, hdr->src_radio_id);
+								pthread_mutex_unlock(&list_mutex);
+							} else if (hdr->cmd == WMASTERD_UPDATE) {
+								print_debug(LOG_INFO, "updating node with radio id: %d", hdr->src_radio_id);
+								node->time = time(NULL);
+								// TODO update netnsid if tracked here
+								//pthread_mutex_lock(&list_mutex);
+								//pthread_mutex_unlock(&list_mutex);
+							} else if (hdr->cmd == WMASTERD_FRAME) {
+								pthread_mutex_lock(&list_mutex);
+								relay_to_nodes(message, hdr->len, node);
+								pthread_mutex_unlock(&list_mutex);
+							}
 							free(message);
 							processed += hdr->len;
 							hdr = (struct message_hdr *)(buf + processed);

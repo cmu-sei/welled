@@ -53,6 +53,11 @@
 #define LOG_DEBUG       7       /* debug-level messages */
 #endif
 
+#define WMASTERD_ADD	10
+#define WMASTERD_DELETE	20
+#define WMASTERD_UPDATE	30
+#define WMASTERD_FRAME	40
+
 /**
  *      Structure for tracking welled node locations
  *	latitude and longitude are stored in degrees decimal
@@ -104,13 +109,15 @@ struct message_hdr {
 	/* app name */
 	char name[6];
 	/* app version */
-    char version[8];
-    /* radio_id sending the message */
-    int src_radio_id;
-    /* radio_id receiving the message */
-    int dest_radio_id;
-    /* netns of the app */
-    int netns;
+	char version[8];
+	/* cmd */
+	int cmd;
+	/* radio_id sending the message */
+	int src_radio_id;
+	/* radio_id receiving the message */
+	int dest_radio_id;
+	/* netns of the app */
+	int netns;
 	/* distance from receiver */
 	int distance;
 	/* length of message */
