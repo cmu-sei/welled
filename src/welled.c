@@ -421,7 +421,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	bytes = nl_send_auto_complete(sock, msg);
 	nlmsg_free(msg);
 	mac_address_to_string(addr, dst);
-	print_debug(LOG_INFO, "sent %d bytes to %s", bytes, addr);
+	print_debug(LOG_INFO, "sent %5d bytes to radio with perm_addr %s", bytes, addr);
 
 	return 0;
 out:
@@ -1620,7 +1620,7 @@ void recv_from_master(void)
 				(struct sockaddr *)&client_in, &client_len);
 	}
 	if (bytes < 0) {
-		return;
+		goto out;
 	}
 
 	if (vsock) {
@@ -1645,7 +1645,7 @@ void recv_from_master(void)
 
 	if (hdr->dest_radio_id > 100) {
 		print_debug(LOG_ERR, "invalid dest radio id %d", hdr->dest_radio_id);
-		return;
+		goto out;
 	}
 
 	/* netlink header */
@@ -1802,6 +1802,8 @@ void recv_from_master(void)
 			printf("- skipping %s with dst %s because this radio sent this frame\n",
 					node->name, addr);
 		}
+		print_debug(LOG_DEBUG, "skipping %s because this radio %d sent this frame",
+					node->name, node->radio_id);
 		goto out;
 	}
 	if (verbose) {
