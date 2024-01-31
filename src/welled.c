@@ -1923,7 +1923,7 @@ connect:
 			free_mem();
 			_exit(EXIT_FAILURE);
 		}
-			print_debug(LOG_DEBUG, "attempting to connect");
+		print_debug(LOG_DEBUG, "attempting to connect");
 		if (vsock) {
 			ret = connect(sockfd, (struct sockaddr *)&servaddr_vm, sizeof(struct sockaddr));
 		} else {
