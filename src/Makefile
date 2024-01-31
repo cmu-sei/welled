@@ -41,16 +41,10 @@ MAN := ../man
 endif
 
 # define the compile and linker for each target
-wmasterd-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-wmasterd-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 wmasterd-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 wmasterd-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
-gelled-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-gelled-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 gelled-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
-gelled-ctrl-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-gelled-ctrl-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 gelled-ctrl-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-ctrl-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 rpm-x86_64-Linux: ARCH=x86_64
@@ -117,9 +111,7 @@ x86_64-Linux: welled gelled gelled-ctrl wmasterd
 # vyos 1.1.7 differs due to older libc version
 x86_64-Linux-vyos: welled-x86_64-Linux-vyos gelled-ctrl-x86_64-Linux-vyos
 
-windows: i686-w64-mingw32 x86_64-w64-mingw32
-
-i686-w64-mingw32: gelled-i686-w64-mingw32 gelled-ctrl-i686-w64-mingw32 wmasterd-i686-w64-mingw32
+windows: x86_64-w64-mingw32
 
 x86_64-w64-mingw32: gelled-x86_64-w64-mingw32 gelled-ctrl-x86_64-w64-mingw32 wmasterd-x86_64-w64-mingw32
 
@@ -150,18 +142,6 @@ welled-x86_64-Linux-vyos:
 	cp $(OUTDIR)/welled ../dist/x86_64-Linux-vyos/
 
 welled-x86_64-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
-	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
-
-welled-i486-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
-	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
-
-welled-i486-openwrt-linux-musl:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
 	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
@@ -198,22 +178,9 @@ gelled-ctrl-x86_64-openwrt-linux-uclibc:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
 
-gelled-ctrl-i486-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
-gelled-ctrl-i486-openwrt-linux-musl:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
 gelled-ctrl-x86_64-openwrt-linux-musl:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
-gelled-ctrl-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -I/usr/i686-w64-mingw32/sys-root/mingw/include/glib-2.0/ -I/usr/i686-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -lglib-2.0 /usr/i686-w64-mingw32/sys-root/mingw/lib/libws2_32.a -lintl -lole32 -lwinmm
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/gelled-ctrl-i686-w64-mingw32 ../dist/i686-w64-mingw32/
 
 gelled-ctrl-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -I/usr/x86_64-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/glib/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -lglib-2.0 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a -lintl -lole32 -lwinmm
@@ -231,11 +198,6 @@ gelled-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/$@ ../dist/x86_64-w64-mingw32/
-
-gelled-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/i686-w64-mingw32/sys-root/mingw/lib/libws2_32.a
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/$@ ../dist/i686-w64-mingw32/
 
 # default is 64 bit
 wmasterd:
@@ -255,11 +217,6 @@ wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32* ../dist/x86_64-w64-mingw32/
-
-wmasterd-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/wmasterd-i686-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/i686-w64-mingw32/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/wmasterd-i686-w64-mingw32* ../dist/i686-w64-mingw32/
 
 clean:
 	rm -f *.o $(OUTDIR)/* welled-*.deb ../wmasterd.tgz
