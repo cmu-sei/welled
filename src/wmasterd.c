@@ -52,9 +52,9 @@
   #include <ws2tcpip.h>
   #include "vmci_sockets.h"
   #include "windows_error.h"
-  SERVICE_STATUS	  g_ServiceStatus = {0};
-  SERVICE_STATUS_HANDLE   g_StatusHandle = NULL;
-  HANDLE		  g_ServiceStopEvent = INVALID_HANDLE_VALUE;
+  SERVICE_STATUS g_ServiceStatus = {0};
+  SERVICE_STATUS_HANDLE g_StatusHandle = NULL;
+  HANDLE g_ServiceStopEvent = INVALID_HANDLE_VALUE;
   HANDLE hThread;
   #define SERVICE_NAME  "wmasterd"
   #define sock_error windows_error
@@ -132,7 +132,7 @@ char *cache_filename;
 FILE *cache_fp;
 /** for the desired log level */
 int loglevel;
-/** for tracking  client connections */
+/** for tracking client connections */
 int client_socket[MAX_CLIENTS];
 
 
@@ -150,7 +150,7 @@ struct sockaddr_vm myservaddr_vm;
 struct sockaddr_in servaddr_in;
 /** sockaddr_in for ip server */
 struct sockaddr_in myservaddr_in;
-
+/** for head of linked list */
 struct client *head;
 
 #ifdef _WIN32
@@ -169,23 +169,23 @@ void show_usage(int exval)
 
 	printf("wmasterd - wireless master daemon\n\n");
 
-	printf("Usage: wmasterd [-hVvbrudni] [-p <port>] [-D <level>] [-c <file>]\n\n");
+	printf("Usage: wmasterd [-hVvbrudni] [-l <port>] [-p <port>] [-D <level>] [-c <file>]\n\n");
 
 	printf("Options:\n");
-	printf("  -h, --help		print this help and exit\n");
-	printf("  -V, --version		print version and exit\n");
-	printf("  -v, --verbose		verbose output\n");
+	printf("  -h, --help			print this help and exit\n");
+	printf("  -V, --version			print version and exit\n");
+	printf("  -v, --verbose			verbose output\n");
 	printf("  -b, --broadcast       broadcast frames to other hosts\n");
 	printf("  -r, --no-room-check	do not check room id\n");
 	printf("  -u, --update-room     update room on receipt\n");
-	printf("  -d, --distance	prepend distance to frames\n");
-	printf("  -D, --debug		debug level for syslog\n");
-	printf("  -c, --cache		file to save location data\n");
-	printf("  -n, --nogps		disable nmea\n");
-	printf("  -i, --ip		use ip\n");
-	printf("  -l, --listen-port	listen port\n\n");
+	printf("  -d, --distance		prepend distance to frames\n");
+	printf("  -D, --debug			debug level for syslog\n");
+	printf("  -c, --cache			file to save location data\n");
+	printf("  -n, --nogps			disable nmea\n");
+	printf("  -i, --ipv4			use ipv4\n");
+	printf("  -l, --listen-port		listen port\n\n");
 
-	printf("Copyright (C) 2015-2023 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -344,6 +344,7 @@ void update_cache_file_info(struct client *node)
 	struct in_addr ip;
 	char ip_address[16];
 	int radio_id;
+	struct in_addr ipmatch;
 
 	address = node->address;
 	ip.s_addr = node->address;
@@ -360,7 +361,6 @@ void update_cache_file_info(struct client *node)
 	pos = 0;
 	line_num = 0;
 	matched = 0;
-	struct in_addr ipmatch;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
 		if (vsock) {
@@ -447,14 +447,16 @@ void update_cache_file_location(struct client *node)
 
 	char buf[1024];
 	unsigned int address;
-	int port;
 	int ret;
 	int line_num;
 	long pos;
 	int matched;
 	char ip_address[16];
 	struct in_addr ip;
+	int radio_id;
+	struct in_addr ipmatch;
 
+	address = node->address;
 	ip.s_addr = node->address;
 
 	if (!cache) {
@@ -470,24 +472,26 @@ void update_cache_file_location(struct client *node)
 	pos = 0;
 	line_num = 0;
 	matched = 0;
-	struct in_addr ipmatch;
 
 	while ((fgets(buf, 1024, cache_fp)) != NULL) {
 		if (vsock) {
-			ret = sscanf(buf, "%u %d", &address, &port);
+			ret = sscanf(buf, "%u %d", &address, &radio_id);
 		} else {
-			ret = sscanf(buf, "%s %d", ip_address, &port);
+			ret = sscanf(buf, "%s %d", ip_address, &radio_id);
 			inet_pton(AF_INET, ip_address, &ipmatch);
 		}
 		if (ret != 2) {
 			remove_newline(buf);
 			print_debug(LOG_ERR, "did not parseline for '%s'", buf);
-		} else if (!vsock && (ip.s_addr == ipmatch.s_addr) && (port == node->port)) {
+		} else if (!vsock && (ip.s_addr == ipmatch.s_addr) && (radio_id == node->radio_id)) {
 			matched = 1;
 			break;
 		} else if (vsock && (address == node->address)) {
 			matched = 1;
 			break;
+		}
+		if (verbose) {
+			printf("'%s'\n", buf);
 		}
 		line_num++;
 		pos = ftell(cache_fp);
@@ -500,16 +504,16 @@ void update_cache_file_location(struct client *node)
 
 		if (vsock) {
 			fprintf(cache_fp,
-				"%-16d %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
-				node->address, node->port, node->room,
+				"%-16u %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				node->address, node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude, node->loc.velocity,
 				node->loc.heading, node->loc.pitch,
 				node->name);
 		} else {
 			fprintf(cache_fp,
-				"%-16s %-5d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
-				inet_ntoa(ip), node->port, node->room,
+				"%-16s %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				inet_ntoa(ip), node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude, node->loc.velocity,
 				node->loc.heading, node->loc.pitch,
@@ -518,11 +522,9 @@ void update_cache_file_location(struct client *node)
 		fflush(cache_fp);
 	} else {
 		if (vsock) {
-			print_debug(LOG_WARNING, "no match for node %d:%d in cache file",
-					node->address, node->port);
+			print_debug(LOG_ERR, "no match for node %d radio %d in cache file", node->address, node->radio_id);
 		} else {
-			print_debug(LOG_WARNING, "no match for node %s:%d in cache file",
-					inet_ntoa(ip), node->port);
+			print_debug(LOG_ERR, "no match for node %s radio %d in cache file", inet_ntoa(ip), node->radio_id);
 		}
 	}
 
@@ -616,10 +618,10 @@ void update_node_location(struct client *node, struct update_2 *data)
 			print_debug(LOG_DEBUG, "follow exists in update");
 			if (strncmp(data->follow, "CLEAR", 5) == 0) {
 				if (vsock) {
-					print_debug(LOG_NOTICE, "clearing follow on %d:%d",
+					print_debug(LOG_NOTICE, "clearing follow on %u radio %d",
 							node->address, node->port);
 				} else {
-					print_debug(LOG_NOTICE, "clearing follow on %s:%d",
+					print_debug(LOG_NOTICE, "clearing follow on %s radio %d",
 							inet_ntoa(ip), node->port);
 				}
 				memset(node->loc.follow, 0, FOLLOW_LEN);
@@ -627,11 +629,11 @@ void update_node_location(struct client *node, struct update_2 *data)
 				strncpy(node->loc.follow,
 						data->follow, FOLLOW_LEN - 1);
 				if (vsock) {
-					print_debug(LOG_NOTICE, "set follow to %s on %d:%d",
-							node->loc.follow, node->address, node->port);
+					print_debug(LOG_NOTICE, "set follow to %s on %u radio %d",
+							node->loc.follow, node->address, node->radio_id);
 				} else {
-					print_debug(LOG_NOTICE, "set follow to %s on %s:%d",
-							node->loc.follow, inet_ntoa(ip), node->port);
+					print_debug(LOG_NOTICE, "set follow to %s on %s radio %d",
+							node->loc.follow, inet_ntoa(ip), node->radio_id);
 				}
 			}
 		}
@@ -648,11 +650,11 @@ void update_node_location(struct client *node, struct update_2 *data)
 
 			if (!master) {
 				if (vsock) {
-					print_debug(LOG_INFO, "no master for follow on %d:%d",
-							node->address, node->port);
+					print_debug(LOG_INFO, "no master for follow on %u radio %d",
+							node->address, node->radio_id);
 				} else {
-					print_debug(LOG_INFO, "no master for follow on %s:%d",
-							inet_ntoa(ip), node->port);
+					print_debug(LOG_INFO, "no master for follow on %s radio %d",
+							inet_ntoa(ip), node->radio_id);
 				}
 			} else {
 				print_debug(LOG_INFO, "node set to follow %s", node->loc.follow);
@@ -1109,6 +1111,7 @@ void *produce_nmea(void *arg)
 
 /**
  *	Thread for console read
+ *  will print status when user enters 'p'
  */
 void *read_console(void *arg)
 {
@@ -1678,8 +1681,9 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 	} else {
 		/* traverse to end of list */
 		curr = head;
-		while (curr->next != NULL)
+		while (curr->next != NULL) {
 			curr = curr->next;
+		}
 		/* add to node to end of list */
 		curr->next = node;
 	}
@@ -1737,6 +1741,7 @@ struct client *get_node_by_address(unsigned int srchost, int srcport)
 
 	return NULL;
 }
+
 /**
  *      @brief Searches the linked list for a given node
  *      @param name - name of the guest vm
@@ -1792,6 +1797,7 @@ void print_node(struct client *node)
 {
 	printf("%d\n", node->address);
 	printf("%d\n", node->port);
+	printf("%d\n", node->radio_id);
 	printf("%s\n", node->name);
 	printf("%s\n", node->room);
 	printf("%d\n", node->time);
@@ -1814,6 +1820,8 @@ void list_nodes(void)
 	int age;
 	struct in_addr ip;
 	char *header = "%-16s %-5s %-6s %-5s %-5s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
+	char *format_ipv4 = "%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
@@ -1822,7 +1830,6 @@ void list_nodes(void)
 		perror("wmasterd: fopen");
 		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status\n");
 	}
-
 
 	if (fp) {
 		fprintf(fp, header, "addr:", "port:", "radio:", "wsd:", "gsd:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
@@ -1834,7 +1841,7 @@ void list_nodes(void)
 		age = time(NULL) - curr->time;
 		if (fp) {
 			if (vsock) {
-				fprintf(fp, "%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+				fprintf(fp, format_vsock,
 					curr->address, curr->port, curr->radio_id,
 					curr->welled_socket, curr->gelled_socket,
 					curr->room, age,
@@ -1846,7 +1853,7 @@ void list_nodes(void)
 					curr->name);
 			} else {
 				ip.s_addr = curr->address;
-				fprintf(fp, "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+				fprintf(fp, format_ipv4,
 					inet_ntoa(ip), curr->port, curr->radio_id,
 					curr->welled_socket, curr->gelled_socket,
 					curr->room, age,
@@ -1859,7 +1866,7 @@ void list_nodes(void)
 			}
 		} else {
 			if (vsock) {
-				printf("%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+				printf(format_vsock,
 						curr->address, curr->port, curr->radio_id,
 						curr->welled_socket, curr->gelled_socket,
 						curr->room, age,
@@ -1871,7 +1878,7 @@ void list_nodes(void)
 						curr->name);
 			} else {
 				ip.s_addr = curr->address;
-				printf("%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n",
+				printf(format_ipv4,
 						inet_ntoa(ip), curr->port, curr->radio_id,
 						curr->welled_socket, curr->gelled_socket,
 						curr->room, age,
@@ -1895,6 +1902,7 @@ void list_nodes(void)
  *	@brief Removed a node from the linked list
  *	@param dsthost - CID of the guest
  *	@param dstport - port of the guest connection
+ *	@param radio_id - radio to be removed
  *	@return void
  */
 void remove_node(unsigned int dsthost, int dstport, int radio_id)
@@ -1906,6 +1914,7 @@ void remove_node(unsigned int dsthost, int dstport, int radio_id)
 		ip.s_addr = dsthost;
 		print_debug(LOG_DEBUG, "remove_node %s:%d radio %d", inet_ntoa(ip), dstport, radio_id);
 	}
+
 	struct client *curr;
 	struct client *prev;
 	char name[NAME_LEN];
@@ -2176,7 +2185,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 
 		/* skip node if room differs */
 		if (check_room && (strncmp(
-				curr->room, node->room, UUID_LEN - 1) != 0)) {
+					curr->room, node->room, UUID_LEN - 1) != 0)) {
 			if (vsock) {
 				print_debug(LOG_INFO, "skipped: %16d:%d room: %36s",
 						curr->address, curr->port, curr->room);
@@ -2614,7 +2623,6 @@ int main(int argc, char *argv[])
 	} else {
 		af = AF_INET;
 	}
-
 #else
 	uname(&uts_buf);
 	if (strncmp(uts_buf.sysname, "VMkernel", 8) == 0) {
@@ -2624,7 +2632,6 @@ int main(int argc, char *argv[])
 	if (loglevel >= 0) {
 		openlog("wmasterd", LOG_PID, LOG_USER);
 	}
-
 
 	if (vsock) {
 		/* TODO: add check for other hypervisors */

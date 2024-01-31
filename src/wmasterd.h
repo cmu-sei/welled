@@ -36,6 +36,7 @@
 #define NMEA_LEN	100
 /** Buffer size for follow name */
 #define FOLLOW_LEN	1024
+/** Buffer size for client vm name */
 #define NAME_LEN	1024
 /** Buffer size for GUID and UUID */
 #define UUID_LEN	37
@@ -53,13 +54,14 @@
 #define LOG_DEBUG       7       /* debug-level messages */
 #endif
 
+/* values for wmasterd commands */
 #define WMASTERD_ADD	10
 #define WMASTERD_DELETE	20
 #define WMASTERD_UPDATE	30
 #define WMASTERD_FRAME	40
 
 /**
- *      Structure for tracking welled node locations
+ *  Structure for tracking welled node locations
  *	latitude and longitude are stored in degrees decimal
  *	velocity is in knots
  *	heading is in degrees
@@ -137,8 +139,8 @@ struct client {
 	unsigned int port;
 	/* socket descriptor for welled frames */
 	int welled_socket;
-        /* socket descriptor for gelled nmea */
-        int gelled_socket;
+    /* socket descriptor for gelled nmea */
+    int gelled_socket;
 	/* radio_id */
 	int radio_id;
 	/* netns */
