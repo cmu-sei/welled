@@ -1508,10 +1508,9 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 
 	if (node) {
 		print_debug(LOG_DEBUG, "we found the node to ack the frame for %s", addr);
-		_exit(EXIT_FAILURE);
 	} else {
 		print_debug(LOG_ERR, "could not find node for %s", addr);
-		_exit(EXIT_FAILURE);
+		goto out;
 	}
 
 	nlh = nlmsg_hdr(msg);
