@@ -1488,6 +1488,8 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
  */
 void add_node(unsigned int srchost, char *vm_room, char *vm_name, char *uuid, int radio_id)
 {
+	print_debug(LOG_DEBUG, "add_node");
+
 	struct client *node;
 	struct client *curr;
 	char buf[1024];
@@ -1794,8 +1796,8 @@ void list_nodes(void)
 	int age;
 	struct in_addr ip;
 	char *header = "%-16s %-6s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
-	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 =  "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
@@ -2007,14 +2009,14 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	/* setup socket */
 	sock_opts = 1;
 	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
-		(const char *)&sock_opts, sizeof(int));
 	if (sockfd < 0) {
 		sock_error("wmasterd: socket");
 		print_debug(LOG_ERR, "error: could not create udp socket\n");
 		free(buffer);
 		return;
 	}
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
+		(const char *)&sock_opts, sizeof(int));
 
 	/* send packet */
 	bytes_sent = sendto(sockfd, buffer, bytes + UUID_LEN, 0,
@@ -2140,7 +2142,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 				print_debug(LOG_INFO, "sent %5d bytes to node: %16u room: %6s radio: %3d distance: %4d",
 						bytes, curr->address, curr->room, hdr->dest_radio_id, hdr->distance);
 			} else {
-				print_debug(LOG_INFO, "sent %5d bytes to node: %16s:%-5d room: %6s radio: %3d distance: %4d",
+				print_debug(LOG_INFO, "sent %5d bytes to node: %16s room: %6s radio: %3d distance: %4d",
 						bytes, inet_ntoa(ip), curr->room, hdr->dest_radio_id, hdr->distance);
 			}
 			curr = curr->next;
@@ -2303,37 +2305,28 @@ void recv_from_welled(void)
 	socklen_t client_len;
 	struct sockaddr_vm client_vm;
 	struct sockaddr_in client_in;
-	void *client_info;
 	unsigned int src_addr;
 	unsigned int src_port;
 	int ret;
 
 	if (vsock) {
 		client_len = sizeof(client_vm);
-		client_info = &client_vm;
+		memset(&client_vm, 0, client_len);
 	} else {
 		client_len = sizeof(client_in);
-		client_info = &client_in;
-	}
-
-	memset(client_info, 0, client_len);
-
-	bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
-			(struct sockaddr *)&client_info, &client_len);
-	if (bytes < 0) {
-		print_debug(LOG_ERR, "recvfrom failed");
-		return;
+		memset(&client_in, 0, client_len);
 	}
 
 	if (vsock) {
-		ret = getpeername(myservfd, (struct sockaddr *)&client_vm,
-				(socklen_t *)&client_len);
+		bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
+				(struct sockaddr *)&client_vm, &client_len);
 	} else {
-		ret = getpeername(myservfd, (struct sockaddr *)&client_in,
-				(socklen_t *)&client_len);
+		bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
+				(struct sockaddr *)&client_in, &client_len);
 	}
-	if (ret < 0) {
-		print_debug(LOG_ERR, "error getting peername on socket");
+	if (bytes < 0) {
+		print_debug(LOG_ERR, "recvfrom failed");
+		return;
 	}
 
 	if (vsock) {
@@ -2361,6 +2354,14 @@ void recv_from_welled(void)
 	memset(name, 0, NAME_LEN);
 	memset(uuid, 0, UUID_LEN);
 
+	strncpy(room, "0", UUID_LEN);
+	strncpy(name, "UNKNOWN", NAME_LEN);
+
+	if (vsock) {
+		// TODO update to send CID in the header even when IP, then we can lookup via vmx again
+		get_vm_info(src_addr, room, name, uuid);
+	}
+
 	struct message_hdr *hdr = (struct message_hdr *)buf;
 	// TODO what if we have invalid header?
 	if (hdr->src_radio_id == -1) {
@@ -2372,18 +2373,14 @@ void recv_from_welled(void)
 	node = get_node_by_radio(src_addr, radio_id);
 	if (!node) {
 		print_debug(LOG_DEBUG, "no nodes exist for this host with radio id: %d", hdr->src_radio_id);
-		if ((strncmp(hdr->name, "gelled", 6) == 0)) {
-			/* welled */
-		} else if ((strncmp(hdr->name, "welled", 6) == 0)) {
-			/* gelled */
-		} else {
-			print_debug(LOG_ERR, "error - unknown data: hdr->name = %s", hdr->name);
-			return;
-		}
 		/* process new connection (add to node linked list) */
-		pthread_mutex_lock(&list_mutex);
+		strncpy(old_room, room, UUID_LEN - 1);
+		//print_debug(LOG_DEBUG, "calling add node");
+		if (vsock) {
+			get_vm_info(src_addr, room, name, uuid);
+		}
+		print_debug(LOG_DEBUG, "calling add node");
 		add_node(src_addr, room, name, uuid, radio_id);
-		pthread_mutex_unlock(&list_mutex);
 		node = get_node_by_radio(src_addr, radio_id);
 		if (!node) {
 			print_debug(LOG_ERR, "error processing connection and setting node");
@@ -2393,7 +2390,9 @@ void recv_from_welled(void)
 		print_debug(LOG_DEBUG, "checking vmx for room update\n");
 		/* check for room change if room enforced */
 		strncpy(old_room, node->room, UUID_LEN - 1);
-		get_vm_info(src_addr, room, name, uuid);
+		if (vsock) {
+			get_vm_info(src_addr, room, name, uuid);
+		}
 		if (strncmp(old_room, room, UUID_LEN  - 1) != 0) {
 			remove_node(src_addr, radio_id);
 			add_node(src_addr, room, name, uuid, radio_id);
@@ -2792,8 +2791,8 @@ int main(int argc, char *argv[])
 
 		/* print status is requested by usr1 signal */
 		if (print_status) {
-			pthread_mutex_lock(&list_mutex);
 			print_debug(LOG_INFO, "status requested");
+			pthread_mutex_lock(&list_mutex);
 			list_nodes();
 			pthread_mutex_unlock(&list_mutex);
 			print_status = 0;
