@@ -43,22 +43,27 @@ struct device_node {
 	char *name;
 	int index;
 	int iftype;
+	long int netnsid;
+	int radio_id;
+	int wiphy;
 	unsigned char address[ETH_ALEN];
 	unsigned char perm_addr[ETH_ALEN];
 	struct device_node *next;
 };
 
-int monitor_mode(void);
-int remove_node_by_name(char *);
-int remove_node_by_index(int);
-
-void add_node(struct device_node *);
-void list_nodes(void);
+void add_device_node(struct device_node *);
 void free_list(void);
-
-struct device_node *get_node_by_name(char *);
-struct device_node *get_node_by_index(int);
-struct device_node *get_node_by_pos(int);
+struct device_node *get_device_node_by_name(char *);
+struct device_node *get_device_node_by_index(int);
+struct device_node *get_device_node_by_radio_id(int);
+struct device_node *get_device_node_by_pos(int);
+struct device_node *get_device_node_by_wiphy(int);
+struct device_node *get_device_node_by_perm_addr(char *);
+void list_device_nodes(void);
+struct device_node *monitor_mode_active(void);
+void print_device_node(int, struct device_node *);
+int remove_device_node_by_name(char *);
+int remove_device_node_by_index(int);
 
 #endif /* NODES_H_ */
 

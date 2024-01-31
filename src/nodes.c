@@ -51,7 +51,7 @@ struct device_node *head;
  *      @param node - the new device node
  *      @return void - success always assumed
  */
-void add_node(struct device_node *node)
+void add_device_node(struct device_node *node)
 {
 	struct device_node *curr;
 
@@ -62,7 +62,7 @@ void add_node(struct device_node *node)
 		/* add first node */
 		head = node;
 	} else {
-		 /* traverse to end of list */
+		/* traverse to end of list */
 		curr = head;
 		while (curr->next != NULL)
 			curr = curr->next;
@@ -76,7 +76,7 @@ void add_node(struct device_node *node)
  *      @param name - name of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_name(char *name)
+struct device_node *get_device_node_by_name(char *name)
 {
 	struct device_node *curr;
 
@@ -97,7 +97,7 @@ struct device_node *get_node_by_name(char *name)
  *      @param index - index of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_index(int index)
+struct device_node *get_device_node_by_index(int index)
 {
 	struct device_node *curr;
 
@@ -115,10 +115,75 @@ struct device_node *get_node_by_index(int index)
 
 /**
  *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_device_node_by_radio_id(int id)
+{
+	struct device_node *curr;
+
+	curr = head;
+
+	while (curr != NULL) {
+		if (curr->radio_id == id)
+			return curr;
+
+		curr = curr->next;
+	}
+
+	return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_device_node_by_perm_addr(char *perm_addr)
+{
+	struct device_node *curr;
+
+	int radio = perm_addr[4];
+
+	curr = head;
+
+	while (curr != NULL) {
+		if (curr->radio_id == radio)
+			return curr;
+
+		curr = curr->next;
+	}
+
+	return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
+ *      @param index - index of interface we are searching for
+ *      @return returns a pointer to the node
+ */
+struct device_node *get_device_node_by_wiphy(int id)
+{
+	struct device_node *curr;
+
+	curr = head;
+
+	while (curr != NULL) {
+		if (curr->wiphy == id)
+			return curr;
+
+		curr = curr->next;
+	}
+
+	return NULL;
+}
+
+/**
+ *      @brief Searches the linked list for a given node
  *      @param pos - position of interface we are searching for
  *      @return returns a pointer to the node
  */
-struct device_node *get_node_by_pos(int pos)
+struct device_node *get_device_node_by_pos(int pos)
 {
 	struct device_node *curr;
 	int i;
@@ -140,7 +205,7 @@ struct device_node *get_node_by_pos(int pos)
  *	@brief Searches the linked list until a monitor mode device is found
  *	@return true if device is in monitor mode
  */
-int monitor_mode(void)
+struct device_node *monitor_mode_active(void)
 {
 	struct device_node *curr;
 
@@ -148,18 +213,18 @@ int monitor_mode(void)
 
 	while (curr != NULL) {
 		if (curr->iftype == NL80211_IFTYPE_MONITOR)
-			return 1;
+			return curr;
 		curr = curr->next;
 	}
 
-        return 0;
+    return NULL;
 }
 
 /**
  *      @brief Lists the nodes in the linked list
  *      @return void
  */
-void list_nodes(void)
+void list_device_nodes(void)
 {
 	struct device_node *curr;
 	int i;
@@ -169,27 +234,49 @@ void list_nodes(void)
 	curr = head;
 
 	while (curr != NULL) {
-		printf("N[%d]:name:      %s\n", i, curr->name);
-		printf("N[%d]:index:     %d\n", i, curr->index);
-		if (curr->iftype == 2)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
-		else if (curr->iftype == 3)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
-		else if (curr->iftype == 8)
-			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
-		else
-			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
-		printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,
-			curr->address[0], curr->address[1],
-			curr->address[2], curr->address[3],
-			curr->address[4], curr->address[5]);
-		printf("N[%d]:perm_addr: %02X:%02X:%02X:%02X:%02X:%02X\n", i,
-			curr->perm_addr[0], curr->perm_addr[1],
-			curr->perm_addr[2], curr->perm_addr[3],
-			curr->perm_addr[4], curr->perm_addr[5]);
+		print_device_node(i, curr);
 		i++;
 		curr = curr->next;
 	}
+}
+
+/**	@brief print device node data
+ *	@param i - index to be displayed in print
+ *	@param curr - pointer to the node
+ *	@return void - assumes success
+ */
+void print_device_node(int i, struct device_node *curr)
+{
+	printf("N[%d]:name:      %s\n", i, curr->name);
+	printf("N[%d]:index:     %d\n", i, curr->index);
+	printf("N[%d]:radio_id   %d\n", i, curr->radio_id);
+	printf("N[%d]:wiphy      %d\n", i, curr->wiphy);
+	printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
+	switch (curr->iftype) {
+		case 2:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
+			break;
+		case 3:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
+			break;
+		case 6:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
+			break;
+		case 7:
+			printf("M[%d]:iftype:    NL80211_IFTYPE_MESH_POINT\n", i);
+			break;
+		default:
+			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
+			break;
+	}
+	printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,
+		curr->address[0], curr->address[1],
+		curr->address[2], curr->address[3],
+		curr->address[4], curr->address[5]);
+	printf("N[%d]:perm_addr: %02X:%02X:%02X:%02X:%02X:%02X\n", i,
+		curr->perm_addr[0], curr->perm_addr[1],
+		curr->perm_addr[2], curr->perm_addr[3],
+		curr->perm_addr[4], curr->perm_addr[5]);
 }
 
 /**
@@ -197,7 +284,7 @@ void list_nodes(void)
  *      @param name - name of interface to be removed
  *      @return success or failure
  */
-int remove_node_by_name(char *name)
+int remove_device_node_by_name(char *name)
 {
 	struct device_node *curr;
 	struct device_node *prev;
@@ -232,7 +319,7 @@ int remove_node_by_name(char *name)
  *      @param index - index of interface to be removed
  *      @return success or failure
  */
-int remove_node_by_index(int index)
+int remove_device_node_by_index(int index)
 {
 	struct device_node *curr;
 	struct device_node *prev;
