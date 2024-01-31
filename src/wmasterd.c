@@ -387,6 +387,8 @@ void update_cache_file_info(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* end of file reached */
+	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -394,7 +396,7 @@ void update_cache_file_info(struct client *node)
 
 		if (vsock) {
 			fprintf(cache_fp,
-				"%-16u %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				format_vsock,
 				node->address, node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude,
@@ -404,7 +406,7 @@ void update_cache_file_info(struct client *node)
 				node->name);
 		} else {
 			fprintf(cache_fp,
-				"%-16s %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				format_ipv4,
 				inet_ntoa(ip), node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude,
@@ -497,6 +499,8 @@ void update_cache_file_location(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* wmasterd: end of file reached */
+	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -504,7 +508,7 @@ void update_cache_file_location(struct client *node)
 
 		if (vsock) {
 			fprintf(cache_fp,
-				"%-16u %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				format_vsock,
 				node->address, node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude, node->loc.velocity,
@@ -512,7 +516,7 @@ void update_cache_file_location(struct client *node)
 				node->name);
 		} else {
 			fprintf(cache_fp,
-				"%-16s %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s",
+				format_ipv4,
 				inet_ntoa(ip), node->radio_id, node->room,
 				node->loc.latitude, node->loc.longitude,
 				node->loc.altitude, node->loc.velocity,
@@ -1392,7 +1396,7 @@ int parse_vmx(char *vmx, unsigned int srchost, char *room, char *name, char *uui
 
 	/* find the room id */
 	if (cid == srchost) {
-		print_debug(LOG_DEBUG, "cid %16d is a match for name %s",
+		print_debug(LOG_DEBUG, "cid %16u is a match for name %s",
 				cid, name);
 		/* guestinfo variables not found (they override annotation */
 		if (!room_found) {
@@ -1525,6 +1529,8 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
  */
 void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, char *uuid, int wsd, int gsd, int radio_id)
 {
+	print_debug(LOG_DEBUG, "add_node");
+
 	struct client *node;
 	struct client *curr;
 	char buf[1024];
@@ -1647,13 +1653,15 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 				continue;
 			}
 		}
+		char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+		char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 		if (!matched) {
 			print_debug(LOG_DEBUG, "adding node to the cache file");
 			fseek(cache_fp, 0, SEEK_END);
 			if (vsock) {
 				fprintf(cache_fp,
-					"%-16u %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
+				format_vsock,
 					node->address, node->radio_id, node->room,
 					node->loc.latitude, node->loc.longitude,
 					node->loc.altitude, node->loc.velocity,
@@ -1661,7 +1669,7 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 					node->name);
 			} else {
 				fprintf(cache_fp,
-					"%-16s %-3d %-36s %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-32s\n",
+					format_ipv4,
 					inet_ntoa(ip), node->radio_id, node->room,
 					node->loc.latitude, node->loc.longitude,
 					node->loc.altitude, node->loc.velocity,
@@ -1819,9 +1827,9 @@ void list_nodes(void)
 	FILE *fp;
 	int age;
 	struct in_addr ip;
-	char *header = "%-16s %-5s %-6s %-5s %-5s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
-	char *format_ipv4 = "%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16d %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *header = "%-16s %-6s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
+	char *format_ipv4 =  "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
@@ -1929,7 +1937,7 @@ void remove_node(unsigned int dsthost, int dstport, int radio_id)
 	prev = NULL;
 
 	/* traverse while not null and no match */
-	while (curr != NULL && !((curr->address == dsthost) && (curr->port == dstport)) && !(curr->radio_id == radio_id)) {
+	while (curr != NULL && !((curr->address == dsthost) && (curr->port == dstport) && (curr->radio_id == radio_id))) {
 		prev = curr;
 		curr = curr->next;
 	}
@@ -2128,14 +2136,14 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	/* setup socket */
 	sock_opts = 1;
 	udp_send_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	setsockopt(udp_send_sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
-		(const char *)&sock_opts, sizeof(int));
 	if (udp_send_sockfd < 0) {
 		sock_error("wmasterd: socket");
 		print_debug(LOG_ERR, "could not create udp socket\n");
 		free(buffer);
 		return;
 	}
+	setsockopt(udp_send_sockfd, SOL_SOCKET, SO_REUSEADDR|SO_BROADCAST,
+		(const char *)&sock_opts, sizeof(int));
 
 	/* send packet */
 	bytes_sent = sendto(udp_send_sockfd, buffer, bytes + UUID_LEN, 0,
@@ -2436,7 +2444,8 @@ struct client *process_connection(unsigned int src_addr, int src_port, int wsd, 
 	memset(name, 0, NAME_LEN);
 	memset(uuid, 0, UUID_LEN);
 
-	strncpy(room, "0", 1);
+	strncpy(room, "0", UUID_LEN);
+	strncpy(name, "UNKNOWN", NAME_LEN);
 
 	if (vsock) {
 		// TODO update to send CID in the header even when IP, then we can lookup via vmx again
@@ -2463,7 +2472,9 @@ struct client *process_connection(unsigned int src_addr, int src_port, int wsd, 
 		print_debug(LOG_DEBUG, "checking vmx for room update");
 		/* check for room change if room enforced */
 		strncpy(old_room, node->room, UUID_LEN - 1);
-		get_vm_info(src_addr, room, name, uuid);
+		if (vsock) {
+			get_vm_info(src_addr, room, name, uuid);
+		}
 		if (strncmp(old_room, room, UUID_LEN  - 1) != 0) {
 			remove_node(src_addr, src_port, radio_id);
 			add_node(src_addr, src_port, room, name, uuid, wsd, gsd, radio_id);
@@ -2804,8 +2815,8 @@ int main(int argc, char *argv[])
 
 		/* print status is requested by usr1 signal or console thread */
 		if (print_status) {
-			pthread_mutex_lock(&list_mutex);
 			print_debug(LOG_INFO, "status requested");
+			pthread_mutex_lock(&list_mutex);
 			list_nodes();
 			pthread_mutex_unlock(&list_mutex);
 			print_status = 0;
@@ -2879,6 +2890,9 @@ int main(int argc, char *argv[])
 			} else {
 				ret = getpeername(client_fd, (struct sockaddr *)&client_in,
 						(socklen_t *)&client_len);
+			}
+			if (ret < 0) {
+				print_debug(LOG_ERR, "error getting peername on socket %d", sd);
 			}
 
 			if (vsock) {

@@ -168,7 +168,7 @@ void show_usage(int exval)
 	printf("  -D, --debug   debug level for syslog\n");
 	printf("  -v, --verbose	verbose output\n\n");
 
-	printf("Copyright (C) 2015 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -657,6 +657,13 @@ void attrs_print(struct nlattr *attrs[])
 		printf("freq:      %i\n", freq);
 	}
 }
+
+/**
+ * 	\brief processes attritube contained in err msg
+ * 	@param attr - address of attribute
+ * 	@param payload_len - total length of attribute
+ * 	@param err - error code from nlmsg
+ */
 void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 {
 	int remaining = payload_len;
@@ -1257,7 +1264,6 @@ attempt idx, count: -1 0
 	return NL_SKIP;
 }
 
-
 /**
  *	@brief Initialize netlink communications
  *	Taken from wmediumd
@@ -1322,6 +1328,8 @@ int init_netlink(void)
 		sleep(1);
 	} while((hwsim_genl_family_id < 0) && running);
 
+	print_debug(LOG_DEBUG, "MAC80211_HWSIM is family id %d", hwsim_genl_family_id);
+
 	if (!running) {
 		return 0;
 	}
@@ -1330,6 +1338,7 @@ int init_netlink(void)
 	nl_cb_set(cb, NL_CB_MSG_IN, NL_CB_CUSTOM, process_hwsim_nl_event_cb, NULL);
 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, NULL);
 
+	print_debug(LOG_DEBUG, "netlink initialized");
 	return 1;
 }
 
@@ -1516,7 +1525,6 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		} else {
 			print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
 		}
-
 	}
 	/* free stuff */
 out:
@@ -2168,7 +2176,6 @@ static int process_nl_route_event_cb(struct nl_msg *msg, void *arg)
 	return NL_OK;
 }
 
-
 /**
  *	@brief Monitor netlink route messages
  *	This is meant to be a thread which receives link status changes
@@ -2587,7 +2594,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		printf("#################################\n");
 	pthread_mutex_unlock(&list_mutex);
 
-	return NL_OK;
+	return NL_SKIP;
 }
 
 /**
@@ -2666,6 +2673,9 @@ int nl80211_get_interface(int ifindex)
 	return 0;
 }
 
+/**
+ * 	\brief returns the netns of the current process
+*/
 int get_mynetns(void)
 {
 	char *nspath = "/proc/self/ns/net";
@@ -2712,6 +2722,8 @@ int main(int argc, char *argv[])
 	loglevel = -1;
 	vsock = 1;
 	port = WMASTERD_PORT;
+	inside_netns = 0;
+	mynetns = 0;
 
 	/* TODO: Send syslog message indicating start time */
 
@@ -2779,7 +2791,6 @@ int main(int argc, char *argv[])
 			show_usage(EXIT_FAILURE);
 			break;
 		}
-
 	}
 
 	if (optind < argc)
@@ -2815,8 +2826,6 @@ int main(int argc, char *argv[])
 	} else {
 		af = AF_INET;
 	}
-
-	inside_netns = 0;
 
 	/* get my netns */
 	if (get_mynetns() < 0) {
