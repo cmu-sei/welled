@@ -1231,30 +1231,29 @@ attempt idx, count: -1 0
 		_exit(EXIT_FAILURE);
 	}
 
-	struct message_hdr hdr;
-	memcpy(hdr.name, "welled", 6);
-	strncpy(hdr.version, (const char *)VERSION_STR, 8);
-	hdr.len = len;
-	hdr.src_radio_id = node->radio_id;
-	hdr.netns = mynetns;
-	hdr.cmd = WMASTERD_FRAME;
-	memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
-	memcpy(message + sizeof(struct message_hdr), nlh, msg_len);
+	if (sockfd) {
+		struct message_hdr hdr;
+		memcpy(hdr.name, "welled", 6);
+		strncpy(hdr.version, (const char *)VERSION_STR, 8);
+		hdr.len = len;
+		hdr.src_radio_id = node->radio_id;
+		hdr.netns = mynetns;
+		hdr.cmd = WMASTERD_FRAME;
+		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
+		memcpy(message + sizeof(struct message_hdr), nlh, msg_len);
 
-	//pthread_mutex_lock(&socket_mutex);
-	bytes = send(sockfd, message, len, 0);
-	//pthread_mutex_unlock(&socket_mutex);
+		bytes = send(sockfd, message, len, 0);
 
-	free(message);
+		free(message);
 
-	if (bytes < 0) {
-		/* wmasterd probably down */
-		perror("send");
-		print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
-	} else {
-		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+		if (bytes < 0) {
+			/* wmasterd probably down */
+			perror("send");
+			print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
+		} else {
+			print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+		}
 	}
-
 	return NL_SKIP;
 }
 
@@ -1496,28 +1495,29 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		print_debug(LOG_ERR, "cannot malloc");
 		_exit(EXIT_FAILURE);
 	}
-	struct message_hdr hdr;
-	memcpy(hdr.name, "welled", 6);
-	strncpy(hdr.version, (const char *)VERSION_STR, 8);
-	hdr.len = len;
-	hdr.src_radio_id = node->radio_id;
-	hdr.netns = mynetns;
-	memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
-	memcpy(message + sizeof(struct message_hdr), msg, msg_len);
 
-	/* send frame to wmasterd */
-	//pthread_mutex_lock(&socket_mutex);
-	bytes = send(sockfd, (char *)message, len, 0);
-	//pthread_mutex_unlock(&socket_mutex);
+	if (sockfd) {
+		struct message_hdr hdr;
+		memcpy(hdr.name, "welled", 6);
+		strncpy(hdr.version, (const char *)VERSION_STR, 8);
+		hdr.len = len;
+		hdr.src_radio_id = node->radio_id;
+		hdr.netns = mynetns;
+		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
+		memcpy(message + sizeof(struct message_hdr), msg, msg_len);
 
-	if (bytes < 0) {
-		/* wmasterd probably down */
-		perror("send");
-		print_debug(LOG_ERR, "ERROR: Could not TX ack frame to wmasterd");
-	} else {
-		print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+		/* send frame to wmasterd */
+		bytes = send(sockfd, (char *)message, len, 0);
+
+		if (bytes < 0) {
+			/* wmasterd probably down */
+			perror("send");
+			print_debug(LOG_ERR, "ERROR: Could not TX ack frame to wmasterd");
+		} else {
+			print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+		}
+
 	}
-
 	/* free stuff */
 out:
 	free(hdr11);
@@ -1548,9 +1548,7 @@ int recv_from_master(void)
 	}
 
 	/* receive packets from wmasterd */
-	//pthread_mutex_lock(&socket_mutex);
 	bytes = recv(sockfd, (char *)buf, WMASTERD_BUFF_LEN, 0);
-	//pthread_mutex_unlock(&socket_mutex);
 
 	if (bytes < 0) {
 		if (errno == EWOULDBLOCK) {
@@ -1951,24 +1949,24 @@ connect:
 		}
 	} while (running && (ret < 0));
 
-	/* send up notification to wmasterd */
-	struct message_hdr hdr = {};
-	msg_len = sizeof(struct message_hdr);
-	memcpy(hdr.name, "welled", 6);
-	strncpy(hdr.version, (const char *)VERSION_STR, 8);
-	hdr.src_radio_id = -1;
-	hdr.len = msg_len;
-	hdr.netns = mynetns;
-	hdr.cmd = WMASTERD_ADD;
+	if (sockfd) {
+		/* send up notification to wmasterd */
+		struct message_hdr hdr = {};
+		msg_len = sizeof(struct message_hdr);
+		memcpy(hdr.name, "welled", 6);
+		strncpy(hdr.version, (const char *)VERSION_STR, 8);
+		hdr.src_radio_id = -1;
+		hdr.len = msg_len;
+		hdr.netns = mynetns;
+		hdr.cmd = WMASTERD_ADD;
 
-	//pthread_mutex_lock(&socket_mutex);
-	bytes = send(sockfd, (char *)&hdr, msg_len, 0);
-	//pthread_mutex_unlock(&socket_mutex);
+		bytes = send(sockfd, (char *)&hdr, msg_len, 0);
 
-	/* this should be 6 bytes */
-	if (bytes != msg_len) {
-		perror("send");
-		print_debug(LOG_ERR, "up notification failed");
+		/* this should be 6 bytes */
+		if (bytes != msg_len) {
+			perror("send");
+			print_debug(LOG_ERR, "up notification failed");
+		}
 	}
 
 	while (running) {
@@ -1977,6 +1975,7 @@ connect:
 		}
 	}
 	print_debug(LOG_DEBUG, "process_master returning");
+
 	return ((void *)0);
 }
 
@@ -2012,23 +2011,23 @@ void dellink(struct nlmsghdr *h)
 		radio_id = node->radio_id;
 		netnsid = node->netnsid;
 
-		/* send delete notification to wmasterd */
-		msg_len = sizeof(struct message_hdr);
-		memcpy(hdr.name, "welled", 6);
-		strncpy(hdr.version, (const char *)VERSION_STR, 8);
-		hdr.src_radio_id = radio_id;
-		hdr.len = sizeof(struct message_hdr);
-		hdr.netns = netnsid;
-		hdr.cmd = WMASTERD_DELETE;
-		print_debug(LOG_DEBUG, "sending delete notification for radio %d", radio_id);
+		if (sockfd) {
+			/* send delete notification to wmasterd */
+			msg_len = sizeof(struct message_hdr);
+			memcpy(hdr.name, "welled", 6);
+			strncpy(hdr.version, (const char *)VERSION_STR, 8);
+			hdr.src_radio_id = radio_id;
+			hdr.len = sizeof(struct message_hdr);
+			hdr.netns = netnsid;
+			hdr.cmd = WMASTERD_DELETE;
+			print_debug(LOG_DEBUG, "sending delete notification for radio %d", radio_id);
 
-		//pthread_mutex_lock(&socket_mutex);
-		bytes = send(sockfd, (char *)&hdr, msg_len, 0);
-		//pthread_mutex_unlock(&socket_mutex);
+			bytes = send(sockfd, (char *)&hdr, msg_len, 0);
 
-		if (bytes != msg_len) {
-			perror("send");
-			print_debug(LOG_ERR, "delete notification failed for radio %d", radio_id);
+			if (bytes != msg_len) {
+				perror("send");
+				print_debug(LOG_ERR, "delete notification failed for radio %d", radio_id);
+			}
 		}
 	} else {
 		print_debug(LOG_DEBUG, "node not found for index %d", ifi->ifi_index);
@@ -2574,9 +2573,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		hdr.len = sizeof(struct message_hdr);
 		hdr.netns = node->netnsid;
 
-		//pthread_mutex_lock(&socket_mutex);
 		bytes = send(sockfd, (char *)&hdr, msg_len, 0);
-		//pthread_mutex_unlock(&socket_mutex);
 
 		if (bytes != msg_len) {
 			perror("send");
@@ -2883,7 +2880,7 @@ int main(int argc, char *argv[])
 	//signal(SIGTERM, (void *)signal_handler);
 	//signal(SIGQUIT, (void *)signal_handler);
 	//signal(SIGHUP, SIG_IGN);
-	//signal(SIGPIPE, SIG_IGN);
+	signal(SIGPIPE, SIG_IGN);
 
 	/* init mutex */
 	pthread_mutex_init(&hwsim_mutex, NULL);
