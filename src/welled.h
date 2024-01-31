@@ -80,7 +80,7 @@ void *monitor_hwsim(void *);
 static int finish_handler(struct nl_msg *, void *);
 static int list_interface_handler(struct nl_msg *, void *);
 int nl80211_get_interface(int);
-static void generate_ack_frame(uint32_t, struct ether_addr*, struct ether_addr*);
+static void generate_ack_frame(uint32_t, struct ether_addr *, struct ether_addr *, int);
 void mac_address_to_string(char *, struct ether_addr *);
 void print_debug(int, char *, ...);
 int get_radio(int);

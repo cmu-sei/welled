@@ -1139,10 +1139,21 @@ void send_nmea_to_nodes(void)
 		servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
 		servaddr_vm.svm_family = af;
 
+		memset(&servaddr_vm, 0, sizeof(servaddr_in));
+		servaddr_in.sin_addr.s_addr = curr->address;
+		servaddr_in.sin_port = WMASTERD_PORT_GELLED;
+		servaddr_in.sin_family = af;
+
 		/* send frame to this welled client */
-		ret = sendto(send_sockfd, (char *)buf, bytes, 0,
-				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr));
+		if (vsock) {
+			ret = sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_vm,
+					sizeof(struct sockaddr));
+		} else {
+			ret = sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_in,
+					sizeof(struct sockaddr));
+		}
 		if (ret < 0) {
 			print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
 
@@ -1162,17 +1173,28 @@ void send_nmea_to_nodes(void)
 			/* gga provides altitude */
 			buf = curr->loc.nmea_gga;
 			bytes = strlen(buf);
-			sendto(send_sockfd, (char *)buf, bytes, 0,
-				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr));
-
+			if (vsock) {
+				sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_vm,
+					sizeof(struct sockaddr));
+			} else {
+				sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_in,
+					sizeof(struct sockaddr));
+			}
 			if (send_pashr) {
 				/* send the PASHR message with pitch */
 				buf = curr->loc.nmea_pashr;
 				bytes = strlen(buf);
-				sendto(send_sockfd, (char *)buf, bytes, 0,
-					(struct sockaddr *)&servaddr_vm,
-					sizeof(struct sockaddr));
+				if (vsock) {
+					sendto(send_sockfd, (char *)buf, bytes, 0,
+						(struct sockaddr *)&servaddr_vm,
+						sizeof(struct sockaddr));
+				} else {
+					sendto(send_sockfd, (char *)buf, bytes, 0,
+						(struct sockaddr *)&servaddr_vm,
+						sizeof(struct sockaddr));
+				}
 			}
 		}
 		if (curr != NULL)
@@ -2096,6 +2118,11 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		servaddr_vm.svm_port = WMASTERD_PORT_WELLED;
 		servaddr_vm.svm_family = af;
 
+		memset(&servaddr_in, 0, sizeof(servaddr_in));
+		servaddr_in.sin_addr.s_addr = curr->address;
+		servaddr_in.sin_port = WMASTERD_PORT_WELLED;
+		servaddr_in.sin_family = af;
+
 		/* send frame to this welled client */
 		if (send_distance) {
 			/* determine distance between the nodes */
@@ -2120,9 +2147,15 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		hdr->dest_radio_id = curr->radio_id;
 
 		/* send frame to this welled client */
-		bytes_sent = sendto(send_sockfd, (char *)buf, bytes, 0,
-				(struct sockaddr *)&servaddr_vm,
-				sizeof(struct sockaddr));
+		if (vsock) {
+			bytes_sent = sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_vm,
+					sizeof(struct sockaddr));
+		} else {
+			bytes_sent = sendto(send_sockfd, (char *)buf, bytes, 0,
+					(struct sockaddr *)&servaddr_in,
+					sizeof(struct sockaddr));
+		}
 		if (bytes_sent < 0) {
 			if (verbose) {
 				sock_error("wmasterd: sendto");

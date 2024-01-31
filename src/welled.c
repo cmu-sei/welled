@@ -82,7 +82,7 @@
 /** Port used to send frames to wmasterd */
 #define WMASTERD_PORT	1111
 /** Port used to receive frames from wmasterd */
-#define RECV_PORT		2222
+#define WMASTERD_PORT_WELLED		2222
 /** Address used to send frames to wmasterd */
 #ifndef VMADDR_CID_HOST
 	#define VMADDR_CID_HOST		2
@@ -935,7 +935,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 		return NL_SKIP;
 	}
 
-	print_debug(LOG_INFO, "received %d bytes msg from hwsim", msg_len);
+	print_debug(LOG_INFO, "received %5d bytes from hwsim", msg_len);
 
 	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
 		print_debug(LOG_ERR, "HWSIM_CMD_UNSPEC");
@@ -1437,7 +1437,7 @@ int get_radio(int id)
  *	@return void
  */
 static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
-		struct ether_addr *dst)
+		struct ether_addr *dst, int radio_id)
 {
 	/* turn into a netlink message's format */
 	int rc;
@@ -1504,7 +1504,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	struct device_node *node = NULL;
 	// TODO test this out
 	// tricky because dst is the frame info not perm addr
-	node = get_device_node_by_perm_addr(addr);
+	node = get_device_node_by_radio_id(radio_id);
 
 	if (node) {
 		print_debug(LOG_DEBUG, "we found the node to ack the frame for %s", addr);
@@ -1531,7 +1531,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		strncpy(hdr.version, (const char *)VERSION_STR, 8);
 		hdr.len = len;
 		hdr.src_radio_id = node->radio_id;
-		hdr.netns = mynetns;
+		hdr.netns = node->netnsid;
 		hdr.cmd = WMASTERD_FRAME;
 		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
 		memcpy(message + sizeof(struct message_hdr), msg, msg_len);
@@ -1573,9 +1573,6 @@ out:
 void recv_from_master(void)
 {
 	char buf[WMASTERD_BUFF_LEN];
-	struct sockaddr_vm cliaddr_vmci;
-	struct sockaddr_in cliaddr;
-	socklen_t addrlen;
 	struct timeval tv; /* timer to break out of recvfrom function */
 	int bytes;
 	struct nlmsghdr *nlh;
@@ -1588,7 +1585,6 @@ void recv_from_master(void)
 	int rate_idx;
 	int signal;
 	struct ether_addr *dst;	/* stores user mac */
-	int i;
 	char addr[18];
 	struct ether_addr radiomac;
 	struct device_node *node;
@@ -1596,11 +1592,10 @@ void recv_from_master(void)
 	int should_ack;
 	int retval;
 	int distance;
-
-	addrlen = sizeof(struct sockaddr);
-	memset(addr, 0, sizeof(addr));
-	memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
-	memset(&cliaddr, 0, sizeof(cliaddr));
+	socklen_t client_len;
+	struct sockaddr_vm client_vm;
+	struct sockaddr_in client_in;
+	unsigned int src_addr;
 
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
@@ -1610,18 +1605,53 @@ void recv_from_master(void)
 		perror("setsockopt");
 	}
 
-	/* receive packets from wmasterd */
-	bytes = recvfrom(myservfd, (char *)buf, WMASTERD_BUFF_LEN, 0,
-			(struct sockaddr *)&cliaddr_vmci, &addrlen);
+	if (vsock) {
+		client_len = sizeof(client_vm);
+		memset(&client_vm, 0, client_len);
+	} else {
+		client_len = sizeof(client_in);
+		memset(&client_in, 0, client_len);
+	}
 
-	if (bytes < 0)
+	if (vsock) {
+		bytes = recvfrom(myservfd, (char *)buf, WMASTERD_BUFF_LEN, 0,
+				(struct sockaddr *)&client_vm, &client_len);
+	} else {
+		bytes = recvfrom(myservfd, (char *)buf, WMASTERD_BUFF_LEN, 0,
+				(struct sockaddr *)&client_in, &client_len);
+	}
+	if (bytes < 0) {
 		return;
+	}
 
-	print_debug(LOG_INFO, "received %d bytes packet from src host: %u",
-			bytes, cliaddr_vmci.svm_cid);
+	if (vsock) {
+		src_addr = client_vm.svm_cid;
+	} else {
+		src_addr = client_in.sin_addr.s_addr;
+	}
+
+	if (vsock) {
+		print_debug(LOG_INFO, "received %5d bytes from wmasterd at %16u",
+				bytes, src_addr);
+	} else {
+		print_debug(LOG_INFO, "received %5d bytes from wmasterd at %16s",
+				bytes, inet_ntoa(client_in.sin_addr));
+	}
+
+	struct message_hdr *hdr = (struct message_hdr *)buf;
+
+	if (hdr->cmd != WMASTERD_FRAME) {
+		print_debug(LOG_ERR, "wmasterd sent invalid message");
+	}
+
+	if (hdr->dest_radio_id > 100) {
+		print_debug(LOG_ERR, "invalid dest radio id %d", hdr->dest_radio_id);
+		return;
+	}
 
 	/* netlink header */
-	nlh = (struct nlmsghdr *)buf;
+	char *ptr = (char *)buf + sizeof(struct message_hdr);
+	nlh = (struct nlmsghdr *)ptr;
 
 	/* generic netlink header */
 	gnlh = nlmsg_data(nlh);
@@ -1698,21 +1728,9 @@ void recv_from_master(void)
 */
 
 	/* check whether we have added the distance */
-	distance = -1;
+	distance = hdr->distance;
 
-	if (bytes > nlh->nlmsg_len) {
-		if (verbose) {
-			print_debug(LOG_DEBUG, "packet is %d bytes larger than nlmsg",
-				bytes - nlh->nlmsg_len);
-			print_debug(LOG_DEBUG, "nlmsg_len %d", nlh->nlmsg_len);
-		}
-
-		/* check for appended distance */
-		if (strncmp(buf + nlh->nlmsg_len, "welled", 6) == 0)
-			distance = atoi(buf + nlh->nlmsg_len + 7);
-	}
-
-	print_debug(LOG_DEBUG, "distance from tx to rx here: %d", distance);
+	print_debug(LOG_DEBUG, "received distance: %d", distance);
 
 	double loss;
 	loss = 0;
@@ -1752,7 +1770,6 @@ void recv_from_master(void)
 		printf("loss: %f\n", loss);
 	}
 
-
 	/* copy dst address from frame */
 	memcpy(&framedst, data + 4, ETH_ALEN);
 
@@ -1764,116 +1781,112 @@ void recv_from_master(void)
 	}
 
 	pthread_mutex_lock(&list_mutex);
-	for (i = 0; i < devices; i++) {
-		should_ack = 0;
-
-		node = get_device_node_by_pos(i);
-		if (node == NULL)
-			continue;
-
-		if (verbose)
-			printf("sending to: %s\n", node->name);
-
-		dst = (struct ether_addr *)node->address;
-
-		if (dst == NULL)
-			continue;
-
-		/* compare frame dst to nlmsg src */
-		if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
-			/* this radio sent the frame, skip it */
-			if (verbose)
-				printf("- this radio sent this frame\n");
-			continue;
+	node = get_device_node_by_radio_id(hdr->dest_radio_id);
+	pthread_mutex_unlock(&list_mutex);
+	if (!node) {
+		print_debug(LOG_ERR, "dest radio %d not found", hdr->dest_radio_id);
+		if (verbose) {
+			hex_dump(hdr, sizeof (struct message_hdr));
 		}
-
-		/* we should ack if:
-		 * the frame was sent to this radio's address
-		 * this is not an ack packet itself
-		 */
-		if ((memcmp(&framedst, dst, ETH_ALEN) == 0) &&
-			(nlh->nlmsg_len != 56)) {
-			should_ack = 1;
-		}
-
+		goto out;
+	}
+	dst = (struct ether_addr *)node->address;
+	if (dst == NULL) {
+		print_debug(LOG_ERR, "dst device has no address");
+		goto out;
+	}
+	/* compare frame dst to nlmsg src */
+	if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
+		/* this radio sent the frame, skip it */
 		if (verbose) {
 			mac_address_to_string(addr, dst);
-			printf("- old radio mac: %s\n", addr);
+			printf("- skipping %s with dst %s because this radio sent this frame\n",
+					node->name, addr);
 		}
+		goto out;
+	}
+	if (verbose) {
+		mac_address_to_string(addr, dst);
+		printf("- sending to %s dst %s\n", node->name, addr);
+	}
 
-		if (any_mac) {
-			retval = send_cloned_frame_msg(dst, data, data_len,
-				rate_idx, signal, freq);
-			/*
-			 * if we sent it successfully, ack it for now. this
-			 * needs to get updated to check a queue and the kernel
-			 * response via netlink. only ack if the kernel accepted
-			 */
-			if (should_ack && !retval) {
-				if (verbose)
-					printf("- attempting to ack\n");
-				generate_ack_frame(freq, src, dst);
-			}
-			continue;
+	/* we should ack if:
+	 * the frame was sent to this radio's address
+	 * and this is not an ack packet itself
+	 */
+	if ((memcmp(&framedst, dst, ETH_ALEN) == 0) &&
+		(nlh->nlmsg_len != 56)) {
+		should_ack = 1;
+	}
+
+	if (any_mac) {
+		/* send without address modifications */
+		retval = send_cloned_frame_msg(dst, data, data_len,
+			rate_idx, signal, freq);
+		/*
+		 * if we sent it successfully, ack it for now. this
+		 * needs to get updated to check a queue and the kernel
+		 * response via netlink. only ack if the kernel accepted
+		 */
+		if (should_ack && !retval) {
+			if (verbose)
+				printf("- attempting to ack the frame with any_mac\n");
+			generate_ack_frame(freq, src, dst, node->radio_id);
 		}
+		goto out;
+	}
 
 /*
  * we have a source of error here:
  * the driver isnt expecting our user-defined mac address
  * as it is expecting 42:00:00:00:00:00 for the first radio. we need to use the
  * actual address used by hwsim, either 0x42 without my patch or whatever is
- * set as a result of my local perm_addr patch.
+ * set as a result of the perm_addr patch we have for the hwsim driver.
  *
  * we must pass the dst address expected by the kernel: data->addresses[1]
  *
- * new methods:
+ * options:
  *	set dst to perm_addr instead of address, src would be a perm_addr too
  *	not just perm_addr, which is data->addresses[0], but the second address
  *	which is data->addresses[1], set to data->addresses[1].addr[0] |= 0x40;
  *	this means i need to send not to perm_addr, but to
  *	perm_addr[0] |= 0x40;
- * or
+ * or:
  *	set radiomac to perm_addr instead of hard coding - done
  *	TODO: investigate changes mentioned above for dst/src
  */
 
+	memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
+
+	/* check whether this radio mac matches our nl msg data */
+	if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
+		/* frame dst matches radio mac */
 		if (verbose)
-			printf("- we are changing the address\n");
+			printf("- radio mac already mataches perm_addr dst\n");
 
-		memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
+		send_cloned_frame_msg(dst, data, data_len, rate_idx,
+			signal, freq);
+	} else {
+		if (verbose)
+			printf("- we are changing radio mac to match perm_addr\n");
+		/* we need to update data inside nl msg
+		 * we could also look into updating the attribute
+		 * using the proper functions. unpacking/repacking nl
+		 */
+		memcpy((char *)nlh + 24, (char *)&radiomac, ETH_ALEN);
 
-		/* check whether this radio mac matches our nl msg data */
-		if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
+		retval = send_cloned_frame_msg(&radiomac, data,
+			data_len, rate_idx, signal, freq);
+
+		if (should_ack && !retval) {
 			if (verbose)
-				printf("- radio mac: %s === dst\n", addr);
-
-			send_cloned_frame_msg(dst, data, data_len, rate_idx,
-				signal, freq);
-		} else {
-			/* we need to update data inside nl msg
-			 * we could also look into updating the attribute
-			 * using the proper functions
-			 */
-			memcpy((char *)nlh + 24, (char *)&radiomac, ETH_ALEN);
-
-			if (verbose) {
-				mac_address_to_string(addr, (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]));
-				printf("- new radio mac: %s\n", addr);
-			}
-			retval = send_cloned_frame_msg(&radiomac, data,
-				data_len, rate_idx, signal, freq);
-
-			if (should_ack && !retval) {
-				if (verbose)
-					printf("- attempting to ack\n");
-				/* TODO: determine correct values below */
-				generate_ack_frame(freq, src, dst);
-			}
-			continue;
-
+				printf("- attempting to ack the frame with changed mac\n");
+			/* TODO: determine correct values below */
+			generate_ack_frame(freq, src, dst, node->radio_id);
 		}
+		goto out;
+
 	}
-	pthread_mutex_unlock(&list_mutex);
 
 out:
 	//free(new_buf);
@@ -2836,7 +2849,7 @@ int main(int argc, char *argv[])
 	memset(&servaddr_in, 0, sizeof(servaddr_in));
 	servaddr_in.sin_addr = wmasterd_address;
 	servaddr_in.sin_port = port;
-	servaddr_in.sin_family = af;
+	servaddr_in.sin_family = AF_INET;
 
 	/* setup socket to send data */
 	if (vsock) {
@@ -2859,19 +2872,23 @@ int main(int argc, char *argv[])
 		get_radio(id);
 	}
 
-	/* create vmci server socket */
-	myservfd = socket(af, SOCK_DGRAM, 0);
+	/* create server socket to receive data */
+	if (vsock) {
+		myservfd = socket(af, SOCK_DGRAM, 0);
+	} else {
+		myservfd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
+	}
 
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
 	myservaddr_vm.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vm.svm_port = RECV_PORT;
+	myservaddr_vm.svm_port = WMASTERD_PORT_WELLED;
 	myservaddr_vm.svm_family = af;
 
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
 	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
-	myservaddr_in.sin_port = RECV_PORT;
-	myservaddr_in.sin_family = af;
+	myservaddr_in.sin_port = WMASTERD_PORT_WELLED;
+	myservaddr_in.sin_family = AF_INET;
 
 	if (vsock) {
 		ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
