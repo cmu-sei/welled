@@ -387,8 +387,8 @@ void update_cache_file_info(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* end of file reached */
-	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -499,8 +499,8 @@ void update_cache_file_location(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* wmasterd: end of file reached */
-	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -1653,8 +1653,8 @@ void add_node(unsigned int srchost, int srcport, char *vm_room, char *vm_name, c
 				continue;
 			}
 		}
-		char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-		char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+		char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+		char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 		if (!matched) {
 			print_debug(LOG_DEBUG, "adding node to the cache file");
@@ -1828,8 +1828,8 @@ void list_nodes(void)
 	int age;
 	struct in_addr ip;
 	char *header = "%-16s %-6s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
-	char *format_ipv4 =  "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 =  "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
