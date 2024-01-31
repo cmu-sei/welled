@@ -66,7 +66,7 @@ firefox ../html/index.html
 ```
 
 If you do not have Doxygen installed, you can read the heavy documentation
-contained within the source files. These comments are the source of the 
+contained within the source files. These comments are the source of the
 information used by Doxygen.
 
 There are also man pages for `welled`, `gelled`, `gelled-ctrl` and `wmasterd`.
@@ -137,9 +137,9 @@ cp ./drivers/net/wireless/mac80211_hwsim.ko /lib/modules/$(uname -r)/kernel/driv
 
 ## Prerequisites for installing welled
 First, you need a recent Linux kernel with the `mac80211_hwsim` module
-available. 
+available.
 Second, you will also need to have VMCI Sockets enabled in your kernel. On the
-OpenWRT VM, the following modules are required: `vmw_vmci`, `vsock`, and 
+OpenWRT VM, the following modules are required: `vmw_vmci`, `vsock`, and
 `vmw_vsock_vmci_transport`.
 Finally, the `welled` program also requires `libnl-3` to be installed.
 
@@ -159,16 +159,19 @@ You need to have VMCI Sockets enabled in your kernel. This requires `vmw_vmci`,
 have `libpng` and `libglib2` installed.
 
 ## Prerequisites for building gelled and gelled-ctrl
-You must have `libpng-dev` and `libglib2.0-dev` installed.
+You must have `libcurl4-gnutls-dev', 'libpng-dev` and `libglib2.0-dev` installed.
 ```
-apt-get install libpng-dev libglib2.0-dev
+apt-get install libcurl4-gnutls-dev libpng-dev libglib2.0-dev
 ```
 
 ## Prerequisites for installing wmasterd
 The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * ESXi 5.5
 * ESXi 6.0
+* ESXi 7.0
 * Windows 7 with VMware Workstation 12 and 14
+* Windows 10 with VMware Workstation 17
+* OpenWrt 23.05
 
 ## Building welled for Linux
 `welled` has been used on:
@@ -178,6 +181,9 @@ The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * Fedora 23
 * Fedora 27
 * Ubuntu 12.04
+`welled` 3.0.0 has been used on:
+* Fedora 38
+* Ubuntu 22.04
 
 An RPM and a Debian package are available for `welled`. It contains the three
 client programs of `welled`, `gelled` and `gelled-ctrl`.
@@ -248,7 +254,7 @@ The following websites provide more detail:
 * http://wiki.openwrt.org/doc/howto/build.a.package
 * http://wiki.openwrt.org/doc/devel/patches
 
-Once you have downloaded the OpenWRT source with `git`, place the `welled` 
+Once you have downloaded the OpenWRT source with `git`, place the `welled`
 source in the package directory.
 
 You will need to install the `quilt` package if you are compiling on Fedora.
@@ -260,7 +266,7 @@ And possible Ubuntu.
 sudo apt-get install quilt gawk subversion
 ```
 
-As mentioned before, build the OpenWrt kernel with `vmw_vmci`, `vsock` and 
+As mentioned before, build the OpenWrt kernel with `vmw_vmci`, `vsock` and
 `vmw_vsock_vmci_transport`. Enable `libnl`, `mac80211_hwsim` and `welled`. Note
 that `gelled-ctrl` now requires `glib2` to parse a configuration file.
 Create a VMDK image file and load it onto your ESXi host. You may also wish to
@@ -271,7 +277,7 @@ options inside of the `make menuconfig` step: VMDK, the size of the root and
 kernel partitions, and any other tools you would like to install.
 You may edit the `openwrt` configuration files under `doc/` if you would like
 to build an image with a specific IP, MAC, SSID, passphrase, etc. Take note that
-the `mac80211_hwsim` modprobe configuration file that gets copied to the 
+the `mac80211_hwsim` modprobe configuration file that gets copied to the
 `/etc/modules.d/` directory may not copy correctly and/or may get overwritten
 when `mac80211_hwsim` is actually installed (this is my hunch).
 
@@ -280,7 +286,7 @@ Note that chaos calmer, 15.05 is used in this example.
 #git clone git://git.openwrt.org/openwrt.git
 git clone -b chaos_calmer git://github.com/openwrt/openwrt.git
 cd openwrt/package
-git clone https://github.com/cmu-sei/welled.git
+git clone https://gitlab.sky.cert.org/cwd/welled.git
 cd ..
 cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
 cp package/welled/patches/compat-wireless-2016-01-10/* package/kernel/mac80211/patches/
@@ -298,32 +304,9 @@ sed -i "s/# CONFIG_VMDK_IMAGES is not set/CONFIG_VMDK_IMAGES=y/" .config
 sed -i "s/# CONFIG_TARGET_IMAGES_PAD is not set/CONFIG_TARGET_IMAGES_PAD=y/" .config
 sed -i "s/CONFIG_TARGET_KERNEL_PARTSIZE=4/CONFIG_TARGET_KERNEL_PARTSIZE=1024/" .config
 sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=48/CONFIG_TARGET_ROOTFS_PARTSIZE=4096/" .config
-make target/linux/{clean,prepare} V=s QUILT=1 
+make target/linux/{clean,prepare} V=s QUILT=1
 make -j 8 # number of cpus * 1.5
 ```
-
-## 23.05 Development notes
-```
-git clone --single-branch --branch openwrt-23.05 https://github.com/openwrt/openwrt.git
-cd openwrt/package
-git clone https://github.com/cmu-sei/welled.git
-git clone https://github.com/cmu-sei/vtunnel.git
-cd ..
-./scripts/feeds update
-./scripts/feeds install luci-ssl
-./scripts/feeds install glib2
-cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
-mkdir target/linux/x86/64/profiles/
-cp package/welled/64/profiles/001_welled.mk target/linux/x86/64/profiles/
-#echo CONFIG_TARGET_KERNEL_PARTSIZE=1024 >> .config
-#sed -i "s/CONFIG_TARGET_KERNEL_PARTSIZE=16/CONFIG_TARGET_KERNEL_PARTSIZE=1024/" .config
-sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=104/CONFIG_TARGET_ROOTFS_PARTSIZE=4096/" .config
-touch target/linux/x86/Makefile
-make target/linux/{clean,prepare} V=s QUILT=1
-make -j 12 # number of cpus * 1.5
-```
-
-
 ## 18.06 Development notes
 git clone --single-branch --branch openwrt-18.06 https://github.com/openwrt/openwrt.git
 cd openwrt/package
@@ -346,9 +329,9 @@ Steps to rebuild `welled` package if making modifications.
 make V=s package/welled/install
 ```
 
-Once you have started the OpenWRT VM, you will probably need to use the web 
+Once you have started the OpenWRT VM, you will probably need to use the web
 interface to configure the networking. welled should be enabled by default.
-Included in this package will be sample configuration files named `network` 
+Included in this package will be sample configuration files named `network`
 and `wireless`. These were taken from a live system and may not be all that
 is necessary to get the OpenWRT networking subsystem configured correctly. Use
 them as a guide when configuring the system through the web interface. These
@@ -374,6 +357,13 @@ Just follow these steps after getting the image running.
 7. restart the network
 8. profit
 
+Create the iso:
+```
+make V=s package/welled/install
+mkisofs -o /tmp/welled.iso ./bin/packages/x86_64/base/welled_3.0.0_x86_64.ipk
+```
+
+Update the VM:
 ```
 opkg update
 opkg install kmod-scsi-core kmod-scsi-cdrom kmod-fs-isofs
@@ -387,6 +377,10 @@ opkg install /mnt/welled_2.2.1_x86_64.ipk
 You must compile `wmasterd` for an x86_64 GNU/Linux system, then copy the file
 to the ESXi host. The Makefile's esx target will create a tarball containing the
 `wmasterd` executable, an init script, and an installation script.
+ESXi requires an older version of glibc then used on our development VMs. The
+source file therefore specifies a version of memcpy from glibc 2.25.
+If compiling on a machine with glibc 2.34 it is not possible to build for ESXi
+because is uses an older glibc version.
 ```
 cd src
 make esx
@@ -399,7 +393,7 @@ make offline-bundle
 
 
 ## Installing wmasterd on ESXi
-Once you have placed the tarball on the ESXi host, unpack it and run the 
+Once you have placed the tarball on the ESXi host, unpack it and run the
 installation script. This will enable but not start the service. Note that you
 must use the correct version when using the example below. This script will
 install the service into the bookbank for persistence.
@@ -460,7 +454,7 @@ point in time. `welled` is dependent on the Linux kernel and is not available
 for Windows. `gelled` and `gelled-ctrl` have not yet been tested on Windows.
 
 ## Using welled on Kali Linux without installation
-If you haven't installed `welled`, start `welled` by loading the mac80211_hwsim 
+If you haven't installed `welled`, start `welled` by loading the mac80211_hwsim
 kernel module and then execute `welled` without arguments. If you wish to see
 verbose output regarding messages received and transmitted, execute `welled`
 with the -v option.
@@ -542,7 +536,7 @@ This examle sets the level to DEBUG and you will receive thhe most verbose level
 of logging.
 
 ## Building gelled
-`gelled`, the GPS emulation link layer exchange daemon, can be compiled when a 
+`gelled`, the GPS emulation link layer exchange daemon, can be compiled when a
 simulated GPS feed (NMEA sentences) us desired. It is designed to receive these
 NMEA sentences from `wmasterd` and write them to an emulated serial device. This
 can be provided by `tty0tty`, our recompiled copy of the driver named `gpstty`,
@@ -605,7 +599,7 @@ work, not just the second address. It no longer requires the user assigned MAC
 address to start with 0x42.
 
 The functionality contained within `welled` will not actively update the MAC
-addresses assigned to the hwsim radios. The driver on the system running 
+addresses assigned to the hwsim radios. The driver on the system running
 `welled` should be patched with the included patch files. These patch files will
 update the driver to use the current upstream address checking functions and
 also allow the MAC address of the first virtual radio to be passed to the driver
