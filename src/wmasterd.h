@@ -34,10 +34,14 @@
 
 /** Buffer size for NMEA sentences */
 #define NMEA_LEN	100
-
+/** Buffer size for follow name */
 #define FOLLOW_LEN	1024
+/** Buffer size for client vm name */
 #define NAME_LEN	1024
+/** Buffer size for GUID and UUID */
 #define UUID_LEN	37
+/** Buffer size for connection to wmasterd and clients */
+#define WMASTERD_BUFF_LEN		64000
 
 #ifdef _WIN32
 #define LOG_EMERG       0       /* system is unusable */
@@ -50,8 +54,14 @@
 #define LOG_DEBUG       7       /* debug-level messages */
 #endif
 
+/* values for wmasterd commands */
+#define WMASTERD_ADD	10
+#define WMASTERD_DELETE	20
+#define WMASTERD_UPDATE	30
+#define WMASTERD_FRAME	40
+
 /**
- *      Structure for tracking welled node locations
+ *  Structure for tracking welled node locations
  *	latitude and longitude are stored in degrees decimal
  *	velocity is in knots
  *	heading is in degrees
@@ -77,19 +87,6 @@ struct location {
 */
 };
 
-struct update {
-	char follow[FOLLOW_LEN];
-	float latitude;
-	float longitude;
-	float altitude;
-	float velocity;
-	float heading;
-	int room_id;
-	char name[1024];
-	char address[16];
-	unsigned int cid;
-};
-
 struct update_2 {
 	char version[8];
 	char follow[FOLLOW_LEN];
@@ -102,7 +99,31 @@ struct update_2 {
 	char room[UUID_LEN];
 	char name[NAME_LEN];
 	char isolation_tag[UUID_LEN];
-	unsigned int cid;
+	unsigned int address;
+};
+
+/**
+ *      \brief Structure for messages from from clients
+ *      This will have client app name, version, message length,
+ *      network namespace, radio id, and distance from TX to RX
+ */
+struct message_hdr {
+	/* app name */
+	char name[6];
+	/* app version */
+	char version[8];
+	/* cmd */
+	int cmd;
+	/* radio_id sending the message */
+	int src_radio_id;
+	/* radio_id receiving the message */
+	int dest_radio_id;
+	/* netns of the app */
+	int netns;
+	/* distance from receiver */
+	int distance;
+	/* length of message */
+	int len;
 };
 
 /**
@@ -112,12 +133,14 @@ struct update_2 {
  *      We will retransmit all frames and netlink data to these clients
  */
 struct client {
-	/** CID */
-	unsigned int cid;
-        /** Isolation Tag */
-        char isolation_tag[UUID_LEN];
-	/** RoomID */
-	//int room_id;
+	/** address */
+	unsigned int address;
+	/* radio_id */
+	int radio_id;
+	/* netns */
+	int netns;
+	/** Isolation Tag */
+	char isolation_tag[UUID_LEN];
 	/** GUID for Room */
 	char room[UUID_LEN];
 	/** VM name */
@@ -138,20 +161,20 @@ void print_node(struct client *);
 void unblock_signal(void);
 int parse_vmx(char *, unsigned int, char *, char *, char *);
 void get_vm_info(unsigned int, char *, char *, char *);
-void add_node_vmci(unsigned int, char *, char *, char *);
 void clear_inactive_nodes(void);
-struct client *search_node_vmci(unsigned int);
-struct client *search_node_name(char *);
-void list_nodes_vmci(void);
-void remove_node_vmci(unsigned int);
+struct client *get_node_by_address(unsigned int);
+struct client *get_node_by_radio(unsigned int, int);
+struct client *get_node_by_name(char *);
+void list_nodes(void);
+void remove_node(unsigned int, int);
 void send_to_hosts(char *, int, char *);
-void send_to_nodes_vmci(char *, int, struct client *);
-void send_gps_to_nodes(void);
+void relay_to_nodes(char *, int, struct client *);
+void send_nmea_to_nodes(void);
 void *produce_nmea(void *);
 void free_list(void);
 void usr1_handler(void);
 void signal_handler(void);
-void recv_from_welled_vmci(void);
+void recv_from_welled(void);
 void *recv_from_hosts(void *);
 void update_node_location(struct client *, struct update_2 *);
 void update_node_info(struct client *, struct update_2 *);
@@ -165,6 +188,8 @@ double rad2deg(double);
 double deg2rad(double);
 void dec_deg_to_dec_min(float, char *, int);
 void print_debug(int, char *, ...);
+void remove_newline(char *);
+void add_node(unsigned int, char *, char *, char *, int);
 
 #endif  /* WMASTERD_H_ */
 
