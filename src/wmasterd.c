@@ -2023,7 +2023,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	if (bytes_sent < 0)
 		sock_error("wmasterd: sendto\n");
 	else
-		print_debug(LOG_DEBUG, "sent %d bytes to %s\n",
+		print_debug(LOG_DEBUG, "sent %5d bytes to host: %s\n",
 				bytes_sent, broadcast_addr);
 
 	/* cleanup */
@@ -2137,10 +2137,10 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			curr = temp;
 		} else {
 			if (vsock) {
-				print_debug(LOG_INFO, "sent %5d bytes to node: %16u room: %6s radio: %3d distance: %4d",
+				print_debug(LOG_INFO, "sent %5d bytes to node:   %16u room: %6s radio: %3d distance: %4d",
 						bytes, curr->address, curr->room, hdr->dest_radio_id, hdr->distance);
 			} else {
-				print_debug(LOG_INFO, "sent %5d bytes to node: %16s room: %6s radio: %3d distance: %4d",
+				print_debug(LOG_INFO, "sent %5d bytes to node:   %16s room: %6s radio: %3d distance: %4d",
 						bytes, inet_ntoa(ip), curr->room, hdr->dest_radio_id, hdr->distance);
 			}
 			curr = curr->next;
@@ -2266,7 +2266,7 @@ void *recv_from_hosts(void *arg)
 
 		inet_ntop(AF_INET, &cliaddr.sin_addr, src_host, addrlen);
 		if (verbose) {
-			print_debug(LOG_DEBUG, "received %d bytes from src host: %d",
+			print_debug(LOG_DEBUG, "recv %5d bytes from src host: %d",
 				bytes, src_host);
 		}
 		/* parse out room */
@@ -2304,7 +2304,6 @@ void recv_from_welled(void)
 	struct sockaddr_vm client_vm;
 	struct sockaddr_in client_in;
 	unsigned int src_addr;
-	unsigned int src_port;
 	int ret;
 
 	if (vsock) {
@@ -2329,18 +2328,16 @@ void recv_from_welled(void)
 
 	if (vsock) {
 		src_addr = client_vm.svm_cid;
-		src_port = client_vm.svm_port;
 	} else {
 		src_addr = client_in.sin_addr.s_addr;
-		src_port = client_in.sin_port;
 	}
 
 	if (vsock) {
-		print_debug(LOG_INFO, "received %4d bytes from: %16u:%-5d",
-				bytes, src_addr, src_port);
+		print_debug(LOG_INFO, "recv %5d bytes from node: %16u",
+				bytes, src_addr);
 	} else {
-		print_debug(LOG_INFO, "received %4d bytes from: %16s:%-5d",
-				bytes, inet_ntoa(client_in.sin_addr), src_port);
+		print_debug(LOG_INFO, "recv %5d bytes from node: %16s",
+				bytes, inet_ntoa(client_in.sin_addr));
 	}
 
 	memset(room, 0, UUID_LEN);
@@ -2401,20 +2398,20 @@ void recv_from_welled(void)
 	if (strncmp(hdr->name, "gelled", 6) == 0) {
 
 		if (vsock) {
-			print_debug(LOG_INFO, "node %16u:%-5d is gelled %s",
-					src_addr, src_port, hdr->version);
+			print_debug(LOG_INFO, "node %16u is gelled %s",
+					src_addr, hdr->version);
 		} else {
 			print_debug(LOG_INFO, "node %16s:%-5d is gelled %s",
-					inet_ntoa(client_in.sin_addr), src_port, hdr->version);
+					inet_ntoa(client_in.sin_addr), hdr->version);
 		}
 
 		if (bytes == (sizeof(struct update_2) + 7)) {
 			if (vsock) {
-				print_debug(LOG_INFO, "gelled update version 2 received from %16u:%-5d",
-						src_addr, src_port);
+				print_debug(LOG_INFO, "gelled update version 2 received from %16u",
+						src_addr);
 			} else {
 				print_debug(LOG_INFO, "gelled update version 2 received from %16s:%-5d",
-						inet_ntoa(client_in.sin_addr), src_port);
+						inet_ntoa(client_in.sin_addr));
 			}
 
 			struct update_2 data_2;
@@ -2432,7 +2429,7 @@ void recv_from_welled(void)
 	if (strncmp(hdr->name, "welled", 6) != 0) {
 		print_debug(LOG_ERR, "unknown client application");
 		return;
-	} else if (bytes = sizeof(struct message_hdr)) {
+	} else if (bytes == sizeof(struct message_hdr)) {
 		print_debug(LOG_DEBUG, "received notification");
 		if (hdr->cmd == WMASTERD_DELETE) {
 			print_debug(LOG_INFO, "radio delete received");
