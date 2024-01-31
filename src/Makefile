@@ -28,8 +28,8 @@
 #
 # 	DM17-0952
 
-VERSION_STR="\"2.4.5\""
-VERSION=2.4.5
+VERSION_STR="\"2.5.0\""
+VERSION=2.5.0
 
 # check whether we are cross compiling for openwrt
 ifdef CROSS
@@ -41,22 +41,14 @@ MAN := ../man
 endif
 
 # define the compile and linker for each target
-wmasterd-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-wmasterd-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 wmasterd-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 wmasterd-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
-gelled-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-gelled-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 gelled-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
-gelled-ctrl-i686-w64-mingw32: CC=i686-w64-mingw32-gcc
-gelled-ctrl-i686-w64-mingw32: LD=i686-w64-mingw32-ld
 gelled-ctrl-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-ctrl-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 rpm-x86_64-Linux: ARCH=x86_64
-rpm-i386-Linux: ARCH=i386
 debian-x86_64-Linux: ARCH=amd64
-debian-i386-Linux: ARCH=i386
 
 # on kali, install:
 # libnl-genl-3-dev libnl-3-dev libnl-genl-3 libnl-route-3-dev
@@ -112,18 +104,14 @@ LDFLAGS += -lpthread
 # does not include openwrt
 all: esx linux windows vyos offline-bundle
 
-linux: x86_64-Linux #i386-Linux
-
-i386-Linux: welled-i386-Linux gelled-i386-Linux gelled-ctrl-i386-Linux wmasterd-i386-Linux
+linux: x86_64-Linux
 
 x86_64-Linux: welled gelled gelled-ctrl wmasterd
 
 # vyos 1.1.7 differs due to older libc version
 x86_64-Linux-vyos: welled-x86_64-Linux-vyos gelled-ctrl-x86_64-Linux-vyos
 
-windows: i686-w64-mingw32 x86_64-w64-mingw32
-
-i686-w64-mingw32: gelled-i686-w64-mingw32 gelled-ctrl-i686-w64-mingw32 wmasterd-i686-w64-mingw32
+windows:  x86_64-w64-mingw32
 
 x86_64-w64-mingw32: gelled-x86_64-w64-mingw32 gelled-ctrl-x86_64-w64-mingw32 wmasterd-x86_64-w64-mingw32
 
@@ -153,27 +141,7 @@ welled-x86_64-Linux-vyos:
 	test -d ../dist/x86_64-Linux-vyos || mkdir ../dist/x86_64-Linux-vyos/
 	cp $(OUTDIR)/welled ../dist/x86_64-Linux-vyos/
 
-welled-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) -m32 $(CFLAGS)
-	$(CC) nodes.c -c $(LDFLAGS) -m32 $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm -m32
-	test -d ../dist/i386-Linux/ || mkdir ../dist/i386-Linux/
-	cp $(OUTDIR)/welled ../dist/i386-Linux/
-
 welled-x86_64-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
-	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
-
-welled-i486-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
-	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
-	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
-
-welled-i486-openwrt-linux-musl:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
 	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
@@ -206,32 +174,13 @@ gelled-ctrl-x86_64-Linux-vyos:
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled-ctrl ../dist/x86_64-Linux/
 
-gelled-ctrl-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -lglib-2.0 -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/gelled-ctrl ../dist/i386-Linux/
-
 gelled-ctrl-x86_64-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
-gelled-ctrl-i486-openwrt-linux-uclibc:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
-gelled-ctrl-i486-openwrt-linux-musl:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
 
 gelled-ctrl-x86_64-openwrt-linux-musl:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
-
-gelled-ctrl-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -I/usr/i686-w64-mingw32/sys-root/mingw/include/glib-2.0/ -I/usr/i686-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -lglib-2.0 /usr/i686-w64-mingw32/sys-root/mingw/lib/libws2_32.a -lintl -lole32 -lwinmm
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/gelled-ctrl-i686-w64-mingw32 ../dist/i686-w64-mingw32/
 
 gelled-ctrl-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -I/usr/x86_64-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/glib/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -lglib-2.0 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a -lintl -lole32 -lwinmm
@@ -245,21 +194,10 @@ gelled:
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled ../dist/x86_64-Linux/
 
-gelled-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/gelled gelled.c -DVERSION_STR=$(VERSION_STR) -lpthread -lm -lpng -lcurl -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/gelled ../dist/i386-Linux/
-
 gelled-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/gelled-x86_64-w64-mingw32 ../dist/x86_64-w64-mingw32/
-
-gelled-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/i686-w64-mingw32/sys-root/mingw/lib/libws2_32.a
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/gelled-i686-w64-mingw32 ../dist/i686-w64-mingw32/
 
 # default is 64 bit
 wmasterd:
@@ -275,21 +213,10 @@ wmasterd-esx:
 	test -d ../dist/esx || mkdir ../dist/esx
 	cp $(OUTDIR)/wmasterd ../dist/esx/
 
-wmasterd-i386-Linux:
-	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -lm -lpthread -m32
-	test -d ../dist/i386-Linux || mkdir ../dist/i386-Linux
-	cp $(OUTDIR)/wmasterd ../dist/i386-Linux/
-
 wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32* ../dist/x86_64-w64-mingw32/
-
-wmasterd-i686-w64-mingw32:
-	$(CC) -o $(OUTDIR)/wmasterd-i686-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/i686-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
-	test -d ../dist/i686-w64-mingw32/ || mkdir ../dist/i686-w64-mingw32/
-	cp $(OUTDIR)/wmasterd-i686-w64-mingw32* ../dist/i686-w64-mingw32/
 
 clean:
 	rm -f *.o $(OUTDIR)/* welled-*.deb ../wmasterd.tgz
@@ -420,10 +347,6 @@ debian-x86_64-Linux: x86_64-Linux debian
 	mv welled-$(VERSION).deb ../dist/x86_64-Linux/
 	rm -rf welled-$(VERSION) welled-$(VERSION).deb
 
-debian-i386-Linux: i386-Linux debian
-	mv welled-$(VERSION).deb ../dist/i386-Linux/
-	rm -rf welled-$(VERSION) welled-$(VERSION).deb
-
 debian-vyos:
 	mkdir -p welled-$(VERSION)-vyos/DEBIAN/
 	mkdir -p welled-$(VERSION)-vyos/etc/
@@ -480,8 +403,5 @@ rpm-x86_64-Linux: x86_64-Linux rpm
 	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc30.x86_64.rpm ../dist/x86_64-Linux/
 	rm -rf ../rpmbuild
 
-rpm-i386-Linux: i386-Linux rpm
-	cp ../rpmbuild/RPMS/i386/welled-$(VERSION)-1.fc30.i386.rpm ../dist/i386-Linux/
-	rm -rf ../rpmbuild
 
 
