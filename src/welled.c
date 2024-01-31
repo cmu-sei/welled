@@ -1532,6 +1532,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		hdr.len = len;
 		hdr.src_radio_id = node->radio_id;
 		hdr.netns = mynetns;
+		hdr.cmd = WMASTERD_FRAME;
 		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
 		memcpy(message + sizeof(struct message_hdr), msg, msg_len);
 
@@ -1901,12 +1902,19 @@ void *process_master(void *arg)
 void dellink(struct nlmsghdr *h)
 {
 	struct ifinfomsg *ifi;
+	struct device_node *node;
 
 	ifi = NLMSG_DATA(h);
 
 	/* require an interface name */
 	if (!(ifi->ifi_flags & IFLA_IFNAME))
 		return;
+
+	node = get_device_node_by_index(ifi->ifi_index);
+
+	if (node) {
+		send_notification(node->radio_id, node->netnsid, WMASTERD_DELETE);
+	}
 
 	/* update nodes */
 	pthread_mutex_lock(&list_mutex);
@@ -2164,12 +2172,11 @@ void *monitor_devices(void *arg)
 /***
  *	@brief send status message to wmasterd at some interval
  *	This thread tells wmasterd we are alive every ten seconds while
-	 our radio is in monitor mode.
+	a radio is in monitor mode.
  *	@return void
  */
 void *send_status(void *arg)
 {
-	/* send up notification to wmasterd */
 	int msg_len;
 	int bytes;
 	struct device_node *node;
@@ -2220,8 +2227,6 @@ void *send_status(void *arg)
 		if (bytes != msg_len) {
 			perror("sendto");
 			print_debug(LOG_ERR, "up notification failed for monitor mode node");
-		} else {
-			print_debug(LOG_DEBUG, "up notification sent to wmasterd");
 		}
 		sleep(9);
 	}
@@ -2281,6 +2286,41 @@ static int finish_handler(struct nl_msg *msg, void *arg)
 	return NL_SKIP;
 }
 
+void send_notification(int radio_id, int netnsid, int cmd)
+{
+	if (!sockfd) {
+		print_debug(LOG_INFO, "socket %d not yet configured %d", sockfd);
+		return;
+	}
+
+	int bytes;
+	int msg_len;
+	struct message_hdr hdr = {};
+
+	msg_len = sizeof(struct message_hdr);
+	memcpy(hdr.name, "welled", 6);
+	strncpy(hdr.version, (const char *)VERSION_STR, 8);
+	hdr.src_radio_id = radio_id;
+	hdr.len = sizeof(struct message_hdr);
+	hdr.netns = netnsid;
+	hdr.cmd = cmd;
+
+	if (vsock) {
+		bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+				(struct sockaddr *)&servaddr_vm,
+				sizeof(struct sockaddr));
+	} else {
+		bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+				(struct sockaddr *)&servaddr_in,
+				sizeof(struct sockaddr));
+	}
+		/* this should be 8 bytes */
+	if (bytes != msg_len) {
+		perror("sendto");
+		print_debug(LOG_ERR, "notification failed for radio %d", radio_id);
+	}
+}
+
 /**
  *	@brief parses the list of wireless interfaces as a result of a call
  *	to the nl80211_get_interface function which uses nl80211 to run the
@@ -2306,9 +2346,6 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 	struct ifreq ifr;
 	long int netnsid;
 	int wiphy;
-	int msg_len;
-	struct message_hdr hdr;
-	int bytes;
 
 	print_debug(LOG_DEBUG, "handling NL80211 interface data");
 
@@ -2430,7 +2467,7 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		}
 
 		print_debug(LOG_DEBUG, "sending add notification for radio %d", node->radio_id);
-		hdr.cmd = WMASTERD_ADD;
+		send_notification(node->radio_id, node->netnsid, WMASTERD_ADD);
 
 	} else {
 		/* update existing node if type changed */
@@ -2462,35 +2499,11 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		}
 
 		print_debug(LOG_DEBUG, "sending update notification for radio %d", node->radio_id);
-		hdr.cmd = WMASTERD_UPDATE;
+		send_notification(node->radio_id, node->netnsid, WMASTERD_UPDATE);
 	}
 
 	/* on initial startup we may not yet be connected */
-	if (node && sockfd) {
-		/* send delete notification to wmasterd */
-		msg_len = sizeof(struct message_hdr);
-		memcpy(hdr.name, "welled", 6);
-		strncpy(hdr.version, (const char *)VERSION_STR, 8);
-		hdr.src_radio_id = node->radio_id;
-		hdr.len = sizeof(struct message_hdr);
-		hdr.netns = node->netnsid;
-
-		pthread_mutex_lock(&send_mutex);
-		if (vsock) {
-			bytes = sendto(sockfd, (char *)&hdr, msg_len, 0,
-					(struct sockaddr *)&servaddr_vm,
-					sizeof(struct sockaddr));
-		} else {
-			bytes = sendto(sockfd, (char *)&hdr, msg_len, 0,
-					(struct sockaddr *)&servaddr_in,
-					sizeof(struct sockaddr));
-		}
-		pthread_mutex_unlock(&send_mutex);
-		if (bytes != msg_len) {
-			perror("send");
-			print_debug(LOG_ERR, "notification failed for radio %d", node->radio_id);
-		}
-	} else {
+	if (!node) {
 		print_debug(LOG_DEBUG, "node not found for index %d", ifindex);
 	}
 
@@ -2606,9 +2619,6 @@ int main(int argc, char *argv[])
 	int cid;
 	int ret;
 	int long_index;
-	char *msg;
-	int msg_len;
-	int bytes;
 	int err;
 	int ioctl_fd;
 	int id;
@@ -2817,15 +2827,6 @@ int main(int argc, char *argv[])
 		_exit(EXIT_FAILURE);
 	}
 
-	/* init list of interfaces */
-	nl80211_get_interface(0);
-
-	/* request information about all devices that may have been loaded */
-	print_debug(LOG_DEBUG, "requesting all devices from hwsim");
-	for (id = 0; id < 100; id++) {
-		get_radio(id);
-	}
-
 	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 	servaddr_vm.svm_cid = VMADDR_CID_HOST;
@@ -2837,7 +2838,7 @@ int main(int argc, char *argv[])
 	servaddr_in.sin_port = port;
 	servaddr_in.sin_family = af;
 
-	/* setup socket */
+	/* setup socket to send data */
 	if (vsock) {
 		sockfd = socket(af, SOCK_DGRAM, 0);
 	} else {
@@ -2847,6 +2848,15 @@ int main(int argc, char *argv[])
 		perror("socket");
 		free_mem();
 		_exit(EXIT_FAILURE);
+	}
+
+	/* init list of interfaces */
+	nl80211_get_interface(0);
+
+	/* request information about all devices that may have been loaded */
+	print_debug(LOG_DEBUG, "requesting all devices from hwsim");
+	for (id = 0; id < 100; id++) {
+		get_radio(id);
 	}
 
 	/* create vmci server socket */
@@ -2878,26 +2888,6 @@ int main(int argc, char *argv[])
 		_exit(EXIT_FAILURE);
 	}
 
-	/* send up notification to wmasterd */
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	memcpy(msg, "UP", msg_len);
-
-	pthread_mutex_lock(&send_mutex);
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vm,
-			sizeof(struct sockaddr));
-	pthread_mutex_unlock(&send_mutex);
-	free(msg);
-
-	/* this should be 2 bytes */
-	if (bytes != msg_len) {
-		perror("sendto");
-		print_debug(LOG_ERR, "Up notification failed");
-	} else {
-		print_debug(LOG_DEBUG, "Up notification sent to wmasterd");
-	}
 	if (verbose)
 		printf("################################################################################\n");
 

@@ -383,8 +383,8 @@ void update_cache_file_info(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* end of file reached */
-	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -494,8 +494,8 @@ void update_cache_file_location(struct client *node)
 		pos = ftell(cache_fp);
 	}
 	/* wmasterd: end of file reached */
-	char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	/* check for match */
 	if (matched) {
@@ -1488,8 +1488,6 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
  */
 void add_node(unsigned int srchost, char *vm_room, char *vm_name, char *uuid, int radio_id)
 {
-	print_debug(LOG_DEBUG, "add_node");
-
 	struct client *node;
 	struct client *curr;
 	char buf[1024];
@@ -1614,8 +1612,8 @@ void add_node(unsigned int srchost, char *vm_room, char *vm_name, char *uuid, in
 		}
 
 		if (!matched) {
-			char *format_ipv4 = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-			char *format_vsock = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+			char *format_ipv4 = "%-16s %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+			char *format_vsock = "%-16u %-5d %-6d %-5d %-5d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 			print_debug(LOG_DEBUG, "adding node to the cache file");
 			fseek(cache_fp, 0, SEEK_END);
 			if (vsock) {
@@ -1796,8 +1794,8 @@ void list_nodes(void)
 	int age;
 	struct in_addr ip;
 	char *header = "%-16s %-6s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
-	char *format_ipv4 =  "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
-	char *format_vsock = "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_ipv4 =  "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
 
 	curr = head;
 	fp = fopen("/tmp/wmasterd.status", "w");
@@ -2332,13 +2330,9 @@ void recv_from_welled(void)
 	if (vsock) {
 		src_addr = client_vm.svm_cid;
 		src_port = client_vm.svm_port;
-		print_debug(LOG_INFO, "vsock data from %16u:%-5d",
-				src_addr, src_port);
 	} else {
 		src_addr = client_in.sin_addr.s_addr;
 		src_port = client_in.sin_port;
-		print_debug(LOG_INFO, "ipv4 data from %16s:%-5d",
-				inet_ntoa(client_in.sin_addr), client_in.sin_port);
 	}
 
 	if (vsock) {
@@ -2364,8 +2358,9 @@ void recv_from_welled(void)
 
 	struct message_hdr *hdr = (struct message_hdr *)buf;
 	// TODO what if we have invalid header?
-	if (hdr->src_radio_id == -1) {
+	if (hdr->src_radio_id < 0 || hdr->dest_radio_id > 99) {
 		/* invalid, no radios passed */
+		print_debug(LOG_DEBUG, "invalid radio_id");
 		return;
 	}
 	radio_id = hdr->src_radio_id;
@@ -2373,13 +2368,10 @@ void recv_from_welled(void)
 	node = get_node_by_radio(src_addr, radio_id);
 	if (!node) {
 		print_debug(LOG_DEBUG, "no nodes exist for this host with radio id: %d", hdr->src_radio_id);
-		/* process new connection (add to node linked list) */
 		strncpy(old_room, room, UUID_LEN - 1);
-		//print_debug(LOG_DEBUG, "calling add node");
 		if (vsock) {
 			get_vm_info(src_addr, room, name, uuid);
 		}
-		print_debug(LOG_DEBUG, "calling add node");
 		add_node(src_addr, room, name, uuid, radio_id);
 		node = get_node_by_radio(src_addr, radio_id);
 		if (!node) {
@@ -2433,6 +2425,24 @@ void recv_from_welled(void)
 		} else {
 			print_debug(LOG_ERR, "update version unknown from %16u", src_addr);
 			return;
+		}
+		return;
+	}
+
+	if (strncmp(hdr->name, "welled", 6) != 0) {
+		print_debug(LOG_ERR, "unknown client application");
+		return;
+	} else if (bytes = sizeof(struct message_hdr)) {
+		print_debug(LOG_DEBUG, "received notification");
+		if (hdr->cmd == WMASTERD_DELETE) {
+			print_debug(LOG_INFO, "radio delete received");
+			remove_node(src_addr, radio_id);
+		} else if (hdr->cmd == WMASTERD_UPDATE) {
+			print_debug(LOG_INFO, "radio update received");
+			// TODO handle this
+		} else if (hdr->cmd == WMASTERD_ADD) {
+			print_debug(LOG_INFO, "radio add received");
+			// TODO handle this
 		}
 		return;
 	}
