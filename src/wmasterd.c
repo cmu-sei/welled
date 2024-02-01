@@ -1665,7 +1665,6 @@ void add_node(unsigned int srchost, char *vm_room, char *vm_name, char *uuid, in
 	if (head == NULL) {
 		/* add first node */
 		head = node;
-		print_debug(LOG_NOTICE, "add: %16u room: %36s time: %d name: %s", srchost, node->room, node->time, node->name);
 	} else {
 		/* traverse to end of list */
 		curr = head;
@@ -2077,21 +2076,30 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 	age = 0;
 	now = time(NULL);
 
-	print_debug(LOG_DEBUG, "sending to nodes in room %s", node->room);
+	//print_debug(LOG_DEBUG, "sending to nodes in room %s", node->room);
 
 	while (curr != NULL) {
 		age = now - curr->time;
 		ip.s_addr = curr->address;
 
-		/* skip node if room differs */
-		if (check_room && (strncmp(
+		/* skip node is its the same node */
+		if ((node->address == curr->address) && (node->radio_id == curr->radio_id)) {
+			if (vsock) {
+				print_debug(LOG_INFO, "skipped sending to node:    %16u room: %6s radio: %3d",
+						curr->address, curr->room, curr->radio_id);
+			} else {
+				print_debug(LOG_INFO, "skipped sending to node:    %16s room: %6s radio: %3d",
+						inet_ntoa(ip), curr->room, curr->radio_id);
+			}			curr = curr->next;
+			continue;
+		} else if (check_room && (strncmp(
 					curr->room, node->room, UUID_LEN - 1) != 0)) {
+			/* skip node if room differs */
 			if (vsock) {
 				print_debug(LOG_INFO, "skipped: %16u radio %d room: %36s",
 						curr->address, curr->radio_id, curr->room);
 			} else {
-				struct in_addr ip;
-				print_debug(LOG_ERR, "skipped %16s radio %d room: %36s",
+				print_debug(LOG_INFO, "skipped %16s radio %d room: %36s",
 						inet_ntoa(ip), curr->radio_id, curr->room);
 			}
 			curr = curr->next;
@@ -2144,7 +2152,8 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		struct message_hdr *hdr = (struct message_hdr *)buf;
 		hdr->distance = distance;
 		/* add the dest radio id to the message */
-		hdr->dest_radio_id = curr->radio_id;
+
+		hdr->src_addr = node->address;
 
 		/* send frame to this welled client */
 		if (vsock) {
@@ -2168,15 +2177,23 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			temp = curr->next;
 			remove_node(curr->address, curr->radio_id);
 			curr = temp;
+			continue;
 		} else {
 			if (vsock) {
-				print_debug(LOG_INFO, "sent %5d bytes to node:   %16u room: %6s radio: %3d distance: %4d",
-						bytes, curr->address, curr->room, hdr->dest_radio_id, hdr->distance);
+				print_debug(LOG_INFO, "sent %5d bytes to node:   %16u room: %6s radio: %3d distance: %4d origin: %16u %d",
+						bytes, curr->address, curr->room, hdr->dest_radio_id, hdr->distance, hdr->src_addr, hdr->src_radio_id);
 			} else {
-				print_debug(LOG_INFO, "sent %5d bytes to node:   %16s room: %6s radio: %3d distance: %4d",
-						bytes, inet_ntoa(ip), curr->room, hdr->dest_radio_id, hdr->distance);
+				struct in_addr origin_ip;
+				origin_ip.s_addr = hdr->src_addr;
+				char welled[16];
+				char origin[16];
+				strncpy(welled, inet_ntoa(ip), 15);
+				strncpy(origin, inet_ntoa(origin_ip), 15);
+				print_debug(LOG_INFO, "sent %5d bytes to node:   %16s room: %6s radio: %3d distance: %4d origin: %16s %d",
+						bytes, welled, curr->room, hdr->dest_radio_id, hdr->distance, origin, hdr->src_radio_id);
 			}
 			curr = curr->next;
+			continue;
 		}
 	}
 }
@@ -2365,13 +2382,14 @@ void recv_from_welled(void)
 		src_addr = client_in.sin_addr.s_addr;
 	}
 
-	if (vsock) {
-		print_debug(LOG_INFO, "recv %5d bytes from node: %16u",
-				bytes, src_addr);
-	} else {
-		print_debug(LOG_INFO, "recv %5d bytes from node: %16s",
-				bytes, inet_ntoa(client_in.sin_addr));
+	struct message_hdr *hdr = (struct message_hdr *)buf;
+	// TODO what if we have invalid header?
+	if ((hdr->src_radio_id < 0) || (hdr->src_radio_id > 99)) {
+		/* invalid, no radios passed */
+		print_debug(LOG_ERR, "invalid radio_id %d", hdr->src_radio_id);
+		return;
 	}
+	radio_id = hdr->src_radio_id;
 
 	memset(room, 0, UUID_LEN);
 	memset(old_room, 0, UUID_LEN);
@@ -2385,15 +2403,6 @@ void recv_from_welled(void)
 		// TODO update to send CID in the header even when IP, then we can lookup via vmx again
 		get_vm_info(src_addr, room, name, uuid);
 	}
-
-	struct message_hdr *hdr = (struct message_hdr *)buf;
-	// TODO what if we have invalid header?
-	if (hdr->src_radio_id < 0 || hdr->dest_radio_id > 99) {
-		/* invalid, no radios passed */
-		print_debug(LOG_DEBUG, "invalid radio_id");
-		return;
-	}
-	radio_id = hdr->src_radio_id;
 
 	node = get_node_by_radio(src_addr, radio_id);
 	if (!node) {
@@ -2425,6 +2434,15 @@ void recv_from_welled(void)
 				return;
 			}
 		}
+	}
+
+
+	if (vsock) {
+		print_debug(LOG_INFO, "recv %5d bytes from node: %16u room: %6s radio: %3d",
+				bytes, src_addr, node->room, hdr->src_radio_id);
+	} else {
+		print_debug(LOG_INFO, "recv %5d bytes from node: %16s room: %6s radio: %3d",
+				bytes, inet_ntoa(client_in.sin_addr), node->room, hdr->src_radio_id);
 	}
 
 	/* check for gelled updates from gelled-ctrl */

@@ -114,6 +114,8 @@ struct message_hdr {
 	char version[8];
 	/* cmd */
 	int cmd;
+	/* sources address of vm */
+	unsigned int src_addr;
 	/* radio_id sending the message */
 	int src_radio_id;
 	/* radio_id receiving the message */

@@ -391,12 +391,15 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER,
-		     sizeof(struct ether_addr), dst);
+		     ETH_ALEN, dst);
 	rc = nla_put(msg, HWSIM_ATTR_FRAME, data_len, data);
 	rc = nla_put_u32(msg, HWSIM_ATTR_RX_RATE, rate_idx);
 	rc = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
-	if (freq)
+	if (freq) {
 		rc = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
+	} else {
+		print_debug(LOG_INFO, "not setting HWSIM_ATTR_FREQ");
+	}
 	/* this signal rate will not match the signal acked to the sender
 	 * unless we set the same rate in both functions. normally,
 	 * the calling function determines this signal, and could
@@ -491,12 +494,11 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 			unsigned long cookie)
 {
 	struct nl_msg *msg;
-	int rc;
 
 	msg = nlmsg_alloc();
 
 	if (!msg) {
-		print_debug(LOG_ERR, "Error allocating new message MSG!\n");
+		print_debug(LOG_CRIT, "Error allocating new message MSG!");
 		goto out;
 	}
 	if (hwsim_genl_family_id < 0)
@@ -508,20 +510,15 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	/* i have to ack the src the driver expects
 	 * so there are no mac address modifications here
 	 */
-	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER,
-			sizeof(struct ether_addr), src);
-	rc = nla_put_u32(msg, HWSIM_ATTR_FLAGS, flags);
-	rc = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
-	rc = nla_put(msg, HWSIM_ATTR_TX_INFO,
-			IEEE80211_MAX_RATES_PER_TX *
-			sizeof(struct hwsim_tx_rate), tx_attempts);
+	nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, src);
+	nla_put_u32(msg, HWSIM_ATTR_FLAGS, flags);
+	nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
+	nla_put(msg, HWSIM_ATTR_TX_INFO,
+			IEEE80211_MAX_RATES_PER_TX * sizeof(struct hwsim_tx_rate),
+			tx_attempts);
 
-	rc = nla_put_u64(msg, HWSIM_ATTR_COOKIE, cookie);
+	nla_put_u64(msg, HWSIM_ATTR_COOKIE, cookie);
 
-	if (rc != 0) {
-		print_debug(LOG_ERR, "Error filling payload\n");
-		goto out;
-	}
 	/*
 	printf("#### welled -> hwsim nlmsg tx info beg ####\n");
 	struct nlmsghdr *nlh = nlmsg_hdr(msg);
@@ -935,7 +932,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 		return NL_SKIP;
 	}
 
-	print_debug(LOG_INFO, "received %5d bytes from hwsim", msg_len);
+	print_debug(LOG_INFO, "recv %5d bytes from hwsim", msg_len);
 
 	if (gnlh->cmd == HWSIM_CMD_UNSPEC) {
 		print_debug(LOG_ERR, "HWSIM_CMD_UNSPEC");
@@ -986,7 +983,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 			mac_address_to_string(addr, (struct ether_addr *)node->perm_addr);
 			print_debug(LOG_INFO, "radio %d on %s with perm_addr %s", radio_id, data, addr);
 			mac_address_to_string(addr, (struct ether_addr *)node->address);
-			print_debug(LOG_INFO, "radio %d on %s with address %s", radio_id, data, addr);
+			print_debug(LOG_INFO, "radio %d on %s with address  %s", radio_id, data, addr);
 		}
 		return NL_SKIP;
 	} else if (gnlh->cmd == HWSIM_CMD_ADD_MAC_ADDR) {
@@ -1033,9 +1030,10 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 			// TODO update?
 		}
 		return NL_SKIP;
-	} else if (!(gnlh->cmd == HWSIM_CMD_FRAME)) {
+	} else if (gnlh->cmd != HWSIM_CMD_FRAME) {
 		/* for example, notification of device up/down */
-		print_debug(LOG_DEBUG, "msg is not a frame, unhandled cmd is %d", gnlh->cmd);
+		print_debug(LOG_ERR, "unhandled hwsim nl cmd is %d", gnlh->cmd);
+		_exit(EXIT_FAILURE);
 		/*
 		if (verbose) {
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -1075,15 +1073,17 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	if (node) {
 		print_debug(LOG_DEBUG, "frame from device with radio id %d", node->radio_id);
 	} else {
-		get_radio(perm_addr[4]);
-		print_debug(LOG_ERR, "frame from unknown device");
-		list_device_nodes();
-		return NL_SKIP;
+		node = get_device_node_by_radio_id(perm_addr[4]);
+		if (!node) {
+			print_debug(LOG_ERR, "frame from unknown device");
+			get_radio(perm_addr[4]);
+			list_device_nodes();
+			return NL_SKIP;
+		}
 	}
 
 	/* we get the attributes*/
-	src = (struct ether_addr *)
-		nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]);
+	src = (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]);
 	flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
 	tx_rates = (struct hwsim_tx_rate *)nla_data(attrs[HWSIM_ATTR_TX_INFO]);
 	cookie = nla_get_u64(attrs[HWSIM_ATTR_COOKIE]);
@@ -1195,13 +1195,27 @@ attempt idx, count: -1 0
 	/* round -1 is the last element of the array */
 	/* this is the signal sent to the sender, not the receiver */
 	signal = -11;
+
+
+	if (attrs[HWSIM_ATTR_FLAGS]) {
+		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
+		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
+			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_NO_ACK");
+		}
+		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
+			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_STAT_ACK");
+		}
+		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
+		}
+	}
+
 	/* Let's flag this frame as ACK'ed */
 	/* whatever that means... */
 	flags |= HWSIM_TX_STAT_ACK;
 	/* this has to be an ack the driver expects */
 	/* what does the driver do with these values? can i remove them? */
-	send_tx_info_frame_nl(src, flags, signal, tx_attempts,
-			cookie);
+	send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie);
 	print_debug(LOG_DEBUG, "sent tx_info frame to hwsim");
 	/*
 	 * no need to send a tx info frame indicating failure with a
@@ -1231,16 +1245,9 @@ attempt idx, count: -1 0
 	/* if we rebuild the nl msg, this can change */
 	if (memcmp(&framesrc, src, ETH_ALEN) != 0) {
 		if (verbose)
-			printf("- updating the TX src ATTR to match frame\n");
+			printf("- updating the TX src ATTR to match frame src addr\n");
 		/* copy dest address from frame to nlh */
 		memcpy((char *)nlh + 24, &framesrc, ETH_ALEN);
-	}
-
-	int len = sizeof(struct message_hdr) + msg_len;
-	char *message = malloc(len);
-	if (!message) {
-		print_debug(LOG_ERR, "cannot malloc");
-		_exit(EXIT_FAILURE);
 	}
 
 	if (!node) {
@@ -1249,12 +1256,18 @@ attempt idx, count: -1 0
 	}
 
 	if (sockfd) {
-		struct message_hdr hdr;
+		struct message_hdr hdr = {};
+		int len = sizeof(struct message_hdr) + msg_len;
+		char *message = malloc(len);
+		if (!message) {
+			print_debug(LOG_ERR, "cannot malloc");
+			_exit(EXIT_FAILURE);
+		}
 		memcpy(hdr.name, "welled", 6);
 		strncpy(hdr.version, (const char *)VERSION_STR, 8);
 		hdr.len = len;
 		hdr.src_radio_id = node->radio_id;
-		hdr.netns = mynetns;
+		hdr.netns = node->netnsid;
 		hdr.cmd = WMASTERD_FRAME;
 		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
 		memcpy(message + sizeof(struct message_hdr), nlh, msg_len);
@@ -1270,15 +1283,14 @@ attempt idx, count: -1 0
 					sizeof(struct sockaddr));
 		}
 		pthread_mutex_unlock(&send_mutex);
-		free(message);
-
 		if (bytes < 0) {
 			/* wmasterd probably down */
 			perror("send");
 			print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
 		} else {
-			print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+			print_debug(LOG_INFO, "sent %5d bytes to wmasterd from radio %d", bytes, node->radio_id);
 		}
+		free(message);
 	}
 	return NL_SKIP;
 }
@@ -1434,6 +1446,7 @@ int get_radio(int id)
  *	@param freq - the frequency on which this ack is sent
  *	@param src - the src address of the data frame this is response to
  *	@param dst - the dst address which now because the source of the ack
+ *  @param radio_id - id of the sending radio
  *	@return void
  */
 static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
@@ -1483,7 +1496,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 
 	/* set source address */
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER,
-		     sizeof(struct ether_addr), dst);
+		     ETH_ALEN, dst);
 	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size,
 			hdr11);
 
@@ -1497,35 +1510,35 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		goto out;
 	}
 
-	/* set radio id */
 	char addr[18];
 	mac_address_to_string(addr, dst);
-	printf("- frame dst: %s\n", addr);
+	if (verbose)
+		printf("- frame dst: %s\n", addr);
+
 	struct device_node *node = NULL;
 	// TODO test this out
 	// tricky because dst is the frame info not perm addr
 	node = get_device_node_by_radio_id(radio_id);
 
 	if (node) {
-		print_debug(LOG_DEBUG, "we found the node to ack the frame for %s", addr);
+		print_debug(LOG_INFO, "sending ack frame radio %3d with address %s", radio_id, addr);
 	} else {
-		print_debug(LOG_ERR, "could not find node for %s", addr);
+		print_debug(LOG_ERR, "could not find node for %s radio %d", addr, radio_id);
 		goto out;
 	}
 
 	nlh = nlmsg_hdr(msg);
 	msg_len = nlh->nlmsg_len;
 
-	int len = sizeof(struct message_hdr) + msg_len;
-	char *message = malloc(len);
-	if (!message) {
-		print_debug(LOG_ERR, "cannot malloc");
-		_exit(EXIT_FAILURE);
-	}
-
 	/* send frame to wmasterd */
 	if (sockfd) {
-		struct message_hdr hdr;
+		struct message_hdr hdr = {};
+		int len = sizeof(struct message_hdr) + msg_len;
+		char *message = malloc(len);
+		if (!message) {
+			print_debug(LOG_ERR, "cannot malloc");
+			_exit(EXIT_FAILURE);
+		}
 		memcpy(hdr.name, "welled", 6);
 		strncpy(hdr.version, (const char *)VERSION_STR, 8);
 		hdr.len = len;
@@ -1535,14 +1548,13 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
 		memcpy(message + sizeof(struct message_hdr), msg, msg_len);
 
-		/* send frame to wmasterd */
 		pthread_mutex_lock(&send_mutex);
 		if (vsock) {
-			bytes = sendto(sockfd, (char *)nlh, msg_len, 0,
+			bytes = sendto(sockfd, (char *)message, len, 0,
 					(struct sockaddr *)&servaddr_vm,
 					sizeof(struct sockaddr));
 		} else {
-			bytes = sendto(sockfd, (char *)nlh, msg_len, 0,
+			bytes = sendto(sockfd, (char *)message, len, 0,
 					(struct sockaddr *)&servaddr_in,
 					sizeof(struct sockaddr));
 		}
@@ -1552,13 +1564,32 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 			perror("send");
 			print_debug(LOG_ERR, "ERROR: Could not TX ack frame to wmasterd");
 		} else {
-			print_debug(LOG_INFO, "sent %d bytes to wmasterd", bytes);
+			print_debug(LOG_INFO, "sent %5d bytes to wmasterd from radio %d", bytes, hdr.src_addr);
+		}
+		if (message) {
+			free(message);
 		}
 	}
 	/* free stuff */
 out:
 	free(hdr11);
 	nlmsg_free(msg);
+
+}
+
+/**
+ * is_broadcast_ether_addr - Determine if the Ethernet address is broadcast
+ * @addr: Pointer to a six-byte array containing the Ethernet address
+ *
+ * Return true if the address is the broadcast address.
+ *
+ * Please note: addr must be aligned to u16.
+ */
+int is_broadcast_ether_addr(const u8 *addr)
+{
+	return (*(const u16 *)(addr + 0) &
+		*(const u16 *)(addr + 2) &
+		*(const u16 *)(addr + 4)) == 0xffff;
 }
 
 /**
@@ -1578,24 +1609,26 @@ void recv_from_master(void)
 	struct genlmsghdr *gnlh;
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
 	uint32_t freq;
-	struct ether_addr *src;
+	struct ether_addr *tx_src;
+	struct ether_addr framesrc;
+	struct ether_addr framedst;
 	unsigned int data_len;
 	char *data;
 	int rate_idx;
 	int signal;
-	struct ether_addr *dst;	/* stores user mac */
-	char addr[18];
+	struct ether_addr *dst_user_mac;	/* stores user mac */
+	char addr_string[18];
 	struct ether_addr radiomac;
 	struct device_node *node;
-	struct ether_addr framedst;
 	int should_ack;
 	int retval;
 	int distance;
 	socklen_t client_len;
 	struct sockaddr_vm client_vm;
 	struct sockaddr_in client_in;
-	unsigned int src_addr;
+	struct in_addr origin_ip;
 
+	should_ack = 0;
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
@@ -1623,34 +1656,55 @@ void recv_from_master(void)
 		goto out;
 	}
 
-	if (vsock) {
-		src_addr = client_vm.svm_cid;
-	} else {
-		src_addr = client_in.sin_addr.s_addr;
-	}
-
-	if (vsock) {
-		print_debug(LOG_INFO, "received %5d bytes from wmasterd at %16u",
-				bytes, src_addr);
-	} else {
-		print_debug(LOG_INFO, "received %5d bytes from wmasterd at %16s",
-				bytes, inet_ntoa(client_in.sin_addr));
-	}
-
 	struct message_hdr *hdr = (struct message_hdr *)buf;
 
 	if (hdr->cmd != WMASTERD_FRAME) {
-		print_debug(LOG_ERR, "wmasterd sent invalid message");
+		print_debug(LOG_ERR, "invalid cmd from wmasterd: %d", hdr->cmd);
+		goto out;
 	}
 
-	if (hdr->dest_radio_id > 100) {
-		print_debug(LOG_ERR, "invalid dest radio id %d", hdr->dest_radio_id);
+	if (hdr->dest_radio_id < 0 || hdr->dest_radio_id > 99) {
+		print_debug(LOG_ERR, "invalid dst radio id %d", hdr->dest_radio_id);
+		goto out;
+	}
+
+	if (hdr->src_radio_id < 0 || hdr->src_radio_id > 99) {
+		print_debug(LOG_ERR, "invalid src radio id %d", hdr->src_radio_id);
+		goto out;
+	}
+
+	if (vsock) {
+		print_debug(LOG_INFO, "received %5d bytes for radio %3d from wmasterd at %16u origin %16u radio %d",
+				bytes, hdr->dest_radio_id, client_vm.svm_cid, hdr->src_addr, hdr->src_radio_id);
+	} else {
+		origin_ip.s_addr = hdr->src_addr;
+		char wmasterd[16];
+		char origin[16];
+		strncpy(wmasterd, inet_ntoa(client_in.sin_addr), 15);
+		strncpy(origin, inet_ntoa(origin_ip), 15);
+		print_debug(LOG_INFO, "received %5d bytes for radio %3d from wmasterd at %16s origin %16s radio %d",
+				bytes, hdr->dest_radio_id, wmasterd, origin, hdr->src_radio_id);
+	}
+
+	pthread_mutex_lock(&list_mutex);
+	node = get_device_node_by_radio_id(hdr->dest_radio_id);
+	pthread_mutex_unlock(&list_mutex);
+	if (!node) {
+		print_debug(LOG_ERR, "dest radio %d not found", hdr->dest_radio_id);
+		if (verbose) {
+			hex_dump(hdr, sizeof (struct message_hdr));
+		}
 		goto out;
 	}
 
 	/* netlink header */
 	char *ptr = (char *)buf + sizeof(struct message_hdr);
 	nlh = (struct nlmsghdr *)ptr;
+	int msg_len;
+	msg_len = nlh->nlmsg_len;
+	if (bytes - sizeof(struct message_hdr) != msg_len) {
+		print_debug(LOG_ERR, "invalid msg len %d in read of %d bytes", msg_len, bytes);
+	}
 
 	/* generic netlink header */
 	gnlh = nlmsg_data(nlh);
@@ -1678,6 +1732,12 @@ void recv_from_master(void)
 		goto out;
 	}
 
+	/*  ignore HWSIM_CMD_TX_INFO_FRAME for now */
+	if (gnlh->cmd == HWSIM_CMD_TX_INFO_FRAME) {
+		print_debug(LOG_WARNING, "Ignoring HWSIM_CMD_TX_INFO_FRAME");
+		goto out;
+	}
+
 	/* we get the attributes*/
 	genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 
@@ -1699,18 +1759,12 @@ void recv_from_master(void)
 	 * i could then sent tx info message to the driver
 	 */
 
-	/*  ignore HWSIM_CMD_TX_INFO_FRAME for now */
-	if (gnlh->cmd == HWSIM_CMD_TX_INFO_FRAME) {
-		print_debug(LOG_WARNING, "Ignoring HWSIM_CMD_TX_INFO_FRAME\n");
-		goto out;
-	}
-	if (!attrs[HWSIM_ATTR_ADDR_TRANSMITTER]) {
-		print_debug(LOG_WARNING, "Message does not contain tx address\n");
-		goto out;
-	}
-	src = (struct ether_addr *)
-		nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]);
 
+	if (!attrs[HWSIM_ATTR_ADDR_TRANSMITTER]) {
+		print_debug(LOG_WARNING, "Message does not contain tx address");
+		goto out;
+	}
+	tx_src = (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]);
 	data_len = nla_len(attrs[HWSIM_ATTR_FRAME]);
 	data = (char *)nla_data(attrs[HWSIM_ATTR_FRAME]);
 
@@ -1763,66 +1817,69 @@ void recv_from_master(void)
 	}
 
 	if (verbose) {
-		printf("signal: %d\n", signal);
-		printf("freq: %d\n", freq);
-		printf("rate_idx: %d\n", rate_idx);
-		printf("loss: %f\n", loss);
+		printf("- signal: %d\n", signal);
+		printf("- freq: %d\n", freq);
+		printf("- rate_idx: %d\n", rate_idx);
+		printf("- loss: %f\n", loss);
 	}
 
 	/* copy dst address from frame */
 	memcpy(&framedst, data + 4, ETH_ALEN);
+	memcpy(&framesrc, data + 10, ETH_ALEN);
 
 	if (verbose) {
-		mac_address_to_string(addr, src);
-                printf("frame src: %s\n", addr);
-		mac_address_to_string(addr, &framedst);
-		printf("frame dst: %s\n", addr);
+		mac_address_to_string(addr_string, tx_src);
+        printf("- nl tx src: %s\n", addr_string);
+		mac_address_to_string(addr_string, &framesrc);
+        printf("- frame src: %s\n", addr_string);
+		mac_address_to_string(addr_string, &framedst);
+		printf("- frame dst: %s\n", addr_string);
 	}
 
-	pthread_mutex_lock(&list_mutex);
-	node = get_device_node_by_radio_id(hdr->dest_radio_id);
-	pthread_mutex_unlock(&list_mutex);
-	if (!node) {
-		print_debug(LOG_ERR, "dest radio %d not found", hdr->dest_radio_id);
-		if (verbose) {
-			hex_dump(hdr, sizeof (struct message_hdr));
-		}
+	dst_user_mac = (struct ether_addr *)node->address;
+	if (dst_user_mac == NULL) {
+		print_debug(LOG_ERR, "dst device has no address node radio %d", node->radio_id);
 		goto out;
-	}
-	dst = (struct ether_addr *)node->address;
-	if (dst == NULL) {
-		print_debug(LOG_ERR, "dst device has no address");
-		goto out;
-	}
-	/* compare frame dst to nlmsg src */
-	if (memcmp(src, dst, sizeof(struct ether_addr)) == 0) {
-		/* this radio sent the frame, skip it */
-		if (verbose) {
-			mac_address_to_string(addr, dst);
-			printf("- skipping %s with dst %s because this radio sent this frame\n",
-					node->name, addr);
-		}
-		print_debug(LOG_DEBUG, "skipping %s because this radio %d sent this frame",
-					node->name, node->radio_id);
-		goto out;
-	}
-	if (verbose) {
-		mac_address_to_string(addr, dst);
-		printf("- sending to %s dst %s\n", node->name, addr);
 	}
 
-	/* we should ack if:
-	 * the frame was sent to this radio's address
-	 * and this is not an ack packet itself
-	 */
-	if ((memcmp(&framedst, dst, ETH_ALEN) == 0) &&
-		(nlh->nlmsg_len != 56)) {
-		should_ack = 1;
+	int broadcast;
+	broadcast = is_broadcast_ether_addr((const u8 *)&framedst);
+	if (broadcast) {
+		print_debug(LOG_DEBUG, "frame destination is broadcast address");
+	}
+
+	char perm_addr_string[18];
+	mac_address_to_string(addr_string, (struct ether_addr *)node->address);
+	mac_address_to_string(perm_addr_string, (struct ether_addr *)node->perm_addr);
+	print_debug(LOG_INFO, "sending %s radio %d addr %s perm_addr %s",
+			node->name, node->radio_id, addr_string, perm_addr_string);
+
+	if (attrs[HWSIM_ATTR_FLAGS]) {
+		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
+		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
+			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
+			should_ack = 0;
+		} else if (!broadcast) {
+			/* we should ack if:
+			* ack was requested and
+			* the frame was sent to this radio's address
+			*/
+			// TODO check to make sure we dont ack an ack
+			if (memcmp(&framedst, dst_user_mac, ETH_ALEN) == 0) {
+				should_ack = 1;
+			}
+		}
+		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
+			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_STAT_ACK");
+		}
+		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_REQ_TX_STATUS");
+		}
 	}
 
 	if (any_mac) {
 		/* send without address modifications */
-		retval = send_cloned_frame_msg(dst, data, data_len,
+		retval = send_cloned_frame_msg(dst_user_mac, data, data_len,
 			rate_idx, signal, freq);
 		/*
 		 * if we sent it successfully, ack it for now. this
@@ -1832,7 +1889,7 @@ void recv_from_master(void)
 		if (should_ack && !retval) {
 			if (verbose)
 				printf("- attempting to ack the frame with any_mac\n");
-			generate_ack_frame(freq, src, dst, node->radio_id);
+			generate_ack_frame(freq, tx_src, dst_user_mac, node->radio_id);
 		}
 		goto out;
 	}
@@ -1860,12 +1917,12 @@ void recv_from_master(void)
 	memcpy(radiomac.ether_addr_octet, node->perm_addr, ETH_ALEN);
 
 	/* check whether this radio mac matches our nl msg data */
-	if (memcmp((char *)&radiomac, dst, ETH_ALEN) == 0) {
+	if (memcmp((char *)&radiomac, dst_user_mac, ETH_ALEN) == 0) {
 		/* frame dst matches radio mac */
 		if (verbose)
 			printf("- radio mac already mataches perm_addr dst\n");
 
-		send_cloned_frame_msg(dst, data, data_len, rate_idx,
+		send_cloned_frame_msg(dst_user_mac, data, data_len, rate_idx,
 			signal, freq);
 	} else {
 		if (verbose)
@@ -1883,7 +1940,7 @@ void recv_from_master(void)
 			if (verbose)
 				printf("- attempting to ack the frame with changed mac\n");
 			/* TODO: determine correct values below */
-			generate_ack_frame(freq, src, dst, node->radio_id);
+			generate_ack_frame(freq, tx_src, dst_user_mac, node->radio_id);
 		}
 		goto out;
 
@@ -2304,6 +2361,11 @@ void send_notification(int radio_id, int netnsid, int cmd)
 {
 	if (!sockfd) {
 		print_debug(LOG_INFO, "socket %d not yet configured %d", sockfd);
+		return;
+	}
+
+	if (radio_id < 0 || radio_id > 99) {
+		print_debug(LOG_ERR, "send_notification invalid radio %d", radio_id);
 		return;
 	}
 
