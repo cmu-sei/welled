@@ -1680,8 +1680,8 @@ void recv_from_master(void)
 		origin_ip.s_addr = hdr->src_addr;
 		char wmasterd[16];
 		char origin[16];
-		strncpy(wmasterd, inet_ntoa(client_in.sin_addr), 15);
-		strncpy(origin, inet_ntoa(origin_ip), 15);
+		memcpy(wmasterd, inet_ntoa(client_in.sin_addr), 16);
+		memcpy(origin, inet_ntoa(origin_ip), 16);
 		print_debug(LOG_INFO, "received %5d bytes for radio %3d from wmasterd at %16s origin %16s radio %d",
 				bytes, hdr->dest_radio_id, wmasterd, origin, hdr->src_radio_id);
 	}

@@ -1789,19 +1789,38 @@ struct client *get_node_by_name(char *name)
 	return NULL;
 }
 
-void print_node(struct client *node)
+void print_node(struct client *curr)
 {
-	printf("%d\n", node->address);
-	printf("%d\n", node->radio_id);
-	printf("%s\n", node->name);
-	printf("%s\n", node->room);
-	printf("%d\n", node->time);
-	printf("%f\n", node->loc.latitude);
-	printf("%f\n", node->loc.longitude);
-	printf("%f\n", node->loc.altitude);
-	printf("%f\n", node->loc.velocity);
-	printf("%f\n", node->loc.heading);
-	printf("%f\n", node->loc.pitch);
+	struct in_addr ip;
+	char *header = "%-16s %-6s %-36s %-4s %-9s %-10s %-6s %-8s %-6s %-6s %-s\n";
+	char *format_ipv4 =  "%-16s %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+	char *format_vsock = "%-16u %-6d %-36s %-4d %-9.6f %-10.6f %-6.0f %-8.2f %-6.2f %-6.2f %-s\n";
+
+	printf(header, "addr:", "radio:", "room:", "age:", "lat:", "lon:", "alt:", "sog:", "cog:", "pitch:", "name:");
+
+	int age = time(NULL) - curr->time;
+	if (vsock) {
+		printf(format_vsock,
+				curr->address, curr->radio_id,
+				curr->room, age,
+				curr->loc.latitude, curr->loc.longitude,
+				curr->loc.altitude,
+				curr->loc.velocity,
+				curr->loc.heading,
+				curr->loc.pitch,
+				curr->name);
+	} else {
+		ip.s_addr = curr->address;
+		printf(format_ipv4,
+				inet_ntoa(ip), curr->radio_id,
+				curr->room, age,
+				curr->loc.latitude, curr->loc.longitude,
+				curr->loc.altitude,
+				curr->loc.velocity,
+				curr->loc.heading,
+				curr->loc.pitch,
+				curr->name);
+	}
 }
 
 /**
@@ -2090,7 +2109,8 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			} else {
 				print_debug(LOG_INFO, "skipped sending to node:    %16s room: %6s radio: %3d",
 						inet_ntoa(ip), curr->room, curr->radio_id);
-			}			curr = curr->next;
+			}
+			curr = curr->next;
 			continue;
 		} else if (check_room && (strncmp(
 					curr->room, node->room, UUID_LEN - 1) != 0)) {
@@ -2154,6 +2174,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		/* add the dest radio id to the message */
 
 		hdr->src_addr = node->address;
+		hdr->dest_radio_id = curr->radio_id;
 
 		/* send frame to this welled client */
 		if (vsock) {
@@ -2187,8 +2208,8 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 				origin_ip.s_addr = hdr->src_addr;
 				char welled[16];
 				char origin[16];
-				strncpy(welled, inet_ntoa(ip), 15);
-				strncpy(origin, inet_ntoa(origin_ip), 15);
+				memcpy(welled, inet_ntoa(ip), 16);
+				memcpy(origin, inet_ntoa(origin_ip), 16);
 				print_debug(LOG_INFO, "sent %5d bytes to node:   %16s room: %6s radio: %3d distance: %4d origin: %16s %d",
 						bytes, welled, curr->room, hdr->dest_radio_id, hdr->distance, origin, hdr->src_radio_id);
 			}
@@ -2435,7 +2456,6 @@ void recv_from_welled(void)
 			}
 		}
 	}
-
 
 	if (vsock) {
 		print_debug(LOG_INFO, "recv %5d bytes from node: %16u room: %6s radio: %3d",
