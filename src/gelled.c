@@ -185,7 +185,7 @@ void show_usage(int exval)
 	printf("  -p, --port		wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
-	printf("Copyright (C) 2023 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -598,10 +598,10 @@ void send_stop(void)
 		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
 			if (verbose) {
 				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-v", "-k", "0", NULL);
+					"-v", "-k", "0", "-r", radio_id, NULL);
 			} else {
 				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-k", "0", NULL);
+					"-k", "0", "-r", radio_id, NULL);
 			}
 		} else {
 			print_debug(LOG_ERR, "could not find gelled-ctrl");
@@ -643,7 +643,11 @@ int recv_from_master(void)
 
 	if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
 			sizeof(tv)) < 0) {
+#ifdef _WIN32
+		printf("setsockopt: %ld\n", WSAGetLastError());
+#else
 		perror("setsockopt");
+#endif
 	}
 
 	/* receive packets from wmasterd */
@@ -655,7 +659,7 @@ int recv_from_master(void)
 			goto out;
 		}
 #ifdef _WIN32
-		printf("setsockopt: %ld\n", WSAGetLastError());
+		printf("recv: %ld\n", WSAGetLastError());
 #else
 		perror("recv");
 #endif
@@ -787,7 +791,7 @@ void wmasterd_connect()
 	} while (running && (ret < 0));
 
 	/* send up notification to wmasterd */
-        struct message_hdr hdr;
+    struct message_hdr hdr;
 	msg_len = sizeof(struct message_hdr);
 	memcpy(hdr.name, "gelled", 6);
 	strncpy(hdr.version, (const char *)VERSION_STR, 8);
@@ -804,21 +808,25 @@ void wmasterd_connect()
 	}
 }
 
+/**
+ * 	\brief returns the netns of the current process
+*/
 int get_mynetns(void)
 {
-        char *nspath = "/proc/self/ns/net";
-        char pathbuf[256];
-        int len = readlink(nspath, pathbuf, sizeof(pathbuf));
-        if (len < 0) {
-                perror("readlink");
-                return -1;
-        }
-        if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
-                perror("sscanf");
-                return -1;
-        }
-        print_debug(LOG_DEBUG, "netns: %ld", mynetns);
-        return 0;
+	char *nspath = "/proc/self/ns/net";
+	char *pathbuf = calloc(256, 1);
+	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	if (len < 0) {
+		perror("readlink");
+		return -1;
+	}
+	if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+		perror("sscanf");
+		return -1;
+	}
+	free(pathbuf);
+	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+	return 0;
 }
 
 /**
@@ -852,7 +860,7 @@ int main(int argc, char *argv[])
 	radio_id = 0;
 
 	static struct option long_options[] = {
-		{"help",	no_argument, 0, 'h'},
+		{"help",		no_argument, 0, 'h'},
 		{"version",     no_argument, 0, 'V'},
 		{"verbose",     no_argument, 0, 'v'},
 		{"land",	no_argument, 0, 'l'},
@@ -862,8 +870,8 @@ int main(int argc, char *argv[])
 		{"port",	required_argument, 0, 'p'},
 		{"radio",	required_argument, 0, 'r'},
 		{"mapserver",	required_argument, 0, 'm'},
-		{"debug",	required_argument, 0, 'D'},
-		{"device",	required_argument, 0, 'd'}
+		{"debug",		required_argument, 0, 'D'},
+		{"device",		required_argument, 0, 'd'}
 	};
 
 	while ((opt = getopt_long(argc, argv, "hVvlws:p:m:D:d:r:", long_options,
@@ -924,23 +932,23 @@ int main(int argc, char *argv[])
 			show_usage(EXIT_FAILURE);
 			break;
 		}
-
 	}
+
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-	#ifndef _WIN32
+#ifndef _WIN32
 	if (loglevel >= 0)
 		openlog("gelled", LOG_PID, LOG_USER);
-	#endif
+#endif
 
 	if (vsock) {
-		#ifdef _WIN32
+#ifdef _WIN32
 		/* old code for vmci_sockets.h */
 		af = VMCISock_GetAFValue();
 		cid = VMCISock_GetLocalCID();
 		printf("CID: %d\n", cid);
-		#else
+#else
 		/* new code for vm_sockets */
 		af = AF_VSOCK;
 		ioctl_fd = open("/dev/vsock", 0);
@@ -956,7 +964,7 @@ int main(int argc, char *argv[])
 		} else {
 			printf("CID: %u\n", cid);
 		}
-		#endif
+#endif
 	} else {
 		af = AF_INET;
 	}
@@ -1048,7 +1056,7 @@ int main(int argc, char *argv[])
 	servaddr_in.sin_port = port;
 	servaddr_in.sin_family = af;
 
-	wmasterd_connect(sockfd);
+	wmasterd_connect();
 
 	if (verbose)
 		printf("################################################################################\n");
@@ -1057,7 +1065,7 @@ int main(int argc, char *argv[])
 	while (running) {
 		if (recv_from_master() == -1) {
 			close(sockfd);
-			wmasterd_connect(sockfd);
+			wmasterd_connect();
 		}
 	}
 
