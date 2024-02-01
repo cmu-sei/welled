@@ -2294,7 +2294,6 @@ void *send_status(void *arg)
 		}
 		pthread_mutex_unlock(&send_mutex);
 
-		/* this should be 8 bytes */
 		if (bytes != msg_len) {
 			perror("sendto");
 			print_debug(LOG_ERR, "up notification failed for monitor mode node");

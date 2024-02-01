@@ -36,6 +36,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <string.h>
+#include <dirent.h>
 #ifdef _WIN32
   #ifndef _WIN32_WINNT
     #define _WIN32_WINNT 0x0501  /* Windows XP. */
@@ -74,12 +75,10 @@
 	#define VMADDR_CID_HOST 2
 #endif
 /** Port used to send data to wmasterd */
-#define SEND_PORT_G		1111
+#define WMASTERD_PORT		1111
 /** Port used to receive NMEA sentences from wmasterd */
-#define RECV_PORT_G		3333
-/** Buffer size for VMCI datagrams */
-#define VMCI_BUFF_LEN		4096
-/** Buffer size for UDP datagrams */
+#define WMASTERD_PORT_GELLED	3333
+/** Buffer size for datagrams */
 #define BUFF_LEN		4096
 /** Zoom level to use when requesting tiles from OSM server */
 #define ZOOM			18
@@ -94,6 +93,14 @@ typedef struct {
 	png_bytep *row_pointers;
 } png_data;
 
+/** address family for mockfd */
+int af;
+/** wmasterd port */
+int port;
+/** for wmasterd IP */
+struct in_addr wmasterd_address;
+/** whether to use vsock */
+int vsock;
 /** Whether to print verbose output */
 int verbose;
 /** Whether to break loop after signal */
@@ -103,9 +110,13 @@ int sockfd;
 /** FD for vmci receive */
 int myservfd;
 /** sockaddr_vm for vmci send */
-struct sockaddr_vm servaddr_vmci;
+struct sockaddr_vm servaddr_vm;
+/** sockaddr_vm for ipv4 send */
+struct sockaddr_in servaddr_in;
 /** sockaddr_vm for vmci receive */
-struct sockaddr_vm myservaddr_vmci;
+struct sockaddr_vm myservaddr_vm;
+/** sockaddr_vm for ipv4 receive */
+struct sockaddr_in myservaddr_in;
 /** server address for OSM tiles */
 char *mapserver;
 /** device path for write */
@@ -113,7 +124,7 @@ char *dev_path;
 /** for tracking our VMCI CID and sending in velocty change */
 int cid;
 /** whether our gps device needs to stay at sea */
-int sea;
+int water;
 /** whether our gps device needs to stay on land */
 int land;
 /** whether or not we want to check land or sea position */
@@ -128,6 +139,12 @@ double velocity;
 pthread_t status_tid;
 /** for the desired log level */
 int loglevel;
+/** the radio id to receive location info from */
+int radio_id;
+/** netns of this process */
+long int mynetns;
+/** whether this process is inside a netns */
+int inside_netns;
 
 #ifdef _WIN32
 #ifndef HAVE_STRSEP
@@ -164,19 +181,22 @@ void show_usage(int exval)
 
 	printf("gelled - gelled, GPS emulation link layer exchange daemon \n\n");
 
-	printf("Usage: gelled [-hVv] [-d<device>] [-m<url>] [-s|-l]\n\n");
+	printf("Usage: gelled [-hVv] [-r<radio_id>] [-d<device>] [-m<url>] [-w|-l]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help		print this help and exit\n");
 	printf("  -V, --version		print version and exit\n");
 	printf("  -v, --verbose		verbose output\n");
+	printf("  -r, --radio		radio id\n");
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
-	printf("  -s, --sea		gps should only travel on water\n");
-	printf("  -d, --device		use this device as GPS\n");
+	printf("  -w, --water		gps should only travel on water\n");
+	printf("  -d, --device		serial device to write NMEA GPS data\n");
+	printf("  -s, --server		wmasterd server address\n");
+	printf("  -p, --port		wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
 
-	printf("Copyright (C) 2016 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -200,11 +220,52 @@ void print_debug(int level, char *format, ...)
 	va_start(args, format);
 	vsprintf(buffer, format, args);
 	va_end(args);
-	#ifndef _WIN32
-	syslog(level, buffer);
-	#else
-	printf("gelled: %s\n", buffer);
-	#endif
+
+	char *lev;
+	switch(level) {
+		case 0:
+			lev = "emerg";
+			break;
+		case 1:
+			lev = "alert";
+			break;
+		case 2:
+			lev = "crit";
+			break;
+		case 3:
+			lev = "error";
+			break;
+		case 4:
+			lev = "err";
+			break;
+		case 5:
+			lev = "notice";
+			break;
+		case 6:
+			lev = "info";
+			break;
+		case 7:
+			lev = "debug";
+			break;
+		default:
+			lev = "unknown";
+			break;
+	}
+
+#ifndef _WIN32
+	syslog(level, "%s: %s", lev, buffer);
+#endif
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
+
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - gelled: %8s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("gelled: %8s: %s\n", lev, buffer);
+	}
 }
 
 /**
@@ -548,10 +609,10 @@ void send_stop(void)
 		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
 			if (verbose) {
 				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-v", "-k", "0", NULL);
+					"-v", "-k", "0", "-r", radio_id, NULL);
 			} else {
 				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-k", "0", NULL);
+					"-k", "0", "-r", radio_id, NULL);
 			}
 		} else {
 			printf("couldnt find gelled-ctrl\n");
@@ -566,15 +627,55 @@ void send_stop(void)
 }
 #endif
 
+void send_notification(int radio_id, int netnsid, int cmd)
+{
+	if (!sockfd) {
+		print_debug(LOG_INFO, "socket %d not yet configured %d", sockfd);
+		return;
+	}
+
+	if (radio_id < 0 || radio_id > 99) {
+		print_debug(LOG_ERR, "send_notification invalid radio %d", radio_id);
+		return;
+	}
+
+	int bytes;
+	int msg_len;
+	struct message_hdr hdr = {};
+
+	msg_len = sizeof(struct message_hdr);
+	memcpy(hdr.name, "welled", 6);
+	strncpy(hdr.version, (const char *)VERSION_STR, 8);
+	hdr.src_radio_id = radio_id;
+	hdr.len = sizeof(struct message_hdr);
+	hdr.netns = netnsid;
+	hdr.cmd = cmd;
+
+	if (vsock) {
+		bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+				(struct sockaddr *)&servaddr_vm,
+				sizeof(struct sockaddr));
+	} else {
+		bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+				(struct sockaddr *)&servaddr_in,
+				sizeof(struct sockaddr));
+	}
+		/* this should be 8 bytes */
+	if (bytes != msg_len) {
+		perror("sendto");
+		print_debug(LOG_ERR, "notification failed for radio %d", radio_id);
+	}
+}
+
 /**
  *      @brief parse vmci data from wmastered.
  *      @return void
  */
 void recv_from_master(void)
 {
-	char buf[VMCI_BUFF_LEN];
-	struct sockaddr_vm cliaddr_vmci;
-	struct sockaddr_in cliaddr;
+	char buf[BUFF_LEN];
+	struct sockaddr_vm cliaddr_vm;
+	struct sockaddr_in cliaddr_in;
 	socklen_t addrlen;
 	struct timeval tv; /* timer to break us out of the recvfrom function */
 	int bytes;
@@ -584,50 +685,57 @@ void recv_from_master(void)
 	struct stat buf_stat;
 
 	addrlen = sizeof(struct sockaddr);
-	memset(&cliaddr_vmci, 0, sizeof(cliaddr_vmci));
-	memset(&cliaddr, 0, sizeof(cliaddr));
-	memset(buf, 0, VMCI_BUFF_LEN);
+	memset(&cliaddr_vm, 0, sizeof(cliaddr_vm));
+	memset(&cliaddr_in, 0, sizeof(cliaddr_in));
+	memset(buf, 0, BUFF_LEN);
 
-	tv.tv_sec = 10;
+	tv.tv_sec = 1;
 	tv.tv_usec = 0;
-
-	#ifdef _WIN32
+#ifdef _WIN32
 	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &tv,
 			sizeof(tv)) < 0) {
 		printf("setsockopt: %ld\n", WSAGetLastError());
 	}
-	#else
+#else
 	if (setsockopt(myservfd, SOL_SOCKET, SO_RCVTIMEO, &tv,
 			 sizeof(tv)) < 0) {
 		perror("setsockopt");
 		print_debug(LOG_ERR, "Error: could not set server socket timeout");
 	}
-	#endif
+#endif
 
 	/* receive packets from wmasterd */
-	bytes = recvfrom(myservfd, (char *)buf, VMCI_BUFF_LEN, 0,
-			(struct sockaddr *)&cliaddr_vmci, &addrlen);
-
+	if (vsock) {
+		bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
+				(struct sockaddr *)&cliaddr_vm, &addrlen);
+	} else {
+		bytes = recvfrom(myservfd, (char *)buf, BUFF_LEN, 0,
+				(struct sockaddr *)&cliaddr_in, &addrlen);
+	}
 	if (bytes < 0) {
 		if (verbose) {
-			#ifdef _WIN32
+#ifdef _WIN32
 			printf("setsockopt: %ld\n", WSAGetLastError());
-			#else
+#else
 			perror("recvfrom");
 			print_debug(LOG_ERR, "Error: recvfrom failed");
-			#endif
+#endif
 		}
 		goto out;
 	}
 
-	print_debug(LOG_INFO, "received %d bytes packet from src host: %u\n",
-			bytes, cliaddr_vmci.svm_cid);
-
-	print_debug(LOG_DEBUG, "Received NMEA: '%s'\n", buf);
+	if (vsock) {
+		print_debug(LOG_INFO, "received %d bytes packet from src host: %16u",
+				bytes, cliaddr_vm.svm_cid);
+	} else {
+		print_debug(LOG_INFO, "received %d bytes packet from src host: %16s",
+				bytes, inet_ntoa(cliaddr_in.sin_addr));
+	}
+	print_debug(LOG_DEBUG, "Received NMEA: '%s'", buf);
 
 	/* write to device */
 	if (stat(dev_path, &buf_stat) < 0) {
-		perror("stat");
+		//perror("stat");
 		print_debug(LOG_ERR, "Error: stat failed: %s does not exist",
 				dev_path);
 		goto out;
@@ -689,7 +797,7 @@ void recv_from_master(void)
 						"Error: check_if_sea failed\n");
 			} else if (land && ret) {
 				send_stop();
-			} else if (sea && !ret) {
+			} else if (water && !ret) {
 				send_stop();
 			}
 		}
@@ -709,39 +817,71 @@ out:
  */
 void *send_status(void *arg)
 {
-	/* send up notification to wmasterd */
-	char *msg;
 	int msg_len;
 	int bytes;
+	struct device_node *node;
 
 	/* TODO: add debug detail to message. wmastered would require an
 	 * adjustment to the size check it performs. this info could be:
+	 *   number of interfaces
+	 *   interface mac addresses
+	 *   perm_addrs
+	 *   state of interfaces (monitor, up, down)
 	 */
-
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "UP");
 
 	while (running) {
 
-		bytes = sendto(sockfd, msg, msg_len, 0,
-				(struct sockaddr *)&servaddr_vmci,
-				sizeof(struct sockaddr));
+		sleep(1);
 
-		/* this should be 8 bytes */
+		struct message_hdr hdr = {};
+		msg_len = sizeof(struct message_hdr);
+		memcpy(hdr.name, "gelled", 6);
+		strncpy(hdr.version, (const char *)VERSION_STR, 8);
+		hdr.src_radio_id = radio_id;
+		hdr.len = sizeof(struct message_hdr);
+		hdr.netns = mynetns;
+		hdr.cmd = WMASTERD_UPDATE;
+
+		if (vsock) {
+			bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+					(struct sockaddr *)&servaddr_vm,
+					sizeof(struct sockaddr));
+		} else {
+			bytes = sendto(sockfd, (void *)&hdr, msg_len, 0,
+					(struct sockaddr *)&servaddr_in,
+					sizeof(struct sockaddr));
+		}
+
 		if (bytes != msg_len) {
 			perror("sendto");
-			print_debug(LOG_ERR, "Up notification failed");
-		} else {
-			print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
+			print_debug(LOG_ERR, "up notification failed");
 		}
-		sleep(10);
+		sleep(9);
 	}
 
-	free(msg);
-
+	print_debug(LOG_DEBUG, "send_status returning");
 	return ((void *)0);
+}
+
+/**
+ * 	\brief returns the netns of the current process
+*/
+int get_mynetns(void)
+{
+	char *nspath = "/proc/self/ns/net";
+	char *pathbuf = calloc(256, 1);
+	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	if (len < 0) {
+		perror("readlink");
+		return -1;
+	}
+	if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+		perror("sscanf");
+		return -1;
+	}
+	free(pathbuf);
+	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+	return 0;
 }
 
 /**
@@ -749,13 +889,9 @@ void *send_status(void *arg)
  */
 int main(int argc, char *argv[])
 {
-	int af;
 	int opt;
 	int ret;
 	int long_index;
-	char *msg;
-	int msg_len;
-	int bytes;
 	int err;
 	int ioctl_fd;
 
@@ -769,24 +905,31 @@ int main(int argc, char *argv[])
 	dev_path = "/dev/ttyUSB0";
 	#endif
 	mapserver = "127.0.0.1";
-	sea = 0;
+	water = 0;
 	land = 0;
 	err = 0;
 	ioctl_fd = 0;
 	loglevel = -1;
+	vsock = 1;
+	port = WMASTERD_PORT;
+	radio_id = 0;
 
 	static struct option long_options[] = {
-		{"help",	no_argument, 0, 'h'},
+		{"help",		no_argument, 0, 'h'},
 		{"version",     no_argument, 0, 'V'},
 		{"verbose",     no_argument, 0, 'v'},
-		{"debug",       required_argument, 0, 'D'},
-		{"device",	required_argument, 0, 'd'},
 		{"land",	no_argument, 0, 'l'},
-		{"sea",		no_argument, 0, 's'},
+		{"water",	no_argument, 0, 'w'},
+		//{"cid",	no_argument, 0, 'c'},
+		{"server",	required_argument, 0, 's'},
+		{"port",	required_argument, 0, 'p'},
+		{"radio",	required_argument, 0, 'r'},
 		{"mapserver",	required_argument, 0, 'm'},
+		{"debug",		required_argument, 0, 'D'},
+		{"device",		required_argument, 0, 'd'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvlsm:d:D:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvlws:p:m:D:d:r:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -808,8 +951,11 @@ int main(int argc, char *argv[])
 			loglevel = atoi(optarg);
 			printf("gelled: syslog level set to %d\n", loglevel);
 			break;
-		case 's':
-			sea = 1;
+		case 'r':
+			radio_id = atoi(optarg);
+			break;
+		case 'w':
+			water = 1;
 			break;
 		case 'l':
 			land = 1;
@@ -817,111 +963,194 @@ int main(int argc, char *argv[])
 		case 'm':
 			mapserver = optarg;
 			break;
+		case 's':
+			vsock = 0;
+			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
+				printf("gelled: invalid ip address\n");
+				show_usage(EXIT_FAILURE);
+			}
+			break;
+		case 'p':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
+			break;
 		case '?':
 			printf("Error - No such option: `%c'\n\n",
 				optopt);
 			show_usage(EXIT_FAILURE);
 			break;
 		}
-
 	}
+
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-	#ifndef _WIN32
+#ifndef _WIN32
 	if (loglevel >= 0)
 		openlog("gelled", LOG_PID, LOG_USER);
-	#endif
+#endif
 
-	#ifdef _WIN32
-	/* old code for vmci_sockets.h */
-	af = VMCISock_GetAFValue();
-	cid = VMCISock_GetLocalCID();
-	printf("CID: %d\n", cid);
-	#else
-
-	/* new code for vm_sockets */
-	af = AF_VSOCK;
-	ioctl_fd = open("/dev/vsock", 0);
-	if (ioctl_fd < 0) {
-		perror("open");
-		print_debug(LOG_ERR, "could not open /dev/vsock\n");
-		_exit(EXIT_FAILURE);
-	}
-	err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
-	if (err < 0) {
-		perror("ioctl: Cannot get local CID");
-		print_debug(LOG_ERR, "could not get local CID");
+	if (vsock) {
+#ifdef _WIN32
+		/* old code for vmci_sockets.h */
+		af = VMCISock_GetAFValue();
+		cid = VMCISock_GetLocalCID();
+		printf("CID: %d\n", cid);
+#else
+		/* new code for vm_sockets */
+		af = AF_VSOCK;
+		ioctl_fd = open("/dev/vsock", 0);
+		if (ioctl_fd < 0) {
+			perror("open");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
+			_exit(EXIT_FAILURE);
+		}
+		err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
+		if (err < 0) {
+			perror("ioctl: Cannot get local CID");
+			print_debug(LOG_ERR, "could not get local CID");
+		} else {
+			printf("CID: %u\n", cid);
+		}
+#endif
 	} else {
-		printf("CID: %u\n", cid);
+		af = AF_INET;
 	}
-	#endif
 
-	if (sea || land)
+	if (water || land) {
 		check_position = 1;
-	else
+	} else {
 		check_position = 0;
+	}
+
+    inside_netns = 0;
+
+    /* get my netns */
+    if (get_mynetns() < 0) {
+		    mynetns = 0;
+	};
+
+	/* get all netns */
+	DIR *d;
+	struct dirent *file;
+	struct stat *statbuf;
+	d = opendir("/run/netns");
+	if (d) {
+		while ((file = readdir(d)) != NULL) {
+			if (strcmp(file->d_name, ".") == 0)
+				continue;
+			if (strcmp(file->d_name, "..") == 0)
+				continue;
+
+			statbuf = malloc(sizeof(struct stat));
+			if (!statbuf) {
+				perror("malloc");
+				exit(1);
+			}
+			int maxlen = strlen("/run/netns/") + strlen(file->d_name) + 1;
+			char *fullpath = malloc(maxlen);
+			if (!fullpath) {
+				perror("malloc");
+				exit(1);
+			}
+			snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+			int fd = open(fullpath, O_RDONLY);
+			if (fd < 0) {
+				perror("open");
+			}
+			if (fstat(fd, statbuf) < 0) {
+				perror("fstat");
+			}
+			long int inode = statbuf->st_ino;
+			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+
+			if (inode == mynetns) {
+				inside_netns = 1;
+			}
+			close(fd);
+			free(statbuf);
+			free(fullpath);
+		}
+		closedir(d);
+	} else {
+		print_debug(LOG_ERR, "cannot open /run/netns");
+	}
+
+	if (inside_netns) {
+		print_debug(LOG_INFO, "running inside netns %ld", mynetns);
+	} else {
+		print_debug(LOG_INFO, "not runnning inside netns");
+	}
 
 	/* Handle signals */
 	signal(SIGINT, (void *)signal_handler);
 	signal(SIGTERM, (void *)signal_handler);
 	signal(SIGQUIT, (void *)signal_handler);
 	signal(SIGHUP, SIG_IGN);
+	signal(SIGPIPE, SIG_IGN);
 
 	#ifdef _WIN32
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
 	#endif
 
-	/* setup vmci client socket */
-	sockfd = socket(af, SOCK_DGRAM, 0);
-	/* we can initalize this struct because it never changes */
-	memset(&servaddr_vmci, 0, sizeof(servaddr_vmci));
-	servaddr_vmci.svm_cid = VMADDR_CID_HOST;
-	servaddr_vmci.svm_port = SEND_PORT_G;
-	servaddr_vmci.svm_family = af;
+	/* setup wmasterd details */
+	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+	servaddr_vm.svm_cid = VMADDR_CID_HOST;
+	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_family = af;
+
+	memset(&servaddr_in, 0, sizeof(servaddr_in));
+	servaddr_in.sin_addr = wmasterd_address;
+	servaddr_in.sin_port = port;
+	servaddr_in.sin_family = AF_INET;
+
+	/* setup socket to send data */
+	if (vsock) {
+		sockfd = socket(af, SOCK_DGRAM, 0);
+	} else {
+		sockfd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
+	}
 	if (sockfd < 0) {
 		perror("socket");
-		print_debug(LOG_ERR, "failed to bind client socket");
 		_exit(EXIT_FAILURE);
 	}
 
-	/* create vmci server socket */
-	myservfd = socket(af, SOCK_DGRAM, 0);
+	/* create server socket to receive data */
+	if (vsock) {
+		myservfd = socket(af, SOCK_DGRAM, 0);
+	} else {
+		myservfd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
+	}
 
 	/* we can initalize this struct because it never changes */
-	memset(&myservaddr_vmci, 0, sizeof(myservaddr_vmci));
-	myservaddr_vmci.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vmci.svm_port = RECV_PORT_G;
-	myservaddr_vmci.svm_family = af;
-	ret = bind(myservfd, (struct sockaddr *)&myservaddr_vmci,
-		sizeof(struct sockaddr));
+	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
+	myservaddr_vm.svm_cid = VMADDR_CID_ANY;
+	myservaddr_vm.svm_port = WMASTERD_PORT_GELLED;
+	myservaddr_vm.svm_family = af;
 
+	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
+	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
+	myservaddr_in.sin_port = WMASTERD_PORT_GELLED;
+	myservaddr_in.sin_family = AF_INET;
+
+	if (vsock) {
+		ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
+				sizeof(struct sockaddr));
+	} else {
+		ret = bind(myservfd, (struct sockaddr *)&myservaddr_in,
+				sizeof(struct sockaddr));
+	}
 	if (ret < 0) {
 		perror("bind");
 		close(sockfd);
-		print_debug(LOG_ERR, "failed to bind server socket");
+		close(myservfd);
 		_exit(EXIT_FAILURE);
 	}
 
 	/* send up notification to wmasterd */
-	msg_len = 2;
-	msg = malloc(msg_len);
-	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "UP");
-
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vmci,
-			sizeof(struct sockaddr));
-
-	free(msg);
-
-	/* this should be 2 bytes */
-	if (bytes != msg_len) {
-		perror("sendto");
-		print_debug(LOG_ERR, "Up notification failed");
-	} else {
-		print_debug(LOG_DEBUG, "Up notification sent to wmasterd\n");
-	}
+	send_notification(radio_id, mynetns, WMASTERD_ADD);
 
 	if (verbose)
 		printf("################################################################################\n");
@@ -941,23 +1170,22 @@ int main(int argc, char *argv[])
 
 	/* code below here executes after signal */
 
-	print_debug(LOG_DEBUG, "Shutting down...\n");
+	print_debug(LOG_DEBUG, "Shutting down...");
 
 	pthread_cancel(status_tid);
 
 	pthread_join(status_tid, NULL);
 
-	print_debug(LOG_DEBUG, "Threads have been cancelled\n");
+	print_debug(LOG_DEBUG, "Threads have been cancelled");
 
 	close(sockfd);
 	close(myservfd);
 
-	print_debug(LOG_DEBUG, "Sockets have been closed\n");
+	print_debug(LOG_DEBUG, "Sockets have been closed");
 
-	print_debug(LOG_DEBUG, "Memory has been cleared\n");
+	print_debug(LOG_DEBUG, "Memory has been cleared");
 
 	print_debug(LOG_NOTICE, "Exiting");
 
 	_exit(EXIT_SUCCESS);
 }
-
