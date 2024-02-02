@@ -35,6 +35,7 @@ Some of these programs can be compiled to run on multiple operating systems:
 * Vyos
 * Windows 7
 * ESXi
+* Proxmox
 
 The structure of this project's repository is as follows:
 ```
@@ -379,6 +380,7 @@ to the ESXi host. The Makefile's esx target will create a tarball containing the
 `wmasterd` executable, an init script, and an installation script.
 ESXi requires an older version of glibc then used on our development VMs. The
 source file therefore specifies a version of memcpy from glibc 2.25.
+
 If compiling on a machine with glibc 2.34 it is not possible to build for ESXi
 because is uses an older glibc version.
 ```
@@ -413,6 +415,10 @@ of `welled` client nodes to both STDOUT and /tmp/wmasterd.status.
 Be advised this this script will default to enabled distance mode with `-d` and
 also will enabled a "cache" file that stores the location of each `welled`
 client into `/wmasterd_nodes`.
+
+Because the VIB is built with default a startup script that defaults to usual
+`wmasterd` arguments, we should update our VIB creation to define user-specified
+options or have `wmasterd` check for a config file that is not overwritten on boot.
 
 ## Installing wmasterd on ESXi with a VIB
 ```
@@ -492,9 +498,11 @@ http://boulter.com/gps/distance/?from=40.0+-80.0&to=40.0+-80.0001&units=k
 ```
 
 ## Setting the VMs name, address, or room when in non-STEP environment
-Take note that STEP is a reference to the deprecated STEPfwd Cyber Range Management tool that has been replaced by Crucible and Topomojo.
+Take note that STEP is a reference to the deprecated STEPfwd Cyber Range Management
+tool that has been replaced by Crucible and Topomojo. In this example the room
+number is being to 55.
 ```
-/bin/gelled-ctrl -n kali-local -r 55
+/bin/gelled-ctrl -n kali-local -R 55
 ```
 
 Of course, all of these tools have usage statements, so please read themm.
@@ -557,6 +565,10 @@ To setup the map server so that it does not need to access the internet, you
 will need to download the javascript libraries listed in `slippymap.html` as
 well as the theme's icons. The `slippymap.html` file should also be updated to
 reflect the appropriate hostname for your map server.
+For testing, you may wish to set the map server to https://tile.openstreetmap.org.
+By default, `gelled` will cache these files locally so that it does not need
+to execute multiple HTTP requests for the same file. Beware of the disk usage
+for the `/tmp/gelled` directory.
 
 ## Example command to create serial devices
 ```
@@ -630,5 +642,5 @@ One Kali Linux VM running `welled`
 One Fedora 23 Linux VM running `welled`
 
 
-Copyright 2015-2023 Carnegie Mellon University. See LICENSE.txt for terms.
+Copyright 2015-2024 Carnegie Mellon University. See LICENSE.txt for terms.
 
