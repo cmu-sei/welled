@@ -724,14 +724,19 @@ void recv_from_master(void)
 		goto out;
 	}
 
-	if (vsock) {
-		print_debug(LOG_INFO, "received %d bytes packet from src host: %16u",
-				bytes, cliaddr_vm.svm_cid);
+	struct message_hdr *hdr = (struct message_hdr *)buf;
+	char *nmea = buf + sizeof(struct message_hdr);
+	if (strncmp(hdr->name, "gelled", 6) == 0) {
+		print_debug(LOG_INFO, "gelled %s", hdr->version);
 	} else {
-		print_debug(LOG_INFO, "received %d bytes packet from src host: %16s",
-				bytes, inet_ntoa(cliaddr_in.sin_addr));
+		print_debug(LOG_ERR, "invalid message received");
+		_exit(EXIT_FAILURE);
 	}
-	print_debug(LOG_DEBUG, "Received NMEA: '%s'", buf);
+
+	print_debug(LOG_INFO, "received %d bytes packet from wmasterd for radio: %3d",
+			bytes, hdr->dest_radio_id);
+
+	print_debug(LOG_DEBUG, "Received NMEA: '%s'", nmea);
 
 	/* write to device */
 	if (stat(dev_path, &buf_stat) < 0) {
@@ -760,7 +765,7 @@ void recv_from_master(void)
 	if (SetCommTimeouts(fp, &timeouts) == 0)
 		printf("WriteFile: %d\n", GetLastError());
 
-	if (WriteFile(fp, buf, bytes, NULL, &osWrite) == 0)
+	if (WriteFile(fp, nmea, bytes, NULL, &osWrite) == 0)
 		printf("WriteFile: %d\n", GetLastError());
 
 	if (WriteFile(fp, "\n", 1, NULL, &osWrite) == 0)
@@ -774,10 +779,10 @@ void recv_from_master(void)
 		perror("fopen");
 		goto out;
 	} else {
-		ret = fprintf(fp, "%s\n", buf);
+		ret = fprintf(fp, "%s\n", nmea);
 		if (ret == EOF) {
 			perror("fprintf");
-			print_debug(LOG_ERR, "Error: couldnt open %s\n", dev_path);
+			print_debug(LOG_ERR, "Error: couldnt open %s", dev_path);
 		}
 		fclose(fp);
 	}
@@ -785,8 +790,8 @@ void recv_from_master(void)
 
 	#ifndef _WIN32
 	/* check if we should stop moving based on land or sea */
-	if (check_position && strncmp(buf, "$GPRMC", 6) == 0) {
-		process_rmc(buf);
+	if (check_position && strncmp(nmea, "$GPRMC", 6) == 0) {
+		process_rmc(nmea);
 		if (velocity != 0) {
 			if (verbose) {
 				printf("velocity: %f\n", velocity);

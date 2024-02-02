@@ -1116,89 +1116,147 @@ void send_nmea_to_nodes(void)
 {
 	struct client *curr;
 	struct client *temp;
-	int bytes;
-	char *buf;
+	int nmea_bytes;
+	char *nmea;
+	char *msg;
 	int ret;
+	int msg_len;
+	struct message_hdr *hdr;
+	struct in_addr ip;
 
 	pthread_mutex_lock(&list_mutex);
 	curr = head;
-	bytes = 0;
+	nmea_bytes = 0;
 
 	while (curr != NULL) {
 
 		/* update coordinates */
 		create_new_sentences(curr);
 
-		/* send rmc */
-		buf = curr->loc.nmea_rmc;
-		bytes = strlen(buf);
+		ip.s_addr = curr->address;
+
+		if (vsock) {
+			memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+			servaddr_vm.svm_cid = curr->address;
+			servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
+			servaddr_vm.svm_family = af;
+		} else {
+			memset(&servaddr_in, 0, sizeof(servaddr_in));
+			servaddr_in.sin_addr.s_addr = curr->address;
+			servaddr_in.sin_port = WMASTERD_PORT_GELLED;
+			servaddr_in.sin_family = af;
+		}
+
+		/* create message buffer */
+		msg = malloc(sizeof(struct message_hdr) + NMEA_LEN);
+		if (!msg) {
+			perror("malloc");
+			_exit(EXIT_FAILURE);
+		}
+		hdr = (struct message_hdr *)msg;
+		memcpy(hdr->name, "gelled", 6);
+		strncpy(hdr->version, (const char *)VERSION_STR, 8);
+		hdr->dest_radio_id = curr->radio_id;
+		hdr->netns = curr->netns;
+		hdr->cmd = WMASTERD_UPDATE;
+		char *ptr = msg + sizeof(struct message_hdr);
 
 		/* rmc is minumum required nav data */
-		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-		servaddr_vm.svm_cid = curr->address;
-		servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
-		servaddr_vm.svm_family = af;
-
-		memset(&servaddr_in, 0, sizeof(servaddr_in));
-		servaddr_in.sin_addr.s_addr = curr->address;
-		servaddr_in.sin_port = WMASTERD_PORT_GELLED;
-		servaddr_in.sin_family = af;
+		nmea = curr->loc.nmea_rmc;
+		nmea_bytes = strlen(nmea);
+		msg_len = sizeof(struct message_hdr) + nmea_bytes;
+		hdr->len = sizeof(struct message_hdr) + strlen(curr->loc.nmea_rmc);
+		memcpy(ptr, nmea, nmea_bytes);
 
 		/* send frame to this welled client */
 		if (vsock) {
-			ret = sendto(send_sockfd, (char *)buf, bytes, 0,
+			ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
 					(struct sockaddr *)&servaddr_vm,
 					sizeof(struct sockaddr));
 		} else {
-			ret = sendto(send_sockfd, (char *)buf, bytes, 0,
+			ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
 					(struct sockaddr *)&servaddr_in,
 					sizeof(struct sockaddr));
 		}
 		if (ret < 0) {
-			print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
-
-			if (verbose)
-				sock_error("wmasterd: sendto");
-
-			/*
-			 * since powering off a VM results in this error
-			 * we remove the node from list
-			 */
-			temp = curr->next;
-			remove_node(curr->address, curr->radio_id);
-			curr = temp;
+			goto err;
+		}
+		if (vsock) {
+			print_debug(LOG_INFO, "sent %5d bytes to %16u radio %3d nmea: '%s'", ret, curr->address, hdr->dest_radio_id, nmea);
 		} else {
-			print_debug(LOG_DEBUG, "sent %d/%d bytes: %s", ret, bytes, buf);
-			/* transmission successful, send gga */
-			/* gga provides altitude */
-			buf = curr->loc.nmea_gga;
-			bytes = strlen(buf);
+			print_debug(LOG_INFO, "sent %5d bytes to %16s radio %3d nmea: '%s'", ret, inet_ntoa(ip), hdr->dest_radio_id, nmea);
+		}
+
+		/* transmission successful, send gga */
+		/* gga provides altitude */
+		nmea = curr->loc.nmea_gga;
+		nmea_bytes = strlen(nmea);
+		msg_len = sizeof(struct message_hdr) + nmea_bytes;
+		hdr->len = sizeof(struct message_hdr) + strlen(curr->loc.nmea_gga);
+		memcpy(ptr, nmea, nmea_bytes);
+		if (vsock) {
+			ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
+				(struct sockaddr *)&servaddr_vm,
+				sizeof(struct sockaddr));
+		} else {
+			ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
+				(struct sockaddr *)&servaddr_in,
+				sizeof(struct sockaddr));
+		}
+		if (ret < 0) {
+			goto err;
+		}
+		if (vsock) {
+			print_debug(LOG_INFO, "sent %5d bytes to %16u radio %3d nmea: '%s'", ret, curr->address, hdr->dest_radio_id, nmea);
+		} else {
+			print_debug(LOG_INFO, "sent %5d bytes to %16s radio %3d nmea: '%s'", ret, inet_ntoa(ip), hdr->dest_radio_id, nmea);
+		}
+
+		if (send_pashr) {
+			/* send the PASHR message with pitch */
+			nmea = curr->loc.nmea_pashr;
+			nmea_bytes = strlen(nmea);
+			msg_len = sizeof(struct message_hdr) + nmea_bytes;
+			hdr->len = sizeof(struct message_hdr) + strlen(curr->loc.nmea_pashr);
+			memcpy(ptr, nmea, nmea_bytes);
 			if (vsock) {
-				sendto(send_sockfd, (char *)buf, bytes, 0,
+				ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
 					(struct sockaddr *)&servaddr_vm,
 					sizeof(struct sockaddr));
 			} else {
-				sendto(send_sockfd, (char *)buf, bytes, 0,
+				ret = sendto(send_sockfd, (char *)msg, msg_len, 0,
 					(struct sockaddr *)&servaddr_in,
 					sizeof(struct sockaddr));
 			}
-			if (send_pashr) {
-				/* send the PASHR message with pitch */
-				buf = curr->loc.nmea_pashr;
-				bytes = strlen(buf);
-				if (vsock) {
-					sendto(send_sockfd, (char *)buf, bytes, 0,
-						(struct sockaddr *)&servaddr_vm,
-						sizeof(struct sockaddr));
-				} else {
-					sendto(send_sockfd, (char *)buf, bytes, 0,
-						(struct sockaddr *)&servaddr_vm,
-						sizeof(struct sockaddr));
-				}
+			if (ret < 0) {
+				goto err;
+			}
+			if (vsock) {
+				print_debug(LOG_INFO, "sent %5d bytes to %16u radio %3d nmea: '%s'", ret, curr->address, hdr->dest_radio_id, nmea);
+			} else {
+				print_debug(LOG_INFO, "sent %5d bytes to %16s radio %3d nmea: '%s'", ret, inet_ntoa(ip), hdr->dest_radio_id, nmea);
 			}
 		}
 		if (curr != NULL)
 			curr = curr->next;
+
+		goto out;
+err:
+		if (verbose)
+			sock_error("wmasterd: sendto");
+		/* error sending to this node */
+		if (vsock) {
+			print_debug(LOG_ERR, "error sending nmea to %16u radio %3d", curr->address, curr->radio_id);
+		} else {
+			print_debug(LOG_ERR, "error sending nmea to %16s radio %3d", inet_ntoa(ip), curr->radio_id);
+		}
+		print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
+
+		temp = curr->next;
+		remove_node(curr->address, curr->radio_id);
+		curr = temp;
+out:
+		free(msg);
 	}
 	pthread_mutex_unlock(&list_mutex);
 }
@@ -2141,15 +2199,17 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			continue;
 		}
 
-		memset(&servaddr_vm, 0, sizeof(servaddr_vm));
-		servaddr_vm.svm_cid = curr->address;
-		servaddr_vm.svm_port = WMASTERD_PORT_WELLED;
-		servaddr_vm.svm_family = af;
-
-		memset(&servaddr_in, 0, sizeof(servaddr_in));
-		servaddr_in.sin_addr.s_addr = curr->address;
-		servaddr_in.sin_port = WMASTERD_PORT_WELLED;
-		servaddr_in.sin_family = af;
+		if (vsock) {
+			memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+			servaddr_vm.svm_cid = curr->address;
+			servaddr_vm.svm_port = WMASTERD_PORT_WELLED;
+			servaddr_vm.svm_family = af;
+		} else {
+			memset(&servaddr_in, 0, sizeof(servaddr_in));
+			servaddr_in.sin_addr.s_addr = curr->address;
+			servaddr_in.sin_port = WMASTERD_PORT_WELLED;
+			servaddr_in.sin_family = af;
+		}
 
 		/* send frame to this welled client */
 		if (send_distance) {
