@@ -49,6 +49,7 @@
   #ifndef _ANDROID
     #include <glib.h>
   #endif
+  #include <syslog.h>
   #include <sys/types.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
@@ -62,20 +63,38 @@
 #include "vmci_sockets.h"
 
 /** Port used to send frames to wmasterd */
-#define SEND_PORT		1111
+#define WMASTERD_PORT		1111
 /** Address used to send frames to wmasterd */
-#define SERVER_CID		2
-/** Buffer size for VMCI datagrams */
-#define VMCI_BUFF_LEN		4096
+#ifndef VMADDR_CID_HOST
+	#define VMADDR_CID_HOST	 2
+#endif
 
+/** address family for sockfd */
+int af;
+/** wmasterd port */
+int port;
+/** for wmasterd IP */
+struct in_addr wmasterd_address;
+/** whether to use vsock */
+int vsock;
 /** Whether to print verbose output */
 int verbose;
 /** Whether to break loop after signal */
 int running;
-/** FD for vmci send */
+/** FD for send */
 int sockfd;
-/** sockaddr_vm for vmci send */
-struct sockaddr_vm servaddr_vmci;
+/** sockaddr_vm for vsock send */
+struct sockaddr_vm servaddr_vm;
+/** sockaddr_vm for ip */
+struct sockaddr_in servaddr_in;
+/** for the desired log level */
+int loglevel;
+/** the radio id to receive location info from */
+int radio_id;
+/** netns of this process */
+long int mynetns;
+/** whether this process is inside a netns */
+int inside_netns;
 
 /**
  *	@brief Prints the CLI help
@@ -89,12 +108,14 @@ void show_usage(int exval)
 
 	printf("gelled-ctrl - control program for GPS emulation\n\n");
 
-	printf("Usage: gelled-ctrl [-hVv] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-p<pitch>] [-f<vm_name>] [-n <name>]\n\n");
+	printf("Usage: gelled-ctrl [-hVv] [-r<radio_id>] [-R<room>] [-x<lon>|-y<lat>|-k<speed>|-d<heading>|-p<pitch>] [-f<vm_name>] [-n <name>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help       print this help and exit\n");
 	printf("  -V, --version    print version and exit\n");
 	printf("  -v, --verbose    verbose output\n");
+	printf("  -r, --radio	   radio id\n");
+	printf("  -R, --room	   room id\n");
 	printf("  -y, --latitude   new latitude in decimal degrees\n");
 	printf("  -x, --longitude  new longitude in decimal degrees\n");
 	printf("  -a, --altitude   new altitude in meters\n");
@@ -103,9 +124,11 @@ void show_usage(int exval)
 	printf("  -p, --pitch      new pitch angle in degrees\n");
 	printf("  -f, --follow     follow gps feed of this vm ip/name\n");
 	printf("  -n, --name       name for this this machine\n");
+	printf("  -s, --server	   wmasterd server address\n");
+	printf("  -p, --port	   wmasterd server port\n");
 
 	printf("\n");
-	printf("Copyright (C) 2021 Carnegie Mellon University\n\n");
+	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
 	printf("This is free software; you are free to change and redistribute it.\n");
 	printf("There is NO WARRANTY, to the extent permitted by law.\n\n");
@@ -113,6 +136,68 @@ void show_usage(int exval)
 	printf("Report bugs to <arwelle@cert.org>\n\n");
 
 	_exit(exval);
+}
+
+void print_debug(int level, char *format, ...)
+{
+	char buffer[1024];
+
+	if (loglevel < 0)
+		return;
+
+	if (level > loglevel)
+		return;
+
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
+	va_end(args);
+
+	char *lev;
+	switch(level) {
+		case 0:
+			lev = "emerg";
+			break;
+		case 1:
+			lev = "alert";
+			break;
+		case 2:
+			lev = "crit";
+			break;
+		case 3:
+			lev = "error";
+			break;
+		case 4:
+			lev = "err";
+			break;
+		case 5:
+			lev = "notice";
+			break;
+		case 6:
+			lev = "info";
+			break;
+		case 7:
+			lev = "debug";
+			break;
+		default:
+			lev = "unknown";
+			break;
+	}
+
+#ifndef _WIN32
+	syslog(level, "%s: %s", lev, buffer);
+#endif
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
+
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - gelled: %8s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("gelled: %8s: %s\n", lev, buffer);
+	}
 }
 
 /**
@@ -163,12 +248,28 @@ void hex_dump(void *addr, int len)
 	printf("  %s\n", buff);
 }
 
+int get_mynetns(void)
+{
+        char *nspath = "/proc/self/ns/net";
+        char pathbuf[256];
+        int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+        if (len < 0) {
+                perror("readlink");
+                return -1;
+        }
+        if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+                perror("sscanf");
+                return -1;
+        }
+        print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+        return 0;
+}
+
 /**
  *      @brief main function
  */
 int main(int argc, char *argv[])
 {
-	int afVMCI;
 	int cid;
 	int ret;
 	int long_index;
@@ -177,26 +278,23 @@ int main(int argc, char *argv[])
 	int msg_len;
 	int bytes;
 	struct update_2 data;
-	#ifndef ANDROID
-	GKeyFile* gkf;
-	gchar *key_value;
-	#endif
-	static struct option long_options[] = {
-		{"help",	no_argument, 0, 'h'},
-		{"version",     no_argument, 0, 'V'},
-		{"verbose",     no_argument, 0, 'v'},
-		{"latitude",    required_argument, 0, 'y'},
-		{"longitude",   required_argument, 0, 'x'},
-		{"altitude",	required_argument, 0, 'a'},
-		{"knots",       required_argument, 0, 'k'},
-		{"degrees",     required_argument, 0, 'd'},
-		{"pitch",       required_argument, 0, 'p'},
-		{"follow",      required_argument, 0, 'f'},
-		{"name",	required_argument, 0, 'n'},
-		{0, 0, 0, 0}
-	};
+	int err;
+	int ioctl_fd;
 
-	memset(&data, 0, sizeof(struct update_2));
+#ifndef ANDROID
+	GKeyFile* gkf;
+	gchar *key_value_str;
+	int key_value_int;
+#endif
+
+	radio_id = 0;
+	err = 0;
+	loglevel = -1;
+	vsock = 1;
+	port = WMASTERD_PORT;
+	msg_len = sizeof(struct update_2);
+
+	memset(&data, 0, msg_len);
 	data.latitude = 9999;
 	data.longitude = 9999;
 	data.heading = -1;
@@ -204,9 +302,29 @@ int main(int argc, char *argv[])
 	data.velocity = -1;
 	data.pitch = -1;
 
-	#ifdef ANDROID
+	static struct option long_options[] = {
+		{"help",		no_argument, 0, 'h'},
+		{"version",     no_argument, 0, 'V'},
+		{"verbose",     no_argument, 0, 'v'},
+		{"latitude",    required_argument, 0, 'y'},
+		{"longitude",   required_argument, 0, 'x'},
+		{"altitude",	required_argument, 0, 'a'},
+		{"knots",       required_argument, 0, 'k'},
+		{"degrees",     required_argument, 0, 'd'},
+		{"pitch",       required_argument, 0, 'P'},
+		{"follow",      required_argument, 0, 'f'},
+		{"name",		required_argument, 0, 'n'},
+		{"server",      required_argument, 0, 's'},
+		{"port",		required_argument, 0, 'p'},
+        {"radio",       required_argument, 0, 'r'},
+        {"room",        required_argument, 0, 'R'},
+		{"debug",       required_argument, 0, 'D'},
+		{0, 0, 0, 0}
+	};
+
+#ifdef ANDROID
 	goto options;
-	#else
+#else
 	/* parse config file */
 	gkf = g_key_file_new();
 	if (!g_key_file_load_from_file(
@@ -216,21 +334,30 @@ int main(int argc, char *argv[])
 		goto options;
 	}
 
-	key_value = g_key_file_get_string(gkf, "gelled", "name", NULL);
-	if (key_value)
-		g_snprintf(data.name, 1024, "%s", key_value);
+	key_value_str = g_key_file_get_string(gkf, "gelled", "name", NULL);
+	if (key_value_str)
+		g_snprintf(data.name, 1024, "%s", key_value_str);
 
-	key_value = g_key_file_get_string(gkf, "gelled", "follow", NULL);
-	if (key_value)
-		g_snprintf(data.follow, FOLLOW_LEN, "%s", key_value);
+	key_value_str = g_key_file_get_string(gkf, "gelled", "follow", NULL);
+	if (key_value_str)
+		g_snprintf(data.follow, FOLLOW_LEN, "%s", key_value_str);
 
-	if (key_value)
-		free(key_value);
+	key_value_int = g_key_file_get_integer(gkf, "gelled", "radio", NULL);
+	if (key_value_str)
+		radio_id = key_value_int;
+
+	key_value_str = g_key_file_get_string(gkf, "gelled", "room", NULL);
+	if (key_value_str)
+		g_snprintf(data.room, UUID_LEN, "%s", key_value_str);
+
+	if (key_value_str)
+		free(key_value_str);
+
 	g_key_file_free(gkf);
-	#endif
+#endif
 
 options:
-	while ((opt = getopt_long(argc, argv, "hVvy:x:a:k:d:f:n:p:",
+	while ((opt = getopt_long(argc, argv, "hVvs:p:y:x:a:k:d:f:n:P:D:r:R:",
 			long_options, &long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -245,9 +372,15 @@ options:
 		case 'v':
 			verbose = 1;
 			break;
+        case 'r':
+            radio_id = atoi(optarg);
+            break;
+        case 'R':
+			strncpy(data.room, optarg, UUID_LEN);
+            break;
 		case 'y':
 			data.latitude = strtof(optarg, NULL);
-			// check bounds
+			// check boundsa
 			if ((data.latitude < -90) ||
 					(data.latitude > 90)) {
 				printf("latitude invalid\n");
@@ -280,7 +413,7 @@ options:
 			data.heading = strtof(optarg, NULL);
 			// check bounds
 			break;
-		case 'p':
+		case 'P':
 			data.pitch = strtof(optarg, NULL);
 			// check bounds
 			break;
@@ -290,6 +423,23 @@ options:
 			break;
 		case 'n':
 			strncpy(data.name, optarg, NAME_LEN);
+			break;
+		case 'D':
+			loglevel = atoi(optarg);
+			printf("gelled: syslog level set to %d\n", loglevel);
+			break;
+		case 's':
+			vsock = 0;
+			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
+				printf("gelled: invalid ip address\n");
+				show_usage(EXIT_FAILURE);
+			}
+			break;
+		case 'p':
+			port = atoi(optarg);
+			if (port < 1 || port > 65535) {
+				show_usage(EXIT_FAILURE);
+			}
 			break;
 		case ':':
 		case '?':
@@ -303,48 +453,166 @@ options:
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-	#ifdef _WIN32
+#ifdef _WIN32
 	WSAStartup(MAKEWORD(1,1), &wsa_data);
-	#endif
+#endif
 
-	afVMCI = VMCISock_GetAFValue();
-	cid = VMCISock_GetLocalCID();
-	if (verbose) {
+	if (vsock) {
+#ifdef _WIN32
+		/* old code for vmci_sockets.h */
+		af = VMCISock_GetAFValue();
+		cid = VMCISock_GetLocalCID();
 		printf("CID: %d\n", cid);
-		printf("af: %d\n", afVMCI);
+#else
+		/* new code for vm_sockets */
+		af = AF_VSOCK;
+		ioctl_fd = open("/dev/vsock", 0);
+		if (ioctl_fd < 0) {
+			perror("open");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
+			_exit(EXIT_FAILURE);
+		}
+		err = ioctl(ioctl_fd, VMCI_SOCKETS_GET_LOCAL_CID, &cid);
+		if (err < 0) {
+			perror("ioctl: Cannot get local CID");
+			print_debug(LOG_ERR, "could not get local CID");
+		} else {
+			printf("CID: %u\n", cid);
+		}
+#endif
+	} else {
+		af = AF_INET;
 	}
-	data.cid = cid;
 
-	/* setup vmci client socket */
-	sockfd = socket(afVMCI, SOCK_DGRAM, 0);
-	/* we can initalize this struct because it never changes */
-	memset(&servaddr_vmci, 0, sizeof(servaddr_vmci));
-	servaddr_vmci.svm_cid = SERVER_CID;
-	servaddr_vmci.svm_port = SEND_PORT;
-	servaddr_vmci.svm_family = afVMCI;
+    inside_netns = 0;
+
+    /* get my netns */
+    if (get_mynetns() < 0) {
+		mynetns = 0;
+	};
+
+	/* get all netns */
+	DIR *d;
+	struct dirent *file;
+	struct stat *statbuf;
+	d = opendir("/run/netns");
+	if (d) {
+		while ((file = readdir(d)) != NULL) {
+			if (strcmp(file->d_name, ".") == 0)
+				continue;
+			if (strcmp(file->d_name, "..") == 0)
+				continue;
+
+			statbuf = malloc(sizeof(struct stat));
+			if (!statbuf) {
+				perror("malloc");
+				exit(1);
+			}
+			int maxlen = strlen("/run/netns/") + strlen(file->d_name) + 1;
+			char *fullpath = malloc(maxlen);
+			if (!fullpath) {
+				perror("malloc");
+				exit(1);
+			}
+			snprintf(fullpath, maxlen, "/run/netns/%s", file->d_name);
+			int fd = open(fullpath, O_RDONLY);
+			if (fd < 0) {
+				perror("open");
+			}
+			if (fstat(fd, statbuf) < 0) {
+				perror("fstat");
+			}
+			long int inode = statbuf->st_ino;
+			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
+
+			if (inode == mynetns) {
+				inside_netns = 1;
+			}
+			close(fd);
+			free(statbuf);
+			free(fullpath);
+		}
+		closedir(d);
+	} else {
+		print_debug(LOG_ERR, "cannot open /run/netns");
+	}
+
+	if (inside_netns) {
+		print_debug(LOG_INFO, "running inside netns %ld", mynetns);
+	} else {
+		print_debug(LOG_INFO, "not runnning inside netns");
+	}
+
+	strncpy(data.version, (const char *)VERSION_STR, 8);
+
+	/* setup wmasterd details */
+	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
+	servaddr_vm.svm_cid = VMADDR_CID_HOST;
+	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_family = af;
+
+	memset(&servaddr_in, 0, sizeof(servaddr_in));
+	servaddr_in.sin_addr = wmasterd_address;
+	servaddr_in.sin_port = port;
+	servaddr_in.sin_family = af;
+
+	if (vsock) {
+		print_debug(LOG_ERR, "connecting to wmasterd on VSOCK %u:%d",
+				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+	} else {
+		print_debug(LOG_ERR, "connecting to wmasterd on IP %s:%d",
+				inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+	}
+
+	/* setup socket to send data */
+	if (vsock) {
+		sockfd = socket(af, SOCK_DGRAM, 0);
+	} else {
+		sockfd = socket(af, SOCK_DGRAM, IPPROTO_UDP);
+	}
 	if (sockfd < 0) {
 		perror("socket");
 		_exit(EXIT_FAILURE);
 	}
 
-	msg_len = 7 + sizeof(struct update_2);
-	msg = (char *)malloc(msg_len);
-	memset(msg, 0, msg_len);
-	snprintf(msg, msg_len, "gelled:");
-	memcpy(msg + 7, &data, sizeof(struct update_2));
+	struct message_hdr hdr = {};
+	int len = sizeof(struct message_hdr) + msg_len;
+	char *message = malloc(len);
+	if (!message) {
+		print_debug(LOG_ERR, "cannot malloc");
+		_exit(EXIT_FAILURE);
+	}
 
-//	if (verbose)
-//		hex_dump(msg, msg_len);
+	memcpy(hdr.name, "gelled", 6);
+	strncpy(hdr.version, (const char *)VERSION_STR, 8);
+	hdr.len = len;
+	hdr.src_radio_id = radio_id;
+	hdr.netns = mynetns;
+	hdr.cmd = WMASTERD_FRAME;
+	memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
+	memcpy(message + sizeof(struct message_hdr), &data, msg_len);
 
-	bytes = sendto(sockfd, msg, msg_len, 0,
-			(struct sockaddr *)&servaddr_vmci,
-			sizeof(struct sockaddr));
+	if (vsock) {
+		bytes = sendto(sockfd, (char *)message, len, 0,
+				(struct sockaddr *)&servaddr_vm,
+				sizeof(struct sockaddr));
+	} else {
+		bytes = sendto(sockfd, (char *)message, len, 0,
+				(struct sockaddr *)&servaddr_in,
+				sizeof(struct sockaddr));
+	}
 
-	if (bytes != msg_len) {
+	if (bytes != len) {
 		perror("sendto");
+		print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
 	} else {
 		printf("gelled-ctrl: sent %d bytes to wmasterd\n", bytes);
 		if (verbose) {
+			printf("name:      %s\n", hdr.name);
+			printf("version:   %s\n", hdr.version);
+			printf("radio:     %d\n", hdr.src_radio_id);
+			printf("netns:     %d\n", hdr.netns);
+			printf("cmd:       %d\n", hdr.cmd);
 			printf("latitude:  %f\n", data.latitude);
 			printf("longitude: %f\n", data.longitude);
 			printf("altitude:  %f\n", data.altitude);
@@ -355,7 +623,7 @@ options:
 		}
 	}
 
-	free(msg);
+	free(message);
 
 	close(sockfd);
 

@@ -2476,20 +2476,19 @@ void recv_from_welled(void)
 					inet_ntoa(client_in.sin_addr), hdr->version);
 		}
 
-		if (bytes == (sizeof(struct update_2) + 7)) {
+		/* check for gelled updates from gelled-ctrl */
+		if (bytes == (sizeof(struct update_2) + sizeof(struct message_hdr))) {
 			if (vsock) {
-				print_debug(LOG_INFO, "gelled update version 2 received from %16u",
-						src_addr);
+				print_debug(LOG_INFO, "gelled update version 2 received from %16u radio %3d",
+						src_addr, hdr->src_radio_id);
 			} else {
-				print_debug(LOG_INFO, "gelled update version 2 received from %16s:%-5d",
-						inet_ntoa(client_in.sin_addr));
+				print_debug(LOG_INFO, "gelled update version 2 received from %16s radio %3d",
+						inet_ntoa(client_in.sin_addr), hdr->src_radio_id);
 			}
+			char *ptr = (char *)buf + sizeof(struct message_hdr);
 
-			struct update_2 data_2;
-			/* pull loc from the buffer */
-			memcpy(&data_2, buf + 7, sizeof(struct update_2));
-			update_node_info(node, &data_2);
-			update_node_location(node, &data_2);
+			update_node_info(node, (struct update_2 *)ptr);
+			update_node_location(node, (struct update_2 *)ptr);
 		} else {
 			print_debug(LOG_ERR, "update version unknown from %16u", src_addr);
 			return;
