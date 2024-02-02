@@ -1139,7 +1139,7 @@ void send_nmea_to_nodes(void)
 		servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
 		servaddr_vm.svm_family = af;
 
-		memset(&servaddr_vm, 0, sizeof(servaddr_in));
+		memset(&servaddr_in, 0, sizeof(servaddr_in));
 		servaddr_in.sin_addr.s_addr = curr->address;
 		servaddr_in.sin_port = WMASTERD_PORT_GELLED;
 		servaddr_in.sin_family = af;
@@ -1484,7 +1484,7 @@ void get_vm_info(unsigned int srchost, char *room, char *name, char *uuid)
 	}
 	if (!room_found) {
 		strncpy(room, "0", 2);
-		print_debug(LOG_ERR, "error: no room found for %d", srchost);
+		print_debug(LOG_DEBUG, "no room found for %d in vmx file", srchost);
 	}
 
 #ifdef _WIN32
@@ -2420,7 +2420,7 @@ void recv_from_welled(void)
 	strncpy(room, "0", UUID_LEN);
 	strncpy(name, "UNKNOWN", NAME_LEN);
 
-	if (vsock) {
+	if (vsock && check_room) {
 		// TODO update to send CID in the header even when IP, then we can lookup via vmx again
 		get_vm_info(src_addr, room, name, uuid);
 	}

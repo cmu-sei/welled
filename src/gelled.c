@@ -1130,7 +1130,7 @@ int main(int argc, char *argv[])
 	myservaddr_vm.svm_port = WMASTERD_PORT_GELLED;
 	myservaddr_vm.svm_family = af;
 
-	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
+	memset(&myservaddr_in, 0, sizeof(myservaddr_vm));
 	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
 	myservaddr_in.sin_port = WMASTERD_PORT_GELLED;
 	myservaddr_in.sin_family = AF_INET;

@@ -2199,39 +2199,8 @@ void *monitor_devices(void *arg)
 		perror("setsockopt");
 	}
 
-/*
-	ret = 0;
-
-	//  create a netlink route socket
-	fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-
-	// joins the multicast groups for link notifications
-	memset(&addr, 0, sizeof(addr));
-	addr.nl_family = AF_NETLINK;
-	addr.nl_groups = RTMGRP_LINK | RTMGRP_IPV4_IFADDR;
-	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-		perror("bind");
-*/
 	while (running) {
 		nl_recvmsgs_default(sk);
-/*
-		FD_ZERO(&rfds);
-		FD_CLR(fd, &rfds);
-		FD_SET(fd, &rfds);
-
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-
-		ret = select(FD_SETSIZE, &rfds, NULL, NULL, &tv);
-		if (ret == -1)
-			perror("select");
-		else if (ret)
-			process_event(fd);
-		else {
-			printf("old thing times out\n");
-			continue;
-		}
-		*/
 	}
 	nl_close(sk);
 	nl_socket_free(sk);
@@ -2947,7 +2916,7 @@ int main(int argc, char *argv[])
 	myservaddr_vm.svm_port = WMASTERD_PORT_WELLED;
 	myservaddr_vm.svm_family = af;
 
-	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
+	memset(&myservaddr_in, 0, sizeof(myservaddr_vm));
 	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
 	myservaddr_in.sin_port = WMASTERD_PORT_WELLED;
 	myservaddr_in.sin_family = AF_INET;
