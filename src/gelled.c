@@ -129,12 +129,6 @@ int water;
 int land;
 /** whether or not we want to check land or sea position */
 int check_position;
-/** current latitude */
-double lat;
-/** current longitude */
-double lon;
-/** current velocity */
-double velocity;
 /** thread ID for keepalive thread */
 pthread_t status_tid;
 /** for the desired log level */
@@ -274,7 +268,7 @@ void print_debug(int level, char *format, ...)
  */
 void signal_handler(void)
 {
-	print_debug(LOG_INFO, "signal handler invoked\n");
+	print_debug(LOG_INFO, "signal handler invoked");
 
 	running = 0;
 }
@@ -302,26 +296,36 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 	if (curl) {
 		png_write = fopen(filename, "wb");
 		if (png_write == NULL) {
-			print_debug(LOG_ERR, "Error: failed to open %s for writing\n", filename);
+			print_debug(LOG_ERR, "failed to open %s for writing", filename);
 			return -1;
 		}
-		snprintf(url, 1024, "http://%s/%d/%d/%d.png",
-			mapserver, zoom, x, y);
+		//TODO handle https
+		if (strncmp("http", mapserver, 4) == 0) {
+			snprintf(url, 1024, "%s/%d/%d/%d.png",
+					mapserver, zoom, x, y);
+		} else {
+			snprintf(url, 1024, "http://%s/%d/%d/%d.png",
+					mapserver, zoom, x, y);
+		}
 
-		print_debug(LOG_DEBUG, "downloading tile from %s\n", url);
+		print_debug(LOG_DEBUG, "downloading tile from %s", url);
 
 		curl_easy_setopt(curl, CURLOPT_URL, url);
-		curl_easy_setopt(curl, CURLOPT_URL, url);
+		if (verbose) {
+			curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
+		}
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, png_write);
+		curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.0.1");
 		res = curl_easy_perform(curl);
 		curl_easy_cleanup(curl);
 		fclose(png_write);
-		if (res) {
-			print_debug(LOG_ERR, "Error: curl failed to retrieve tile\n");
+		if (res != CURLE_OK) {
+			print_debug(LOG_ERR, "curl failed to retrieve tile");
+			print_debug(LOG_DEBUG, "%s", curl_easy_strerror(res));
 			return -1;
 		}
 	} else {
-		print_debug(LOG_ERR, "Error: failed to initialize curl.\n");
+		print_debug(LOG_ERR, "failed to initialize curl");
 		return -1;
 	}
 
@@ -346,27 +350,27 @@ int read_png(png_data *pixels, char *filename)
 
 	png_read = fopen(filename, "r");
 	if (png_read == NULL) {
-		print_debug(LOG_ERR, "Error: failed to open %s for reading\n", filename);
+		print_debug(LOG_ERR, "failed to open %s for reading", filename);
 		return -1;
 	}
 
 	png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	if (!png) {
-		print_debug(LOG_ERR, "Error: failed to create read struct for png\n");
+		print_debug(LOG_ERR, "failed to create read struct for png");
 		fclose(png_read);
 		return -1;
 	}
 
 	info = png_create_info_struct(png);
 	if (!info) {
-		print_debug(LOG_ERR, "Error: failed to create info struct for png\n");
+		print_debug(LOG_ERR, "failed to create info struct for png");
 		png_destroy_read_struct(&png, NULL, NULL);
 		fclose(png_read);
 		return -1;
 	}
 
 	if (setjmp(png_jmpbuf(png))) {
-		print_debug(LOG_ERR, "Error: a png function failed\n");
+		print_debug(LOG_ERR, "a png function failed");
 		png_destroy_read_struct(&png, &info, NULL);
 		fclose(png_read);
 		return -1;
@@ -433,61 +437,66 @@ int read_png(png_data *pixels, char *filename)
  */
 int land_or_sea_check_color(int red, int green, int blue)
 {
+	int ret = -1;
 
 	if (red == 181 && green == 208 && blue == 208) {
 		/* sea, blue */
-		print_debug(LOG_DEBUG, "This tile is Sea\n");
-		return 1;
+		ret = 1;
+	} else if (red == 170 && green == 211 && blue == 2223) {
+		/* sea, blue */
+		ret = 1;
 	} else if (red == 181 && green == 253 && blue == 253) {
 		/* boundary, purple, shade 1 */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 92 && blue == 162) {
 		/* boundary, purple, shade 2 */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 213 && blue == 213) {
 		/* text */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 174 && blue == 174) {
 		/* text */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 105 && blue == 252) {
 		/* blue boundary */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 122 && blue == 245) {
 		/* boundary */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 110 && blue == 249) {
 		/* boundary */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 157 && blue == 187) {
 		/* text */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 104 && blue == 166) {
 		/* boundary? */
-		return -1;
+		ret = -1;
 	} else if (red == 181 && green == 102 && blue == 253) {
 		/* boundary? */
-		return -1;
+		ret = -1;
 	} else if (red == 197 && green == 216 && blue == 214) {
 		/* boundary with land? */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
-		return 0;
+		ret = 0;
 	} else if (red == 241 && green == 238 && blue == 232) {
 		/* boundary with land? */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
-		return 0;
+		ret = 0;
 	} else if (red == 181 && green == 238 && blue == 232) {
 		/* land */
-		print_debug(LOG_DEBUG, "This is tile is Land\n");
-		return 0;
+		ret = 0;
 	} else if (red == 242 && green == 239 && blue == 233) {
 		/* land */
-		print_debug(LOG_DEBUG, "This tile is Land\n");
-		return 0;
+		ret = 0;
 	}
 
-	print_debug(LOG_DEBUG, "Tile Red: %d, Green: %d, Blue: %d\n", red, green, blue);
-	return -1;
+	if (ret == 0) {
+		print_debug(LOG_DEBUG, "This tile is land");
+	} else if (ret == 1) {
+		print_debug(LOG_DEBUG, "This tile is water");
+	} else {
+		print_debug(LOG_DEBUG, "Unkown tile: Red: %d, Green: %d, Blue: %d", red, green, blue);
+	}
+	return ret;
 }
 
 
@@ -505,6 +514,12 @@ int check_if_sea(double lat, double lon)
 	int xtile, ytile, xpixel, ypixel, ret, i;
 	png_data pixels;
 	png_bytep px;
+	char pngfile[32];
+	char zoomdir[32];
+	char xdir[32];
+	struct stat statbuf;
+	char *cachedir = "/tmp/gelled";
+	int exists;
 
 	x = ((lon + 180) / 360) * pow(2, ZOOM);
 	xtile = (int)floor(x);
@@ -514,30 +529,135 @@ int check_if_sea(double lat, double lon)
 	ytile = (int)floor(y);
 	ypixel = (int)floor((y - ytile) * 256);
 
-	/* TODO:
-	 * rework download_osm_tile and read_png to cache the
-	 * tiles locally and prevent multiple requests for the same tile
-	 */
-	if (download_osm_tile(xtile, ytile, ZOOM, "/tmp/map.png"))
-		return -1;
+	snprintf(pngfile, 31, "%s/%d/%d/%d.png", cachedir, ZOOM, xtile, ytile);
+	print_debug(LOG_DEBUG, "pngfile %s", pngfile);
 
-	if (read_png(&pixels, "/tmp/map.png"))
+    if (mkdir(cachedir, 0755) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", cachedir);
 		return -1;
+	}
+
+	snprintf(zoomdir, 31, "%s/%d", cachedir, ZOOM);
+    if (mkdir(zoomdir, 0755) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
+		return -1;
+	}
+
+	snprintf(xdir, 31, "%s/%d/%d", cachedir, ZOOM, xtile);
+    if (mkdir(xdir, 0755) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", xdir);
+		return -1;
+	}
+
+	stat(pngfile, &statbuf);
+	if (!S_ISREG(statbuf.st_mode)) {
+		if (download_osm_tile(xtile, ytile, ZOOM, pngfile)) {
+			print_debug(LOG_ERR, "could not download tile");
+			return -1;
+		}
+	} else {
+		print_debug(LOG_DEBUG, "file already in cache");
+	}
+
+	if (read_png(&pixels, pngfile)) {
+		print_debug(LOG_ERR, "could not open tile");
+		return -1;
+	}
 
 	/* Check pixel color */
 	px = &((pixels.row_pointers[ypixel])[xpixel * 4]);
 	ret = land_or_sea_check_color(px[0], px[1], px[2]);
 
-	for (i = 0; i < pixels.height; i++)
+	for (i = 0; i < pixels.height; i++) {
 		free(pixels.row_pointers[i]);
+	}
 
 	free(pixels.row_pointers);
 
 	return ret;
 }
 
+#ifndef _WIN32
 /**
- *      @brief Get data from RMC NMEA sentence
+ *	@brief stop movement if we crashed
+ *      sends velocity change of 0 to wmasterd
+ *      to be used when we move from land to sea or sea to land
+ *      this is basically gelled-ctrl
+ *	TODO: adjust altitude if we have a plane crash
+ */
+void send_stop(int radio)
+{
+	if (verbose) {
+		print_debug(LOG_INFO, "stopping the radio %d", radio);
+	}
+
+	pid_t pid;
+	struct stat buf_stat;
+	char *args[10];
+	char radio_str[6];
+	char port_str[6];
+	int index;
+
+	snprintf(radio_str, 5, "%d", radio);
+	snprintf(port_str, 5, "%d", port);
+
+	for (index = 0; index < 10; index++) {
+		args[index] = NULL;
+	}
+	index = 6;
+
+	args[0] = "gelled-ctrl";
+	args[1] = "-k";
+	args[2] = "0";
+	args[3] = "-r";
+	args[4] = (char *)&radio_str;
+	args[5] = "-P";
+	args[6] = (char *)port_str;
+	index = 6;
+	if (!vsock) {
+		args[7] = "-s";
+		args[8] = inet_ntoa(wmasterd_address);
+		index = 8;
+	}
+	if (verbose) {
+		index++;
+		args[index] = "-v";
+	}
+
+	/* fork */
+	pid = fork();
+
+	if (pid == -1) {
+		perror("fork");
+		print_debug(LOG_ERR, "could not fork");
+	} else if (pid == 0) {
+		/* child */
+		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
+			/*
+			if (verbose) {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-v", "-k", "0", "-r", radio_str, NULL);
+			} else {
+				execl("/bin/gelled-ctrl", "gelled-ctrl",
+					"-k", "0", "-r", radio_str, NULL);
+			}
+			*/
+			execv("/bin/gelled-ctrl", args);
+		} else {
+			print_debug(LOG_ERR, "could not find gelled-ctrl");
+			_exit(EXIT_FAILURE);
+		}
+	} else {
+		/* parent - wait on child */
+		waitpid(pid, NULL, 0);
+	}
+
+	return;
+}
+#endif
+
+/**
+ *  @brief Get data from RMC NMEA sentence
  *	RMC is required minimum navigation data
  *	@param line - buffer containing GPRMC
  *	updates velocity, lat and lon
@@ -550,6 +670,10 @@ void process_rmc(char *line)
 	char temp[10];
 	char digits[4];
 	char minutes[9];
+	int ret;
+	double lat;
+	double lon;
+	double velocity;
 
 	/* take bearing from rmc */
 	i = 0;
@@ -580,52 +704,25 @@ void process_rmc(char *line)
 		token = strsep(&line, ",");
 		i++;
 	}
-}
 
-#ifndef _WIN32
-/**
- *	@brief stop movement if we crashed
- *      sends velocity change of 0 to wmasterd
- *      to be used when we move from land to sea or sea to land
- *      this is basically gelled-ctrl
- *	TODO: adjust altitude if we have a plane crash
- */
-void send_stop(void)
-{
-	if (verbose) {
-		printf("stopping the vm\n");
-	}
-
-	pid_t pid;
-	struct stat buf_stat;
-
-	/* fork */
-	pid = fork();
-
-	if (pid == -1) {
-		perror("fork");
-	} else if (pid == 0) {
-		/* child */
-		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
-			if (verbose) {
-				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-v", "-k", "0", "-r", radio_id, NULL);
-			} else {
-				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-k", "0", "-r", radio_id, NULL);
-			}
-		} else {
-			printf("couldnt find gelled-ctrl\n");
-			_exit(EXIT_FAILURE);
+	if (velocity != 0) {
+		if (verbose) {
+			printf("- velocity:  %f\n", velocity);
+			printf("- latitude:  %f\n", lat);
+			printf("- longitude: %f\n", lon);
 		}
-	} else {
-		/* parent - wait on child */
-		waitpid(pid, NULL, 0);
+		ret = check_if_sea(lat, lon);
+		if (ret < 0) {
+			print_debug(LOG_ERR, "check_if_sea failed");
+		} else if (land && (ret == 1)) {
+			print_debug(LOG_DEBUG, "hit land, stopping");
+			send_stop(radio_id);
+		} else if (water && (ret == 0)) {
+			print_debug(LOG_DEBUG, "hit water, stopping");
+			send_stop(radio_id);
+		}
 	}
-
-	return;
 }
-#endif
 
 void send_notification(int radio_id, int netnsid, int cmd)
 {
@@ -727,10 +824,10 @@ void recv_from_master(void)
 	struct message_hdr *hdr = (struct message_hdr *)buf;
 	char *nmea = buf + sizeof(struct message_hdr);
 	if (strncmp(hdr->name, "gelled", 6) == 0) {
-		print_debug(LOG_INFO, "gelled %s", hdr->version);
+		print_debug(LOG_DEBUG, "gelled %s", hdr->version);
 	} else {
 		print_debug(LOG_ERR, "invalid message received");
-		_exit(EXIT_FAILURE);
+		goto out;
 	}
 
 	print_debug(LOG_INFO, "received %d bytes packet from wmasterd for radio: %3d",
@@ -745,8 +842,9 @@ void recv_from_master(void)
 				dev_path);
 		goto out;
 	}
+	print_debug(LOG_DEBUG, "writing to device %s", dev_path);
 
-	#ifdef _WIN32
+#ifdef _WIN32
 	fp = CreateFile(dev_path, GENERIC_WRITE, 0,
 		NULL, OPEN_EXISTING, 0, NULL);
 	if (!fp) {
@@ -773,41 +871,28 @@ void recv_from_master(void)
 
 	CloseHandle(fp);
 
-	#else
+#else
 	fp = fopen(dev_path, "w");
 	if (!fp) {
 		perror("fopen");
+		print_debug(LOG_ERR, "could not open %s", dev_path);
 		goto out;
 	} else {
 		ret = fprintf(fp, "%s\n", nmea);
 		if (ret == EOF) {
 			perror("fprintf");
-			print_debug(LOG_ERR, "Error: couldnt open %s", dev_path);
+			print_debug(LOG_ERR, "could not write to %s", dev_path);
 		}
 		fclose(fp);
 	}
-	#endif
+#endif
 
-	#ifndef _WIN32
+#ifndef _WIN32
 	/* check if we should stop moving based on land or sea */
-	if (check_position && strncmp(nmea, "$GPRMC", 6) == 0) {
+	if (check_position && (strncmp(nmea, "$GPRMC", 6) == 0)) {
 		process_rmc(nmea);
-		if (velocity != 0) {
-			if (verbose) {
-				printf("velocity: %f\n", velocity);
-			}
-			ret = check_if_sea(lat, lon);
-			if (ret < 0) {
-				print_debug(LOG_ERR,
-						"Error: check_if_sea failed\n");
-			} else if (land && ret) {
-				send_stop();
-			} else if (water && !ret) {
-				send_stop();
-			}
-		}
 	}
-	#endif
+#endif
 	/* TODO: check for crash if altitude < elevation */
 out:
 	if (verbose)
@@ -1002,7 +1087,7 @@ int main(int argc, char *argv[])
 		/* old code for vmci_sockets.h */
 		af = VMCISock_GetAFValue();
 		cid = VMCISock_GetLocalCID();
-		printf("CID: %d\n", cid);
+		print_debug(LOG_INFO, "CID: %d", cid);
 #else
 		/* new code for vm_sockets */
 		af = AF_VSOCK;
@@ -1017,7 +1102,7 @@ int main(int argc, char *argv[])
 			perror("ioctl: Cannot get local CID");
 			print_debug(LOG_ERR, "could not get local CID");
 		} else {
-			printf("CID: %u\n", cid);
+			print_debug(LOG_INFO, "CID: %u\n", cid);
 		}
 #endif
 	} else {
@@ -1090,9 +1175,9 @@ int main(int argc, char *argv[])
 	}
 
 	/* Handle signals */
-	signal(SIGINT, (void *)signal_handler);
-	signal(SIGTERM, (void *)signal_handler);
-	signal(SIGQUIT, (void *)signal_handler);
+	//signal(SIGINT, (void *)signal_handler);
+	//signal(SIGTERM, (void *)signal_handler);
+	//signal(SIGQUIT, (void *)signal_handler);
 	signal(SIGHUP, SIG_IGN);
 	signal(SIGPIPE, SIG_IGN);
 
