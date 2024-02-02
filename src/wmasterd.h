@@ -109,7 +109,7 @@ struct update_2 {
  */
 struct message_hdr {
 	/* app name */
-	char name[6];
+	char name[12];
 	/* app version */
 	char version[8];
 	/* cmd */
