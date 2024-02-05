@@ -2529,15 +2529,28 @@ void recv_from_welled(void)
 	if (strncmp(hdr->name, "gelled", 6) == 0) {
 
 		if (vsock) {
-			print_debug(LOG_INFO, "node %16u is gelled %s",
-					src_addr, hdr->version);
+			print_debug(LOG_INFO, "node %16u radio %d is gelled %s",
+					src_addr, hdr->src_radio_id, hdr->version);
 		} else {
-			print_debug(LOG_INFO, "node %16s:%-5d is gelled %s",
-					inet_ntoa(client_in.sin_addr), hdr->version);
+			print_debug(LOG_INFO, "node %16s radio %d is gelled %s",
+					inet_ntoa(client_in.sin_addr), hdr->src_radio_id, hdr->version);
 		}
 
 		/* check for gelled updates from gelled-ctrl */
-		if (bytes == (sizeof(struct update_2) + sizeof(struct message_hdr))) {
+		if (bytes == sizeof(struct message_hdr)) {
+			/* status message */
+			if (vsock) {
+				print_debug(LOG_INFO, "gelled status received from %16u radio %3d",
+						src_addr, hdr->src_radio_id);
+			} else {
+				print_debug(LOG_INFO, "gelled status received from %16s radio %3d",
+						inet_ntoa(client_in.sin_addr), hdr->src_radio_id);
+			}
+			// TODO handle commands
+			if (hdr->cmd == WMASTERD_DELETE) {
+				remove_node(node->address, node->radio_id);
+			}
+		} else if (bytes == (sizeof(struct update_2) + sizeof(struct message_hdr))) {
 			if (vsock) {
 				print_debug(LOG_INFO, "gelled update version 2 received from %16u radio %3d",
 						src_addr, hdr->src_radio_id);
@@ -2550,7 +2563,13 @@ void recv_from_welled(void)
 			update_node_info(node, (struct update_2 *)ptr);
 			update_node_location(node, (struct update_2 *)ptr);
 		} else {
-			print_debug(LOG_ERR, "update version unknown from %16u", src_addr);
+			if (vsock) {
+				print_debug(LOG_INFO, "gelled update version unknown received from %16u radio %3d",
+						src_addr, hdr->src_radio_id);
+			} else {
+				print_debug(LOG_INFO, "gelled update version unknown received from %16s radio %3d",
+						inet_ntoa(client_in.sin_addr), hdr->src_radio_id);
+			}
 			return;
 		}
 		return;
