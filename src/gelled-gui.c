@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <syslog.h>
 
 #define CONFIG_FILE "/etc/welled.conf"
 
@@ -16,7 +17,10 @@ OsmGpsMapLayer *osd;
 OsmGpsMapImage *image;
 GdkPixbuf *pixbuf;
 gchar gps_icon[256];
+
+/** for osmgpsmap options */
 gchar map_server[256];
+gchar cachedir[256];
 
 /** for controlling gps thread */
 pthread_t gps_tid;
@@ -51,12 +55,84 @@ gchar longitude_string_new[30];
 float latitude_new;
 float longitude_new;
 
+/** for gelled-ctrl execution */
+int radio_id;
+char radio_str[4];
+int vsock;
+char wmasterd_address[16];
+int wmasterd_port;
+char wmasterd_port_str[6];
+char protocol[6];
+
 int verbose;
 int running;
+int loglevel;
 
 float lat;
 float lon;
 int zoom;
+
+void print_debug(int level, char *format, ...)
+{
+	char buffer[1024];
+
+	if (loglevel < 0)
+		return;
+
+	if (level > loglevel)
+		return;
+
+	va_list args;
+	va_start(args, format);
+	vsprintf(buffer, format, args);
+	va_end(args);
+
+	char *lev;
+	switch(level) {
+		case 0:
+			lev = "emerg";
+			break;
+		case 1:
+			lev = "alert";
+			break;
+		case 2:
+			lev = "crit";
+			break;
+		case 3:
+			lev = "error";
+			break;
+		case 4:
+			lev = "err";
+			break;
+		case 5:
+			lev = "notice";
+			break;
+		case 6:
+			lev = "info";
+			break;
+		case 7:
+			lev = "debug";
+			break;
+		default:
+			lev = "unknown";
+			break;
+	}
+
+#ifndef _WIN32
+	syslog(level, "%s: %s", lev, buffer);
+#endif
+	time_t now;
+	struct tm *mytime;
+	char timebuff[128];
+	time(&now);
+	mytime = gmtime(&now);
+
+	if (strftime(timebuff, sizeof(timebuff), "%Y-%m-%dT%H:%M:%SZ", mytime)) {
+		printf("%s - gelled: %8s: %s\n", timebuff, lev, buffer);
+	} else {
+		printf("gelled: %8s: %s\n", lev, buffer);
+	}
+}
 
 /**
  *      Convert decimal degrees to decimal minutes
@@ -156,12 +232,38 @@ open:
  */
 static void send_location(void)
 {
+	print_debug(LOG_INFO, "send_location");
+
 	pid_t pid;
 	struct stat buf_stat;
+	char *args[20];
+	int index;
 
+	for (index = 0; index < 20; index++) {
+		args[index] = NULL;
+	}
+	index = 0;
+
+	args[0] = "gelled-ctrl";
+	args[1] = "-k";
+	args[2] = "0";
+	args[3] = "-r";
+	args[4] = (char *)&radio_str;
+	args[5] = "-P";
+	args[6] = (char *)wmasterd_port_str;
+	args[7] = "-y";
+	args[8] = (char *)&latitude_string_new;
+	args[9] = "-x";
+	args[10] = (char *)&longitude_string_new;
+	index = 10;
+	if (!vsock) {
+		args[11] = "-s";
+		args[12] = wmasterd_address;
+		index = 12;
+	}
 	if (verbose) {
-		printf("sending %s %s\n", latitude_string_new,
-				longitude_string_new);
+		index++;
+		args[index] = "-v";
 	}
 
 	/* fork */
@@ -169,26 +271,21 @@ static void send_location(void)
 
 	if (pid == -1) {
 		perror("fork");
+		print_debug(LOG_ERR, "could not fork");
 	} else if (pid == 0) {
 		/* child */
 		if (stat("/bin/gelled-ctrl", &buf_stat) == 0) {
-			if (verbose) {
-				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-v", "-y", latitude_string_new,
-					"-x", longitude_string_new, NULL);
-			} else {
-				execl("/bin/gelled-ctrl", "gelled-ctrl",
-					"-y", latitude_string_new,
-					"-x", longitude_string_new, NULL);
-			}
+			execv("/bin/gelled-ctrl", args);
 		} else {
-			g_print("could not find gelled-ctrl\n");
+			print_debug(LOG_ERR, "could not find gelled-ctrl");
 			_exit(EXIT_FAILURE);
 		}
 	} else {
 		/* parent - wait on child */
 		waitpid(pid, NULL, 0);
 	}
+
+	return;
 }
 
 static void get_new_location(GtkWidget *widget, gpointer user_data)
@@ -457,7 +554,7 @@ static void activate(GtkApplication *app, gpointer user_data)
 	map = g_object_new (OSM_TYPE_GPS_MAP,
 			//"map-source", map_source,
 			//"repo-uri", map_server,
-			//"tile-cache", cachedir,
+			"tile-cache", cachedir,
 			//"tile-cache-base", cachebasedir,
 			"proxy-uri", g_getenv("http_proxy"),
 			NULL);
@@ -478,7 +575,7 @@ static void activate(GtkApplication *app, gpointer user_data)
 
 	g_signal_connect(G_OBJECT(map), "button-press-event",
 			G_CALLBACK(get_new_location), NULL);
-	
+
 	/* add map in row 1 */
 	gtk_grid_attach(GTK_GRID(grid), map, 0, 1, 5, 20);
 
@@ -550,6 +647,7 @@ int main (int argc, char **argv)
 	int ret;
 	GKeyFile* gkf;
 	gchar *key_value;
+	int key_value_int;
 	static int show_version;
 	GError *error;
 	GOptionContext *context;
@@ -564,7 +662,12 @@ int main (int argc, char **argv)
 	};
 
 	error = NULL;
+	vsock = 0;
+	running = 1;
 	show_version = 0;
+	loglevel = 7;
+	radio_id = 0;
+	snprintf(radio_str, 3, "%d", radio_id);
 
 	context = g_option_context_new("arguments");
 	g_option_context_add_main_entries(context, entries, NULL);
@@ -579,11 +682,6 @@ int main (int argc, char **argv)
 		return EXIT_SUCCESS;
 	}
 
-	if (verbose)
-		printf("entering verbose mode\n");
-
-	running = 1;
-
 	gkf = g_key_file_new();
 	if (!g_key_file_load_from_file(
 			gkf, CONFIG_FILE, G_KEY_FILE_NONE, NULL)) {
@@ -593,19 +691,27 @@ int main (int argc, char **argv)
 	}
 
 	/* get gpsd options */
-	key_value = g_key_file_get_string(gkf, "sibs", "gpsd_address", NULL);
+	key_value = g_key_file_get_string(gkf, "gelled", "gpsd_address", NULL);
 	if (key_value)
 		g_snprintf(gpsd_address, 16, "%s", key_value);
 	else
 		g_snprintf(gpsd_address, 16, "127.0.0.1");
 
-	key_value = g_key_file_get_string(gkf, "sibs", "gpsd_port", NULL);
+	key_value = g_key_file_get_string(gkf, "gelled", "gpsd_port", NULL);
 	if (key_value)
 		g_snprintf(gpsd_port, 6, "%s", key_value);
 	else
 		g_snprintf(gpsd_port, 6, "2947");
 
-	key_value = g_key_file_get_string(gkf, "sibs", "gps_icon", NULL);
+	key_value_int = g_key_file_get_integer(gkf, "gelled", "radio_id", NULL);
+	if (key_value_int) {
+		radio_id = key_value_int;
+		g_snprintf(radio_str, 3, "%d", radio_id);
+	} else {
+		g_snprintf(gpsd_port, 6, "2947");
+	}
+
+	key_value = g_key_file_get_string(gkf, "gelled", "gps_icon", NULL);
 	if (key_value)
 		g_snprintf(gps_icon, 256, "%s", key_value);
 	else
@@ -614,19 +720,54 @@ int main (int argc, char **argv)
 	if (stat(gps_icon, &buf_stat) == 0) {
 		pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
 	} else {
+		printf("ERROR: cannot find gps_icon %s", gps_icon);
 		pixbuf = NULL;
 	}
 
-	key_value = g_key_file_get_string(gkf, "sibs", "map_server", NULL);
+	key_value = g_key_file_get_string(gkf, "gelled", "cachedir", NULL);
+	if (key_value)
+		g_snprintf(cachedir, 256, "%s", key_value);
+	else
+		g_snprintf(cachedir, 256, "/tmp/gelled");
+
+
+	key_value = g_key_file_get_string(gkf, "gelled", "map_server", NULL);
 	if (key_value)
 		g_snprintf(map_server, 256, "%s", key_value);
 	else
 		g_snprintf(map_server, 256,
 				"https://tile.openstreetmap.org/#Z/#X/#Y.png");
 
+	key_value = g_key_file_get_string(gkf, "gelled", "protocol", NULL);
+	if (key_value) {
+		if (strncmp(protocol, "vsock", 5) == 0) {
+			vsock = 1;
+		}
+	} else {
+		g_snprintf(wmasterd_address, 15, "127.0.0.1");
+	}
+
+	key_value = g_key_file_get_string(gkf, "gelled", "wmasterd_address", NULL);
+	if (key_value)
+		g_snprintf(wmasterd_address, 15, "%s", key_value);
+	else
+		g_snprintf(wmasterd_address, 15, "127.0.0.1");
+
+	key_value_int = g_key_file_get_integer(gkf, "gelled", "wmasterd_port", NULL);
+	if (key_value_int) {
+		wmasterd_port = key_value_int;
+		g_snprintf(wmasterd_port_str, 3, "%d", wmasterd_port);
+	} else {
+		g_snprintf(wmasterd_port_str, 6, "2947");
+	}
+
 	if (verbose) {
 		g_print("map server %s\n", map_server);
+		g_print("cachedir %s\n", cachedir);
+		g_print("radio %d\n", radio_id);
 	}
+
+	print_debug(LOG_INFO, "setup complete");
 
 	/* initialize mutex */
 	pthread_mutex_init(&gps_mutex, NULL);

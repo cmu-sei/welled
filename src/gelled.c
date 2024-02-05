@@ -514,9 +514,9 @@ int check_if_sea(double lat, double lon)
 	int xtile, ytile, xpixel, ypixel, ret, i;
 	png_data pixels;
 	png_bytep px;
-	char pngfile[32];
-	char zoomdir[32];
-	char xdir[32];
+	char pngfile[256];
+	char zoomdir[256];
+	char xdir[256];
 	struct stat statbuf;
 	char *cachedir = "/tmp/gelled";
 	int exists;
@@ -529,7 +529,7 @@ int check_if_sea(double lat, double lon)
 	ytile = (int)floor(y);
 	ypixel = (int)floor((y - ytile) * 256);
 
-	snprintf(pngfile, 31, "%s/%d/%d/%d.png", cachedir, ZOOM, xtile, ytile);
+	snprintf(pngfile, 255, "%s/%d/%d/%d.png", cachedir, ZOOM, xtile, ytile);
 	print_debug(LOG_DEBUG, "pngfile %s", pngfile);
 
     if (mkdir(cachedir, 0755) && errno != EEXIST) {
@@ -537,13 +537,13 @@ int check_if_sea(double lat, double lon)
 		return -1;
 	}
 
-	snprintf(zoomdir, 31, "%s/%d", cachedir, ZOOM);
+	snprintf(zoomdir, 255, "%s/%d", cachedir, ZOOM);
     if (mkdir(zoomdir, 0755) && errno != EEXIST) {
 		print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
 		return -1;
 	}
 
-	snprintf(xdir, 31, "%s/%d/%d", cachedir, ZOOM, xtile);
+	snprintf(xdir, 255, "%s/%d/%d", cachedir, ZOOM, xtile);
     if (mkdir(xdir, 0755) && errno != EEXIST) {
 		print_debug(LOG_ERR, "cannot create dir %s", xdir);
 		return -1;
@@ -604,7 +604,7 @@ void send_stop(int radio)
 	for (index = 0; index < 10; index++) {
 		args[index] = NULL;
 	}
-	index = 6;
+	index = 0;
 
 	args[0] = "gelled-ctrl";
 	args[1] = "-k";
