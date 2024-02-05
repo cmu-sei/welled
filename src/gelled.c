@@ -442,7 +442,7 @@ int land_or_sea_check_color(int red, int green, int blue)
 	if (red == 181 && green == 208 && blue == 208) {
 		/* sea, blue */
 		ret = 1;
-	} else if (red == 170 && green == 211 && blue == 2223) {
+	} else if (red == 170 && green == 211 && blue == 223) {
 		/* sea, blue */
 		ret = 1;
 	} else if (red == 181 && green == 253 && blue == 253) {
@@ -450,6 +450,12 @@ int land_or_sea_check_color(int red, int green, int blue)
 		ret = -1;
 	} else if (red == 181 && green == 92 && blue == 162) {
 		/* boundary, purple, shade 2 */
+		ret = -1;
+	} else if (red == 166 && green == 169 && blue == 192) {
+		/* boundary, purple */
+		ret = -1;
+	} else if (red == 170 && green == 170 && blue == 170) {
+		/* gray like a dock at a port */
 		ret = -1;
 	} else if (red == 181 && green == 213 && blue == 213) {
 		/* text */
@@ -481,6 +487,9 @@ int land_or_sea_check_color(int red, int green, int blue)
 	} else if (red == 241 && green == 238 && blue == 232) {
 		/* boundary with land? */
 		ret = 0;
+	} else if (red == 217 && green == 208 && blue == 201) {
+		/* grey like a building */
+		ret = 0;
 	} else if (red == 181 && green == 238 && blue == 232) {
 		/* land */
 		ret = 0;
@@ -494,7 +503,7 @@ int land_or_sea_check_color(int red, int green, int blue)
 	} else if (ret == 1) {
 		print_debug(LOG_DEBUG, "This tile is water");
 	} else {
-		print_debug(LOG_DEBUG, "Unkown tile: Red: %d, Green: %d, Blue: %d", red, green, blue);
+		print_debug(LOG_INFO, "Unkown tile: Red: %d, Green: %d, Blue: %d", red, green, blue);
 	}
 	return ret;
 }
@@ -612,7 +621,7 @@ void send_stop(int radio)
 	args[3] = "-r";
 	args[4] = (char *)&radio_str;
 	args[5] = "-P";
-	args[6] = (char *)port_str;
+	args[6] = (char *)&port_str;
 	index = 6;
 	if (!vsock) {
 		args[7] = "-s";
@@ -715,10 +724,10 @@ void process_rmc(char *line)
 		if (ret < 0) {
 			print_debug(LOG_ERR, "check_if_sea failed");
 		} else if (land && (ret == 1)) {
-			print_debug(LOG_DEBUG, "hit land, stopping");
+			print_debug(LOG_DEBUG, "hit water, stopping");
 			send_stop(radio_id);
 		} else if (water && (ret == 0)) {
-			print_debug(LOG_DEBUG, "hit water, stopping");
+			print_debug(LOG_DEBUG, "hit land, stopping");
 			send_stop(radio_id);
 		}
 	}

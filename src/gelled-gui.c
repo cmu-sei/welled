@@ -184,12 +184,11 @@ void *gps(void *arg)
 open:
 	rc = gps_open(gpsd_address, gpsd_port, &gps_data);
 	if (rc  == -1) {
-		if (verbose)
-			g_print("could not connect to gpsd\n");
+		print_debug(LOG_ERR, "could not connect to gpsd");
 		sleep(1);
 		goto open;
-	} else if (verbose) {
-		g_print("gpsd connection opened\n");
+	} else {
+		print_debug(LOG_DEBUG, "gpsd connection opened");
 	}
 
 	gps_stream(&gps_data, WATCH_ENABLE | WATCH_JSON, NULL);
@@ -202,8 +201,7 @@ open:
 		/* read data */
 		rc = gps_read(&gps_data, NULL, 0);
 		if (rc == -1) {
-			if (verbose)
-				g_print("gpsd connection died\n");
+			print_debug(LOG_ERR, "gpsd connection died");
 			sleep(1);
 			goto open;
 		}
@@ -211,9 +209,7 @@ open:
 		/* Display data from the GPS receiver. */
 		if (!isnan(gps_data.fix.latitude) &&
 				!isnan(gps_data.fix.longitude)) {
-			if (verbose) {
-				printf("got update from gpsd\n");
-			}
+			print_debug(LOG_DEBUG, "got update from gpsd");
 			pthread_mutex_lock(&gps_mutex);
 			latitude = gps_data.fix.latitude;
 			longitude = gps_data.fix.longitude;
@@ -221,6 +217,7 @@ open:
 			g_snprintf(longitude_string, 30, "%f", longitude);
 			pthread_mutex_unlock(&gps_mutex);
 		}
+
 	}
 	gps_close(&gps_data);
 
@@ -245,21 +242,19 @@ static void send_location(void)
 	index = 0;
 
 	args[0] = "gelled-ctrl";
-	args[1] = "-k";
-	args[2] = "0";
-	args[3] = "-r";
-	args[4] = (char *)&radio_str;
-	args[5] = "-P";
-	args[6] = (char *)wmasterd_port_str;
-	args[7] = "-y";
-	args[8] = (char *)&latitude_string_new;
-	args[9] = "-x";
-	args[10] = (char *)&longitude_string_new;
-	index = 10;
+	args[1] = "-r";
+	args[2] = (char *)&radio_str;
+	args[3] = "-P";
+	args[4] = (char *)&wmasterd_port_str;
+	args[5] = "-y";
+	args[6] = (char *)&latitude_string_new;
+	args[7] = "-x";
+	args[8] = (char *)&longitude_string_new;
+	index = 8;
 	if (!vsock) {
-		args[11] = "-s";
-		args[12] = wmasterd_address;
-		index = 12;
+		args[9] = "-s";
+		args[10] = wmasterd_address;
+		index = 10;
 	}
 	if (verbose) {
 		index++;
@@ -291,9 +286,7 @@ static void send_location(void)
 static void get_new_location(GtkWidget *widget, gpointer user_data)
 {
 	g_object_get((OsmGpsMap *)map, "latitude", &latitude_new, "longitude", &longitude_new, NULL);
-	if (verbose) {
-		g_print("crosshair: %f %f\n", latitude_new, longitude_new);
-	}
+	print_debug(LOG_DEBUG, "crosshair: %f %f", latitude_new, longitude_new);
 
 //	OsmGpsMapPoint *location;
 //	location = osm_gps_map_get_event_location((OsmGpsMap *)map,
@@ -382,8 +375,7 @@ void save_gpsd_address(GtkWidget *f, gpointer data)
 		gtk_entry_get_text(GTK_ENTRY(entry_address)), 16);
 	g_strlcpy(gpsd_port, gtk_entry_get_text(GTK_ENTRY(entry_port)), 6);
 
-	if (verbose)
-		g_print("%s:%s\n", gpsd_address, gpsd_port);
+	print_debug(LOG_DEBUG, "gpsd: %s:%s", gpsd_address, gpsd_port);
 
 	pthread_cancel(gps_tid);
 	pthread_join(gps_tid, NULL);
@@ -465,9 +457,7 @@ gboolean update_display(void)
 	gtk_widget_queue_draw(view_lat);
 	gtk_widget_queue_draw(view_lon);
 
-	if (verbose) {
-		g_print("current: %f %f\n", latitude, longitude);
-	}
+	print_debug(LOG_DEBUG, "location: %f %f", latitude, longitude);
 
 	/* draw current location */
 	if (pixbuf) {
@@ -658,6 +648,8 @@ int main (int argc, char **argv)
 			"Show version", NULL},
 		{ "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose,
 			"Be verbose", NULL },
+		{ "debug", 'D', 0, G_OPTION_ARG_INT, &loglevel,
+			"deug level for syslog", NULL },
 		{ NULL }
 	};
 
@@ -665,7 +657,7 @@ int main (int argc, char **argv)
 	vsock = 0;
 	running = 1;
 	show_version = 0;
-	loglevel = 7;
+	loglevel = 3;
 	radio_id = 0;
 	snprintf(radio_str, 3, "%d", radio_id);
 
@@ -678,7 +670,7 @@ int main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 	if (show_version) {
-		printf("gelled-gui version %s\n", VERSION_STR);
+		print_debug(LOG_DEBUG, "version %s", VERSION_STR);
 		return EXIT_SUCCESS;
 	}
 
