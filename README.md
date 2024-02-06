@@ -165,6 +165,10 @@ You must have `libcurl4-gnutls-dev', 'libpng-dev` and `libglib2.0-dev` installed
 apt-get install libcurl4-gnutls-dev libpng-dev libglib2.0-dev
 ```
 
+## Prerequisites for building gelled-gui
+In addition to the above prerequisites, you will need to have additional
+libraries for gelled-gui. You will need `gtk3+-3.0` and `osmgpsmap`.
+
 ## Prerequisites for installing wmasterd
 The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
 * ESXi 5.5
@@ -482,7 +486,7 @@ You must also set the location of the virtual machine if you wish to have the
 signal strength adjusted by `wmasterd`. Use `gelled-ctrl` for this purpose. The
 options of interest are -x for longitude and -y for latitude.
 ```
-/bin/gelled-ctrl -x 35 -y 35
+/bin/gelled-ctrl -x -80 -y 40
 ```
 
 ## Special note on wifi distances
@@ -559,6 +563,7 @@ an optional behaviour which relies on the use of an in-game map server which is
 used to provide a map tile which will be used to make this determination based
 on the pixel color of the bit at the current coordinates (I know, it sounds a
 little crazy, but that is what the web says!).
+
 Instructions for building a map server for Ubuntu 12.04 can be found here:
 `https://switch2osm.org/serving-tiles/building-a-tile-server-from-packages/`
 To setup the map server so that it does not need to access the internet, you

@@ -1603,9 +1603,9 @@ void add_node(unsigned int srchost, char *vm_room, char *vm_name, char *uuid, in
 	strncpy(node->uuid, uuid, UUID_LEN - 1);
 	strncpy(node->room, vm_room, UUID_LEN - 1);
 
-	/* default to med sea */
-	node->loc.latitude = 35;	/* DD.DDDD*/
-	node->loc.longitude = 35;       /* DD.DDDD*/
+	/* default to Pittsburgh */
+	node->loc.latitude = 40.442;	/* DD.DDDD*/
+	node->loc.longitude = -80.015;	/* DD.DDDD*/
 	node->loc.altitude = 0;		/* meters */
 	node->loc.velocity = 0;		/* knots */
 	node->loc.heading = 0;		/* degrees */

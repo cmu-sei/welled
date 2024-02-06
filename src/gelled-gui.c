@@ -348,7 +348,7 @@ static void show_about(GtkWidget *f)
 		"GELLED-GUI");
 	gtk_about_dialog_set_version(about, VERSION_STR);
 	gtk_about_dialog_set_copyright(about,
-		"Copyright 2019 © Carnegie Mellon University");
+		"Copyright 2019-2024 © Carnegie Mellon University");
 	gtk_about_dialog_set_website(about, "http://www.cert.org");
 	gtk_about_dialog_set_authors(about, auth);
 	gtk_about_dialog_set_license_type(about,  GTK_LICENSE_LGPL_2_1);
