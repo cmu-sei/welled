@@ -712,7 +712,7 @@ int main (int argc, char **argv)
 	if (stat(gps_icon, &buf_stat) == 0) {
 		pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);
 	} else {
-		printf("ERROR: cannot find gps_icon %s", gps_icon);
+		printf("ERROR: cannot find gps_icon %s\n", gps_icon);
 		pixbuf = NULL;
 	}
 
