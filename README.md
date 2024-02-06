@@ -167,7 +167,8 @@ apt-get install libcurl4-gnutls-dev libpng-dev libglib2.0-dev
 
 ## Prerequisites for building gelled-gui
 In addition to the above prerequisites, you will need to have additional
-libraries for gelled-gui. You will need `gtk3+-3.0` and `osmgpsmap`.
+libraries for gelled-gui. You will need `gtk3+-3.0`, 'libgps-dev` and
+`osmgpsmap-dev`.
 
 ## Prerequisites for installing wmasterd
 The host must support VSOCK with SOCK_DGRAM. `wmasterd` has been run on:
