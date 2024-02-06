@@ -248,6 +248,7 @@ void hex_dump(void *addr, int len)
 	printf("  %s\n", buff);
 }
 
+#ifndef _WIN32
 int get_mynetns(void)
 {
         char *nspath = "/proc/self/ns/net";
@@ -264,6 +265,7 @@ int get_mynetns(void)
         print_debug(LOG_DEBUG, "netns: %ld", mynetns);
         return 0;
 }
+#endif
 
 /**
  *      @brief main function
@@ -486,8 +488,9 @@ options:
 
     inside_netns = 0;
 
-    /* get my netns */
-    if (get_mynetns() < 0) {
+#ifndef _WIN32
+	/* get my netns */
+	if (get_mynetns() < 0) {
 		mynetns = 0;
 	};
 
@@ -536,6 +539,7 @@ options:
 	} else {
 		print_debug(LOG_ERR, "cannot open /run/netns");
 	}
+#endif
 
 	if (inside_netns) {
 		print_debug(LOG_INFO, "running inside netns %ld", mynetns);

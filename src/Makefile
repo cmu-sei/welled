@@ -47,6 +47,8 @@ gelled-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 gelled-ctrl-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 gelled-ctrl-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
+#gelled-gui-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
+#gelled-gui-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 rpm-x86_64-Linux: ARCH=x86_64
 debian-x86_64-Linux: ARCH=amd64
 
@@ -113,7 +115,7 @@ x86_64-Linux-vyos: welled-x86_64-Linux-vyos gelled-ctrl-x86_64-Linux-vyos
 
 windows:  x86_64-w64-mingw32
 
-x86_64-w64-mingw32: gelled-x86_64-w64-mingw32 gelled-ctrl-x86_64-w64-mingw32 wmasterd-x86_64-w64-mingw32
+x86_64-w64-mingw32: gelled-x86_64-w64-mingw32 gelled-ctrl-x86_64-w64-mingw32 wmasterd-x86_64-w64-mingw32 #gelled-gui-x86_64-w64-mingw32
 
 # called from the openwrt build system
 openwrt: welled-$(CROSS:-=) gelled-ctrl-$(CROSS:-=)
@@ -156,10 +158,15 @@ welled-x86_64-openwrt-linux-musl:
 # default is 64 bit
 gelled-gui:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/$@ $@.c $(CFLAGS) `pkg-config --cflags --libs osmgpsmap-1.0 gtk+-3.0` -lpthread -lm -lgps
+	$(CC) -o $(OUTDIR)/$@ $@.c $(CFLAGS) -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs osmgpsmap-1.0 gtk+-3.0` -lpthread -lm -lgps
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled-gui ../dist/x86_64-Linux/
 
+#gelled-gui-x86_64-w64-mingw32:
+#	test -d $(OUTDIR) || mkdir $(OUTDIR)
+#	$(CC) -o $(OUTDIR)/$@ gelled-gui.c $(CFLAGS) -DVERSION_STR=$(VERSION_STR) -L/usr/x86_64-w64-mingw32/sys-root/mingw/lib -g -D_POSIX -static -lgtk+-3.0 -lpthread -lm -lgps
+#	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
+#	cp $(OUTDIR)/$@.exe ../dist/x86_64-Linux/
 
 # default is 64 bit
 gelled-ctrl:
@@ -183,9 +190,9 @@ gelled-ctrl-x86_64-openwrt-linux-musl:
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
 
 gelled-ctrl-x86_64-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -I/usr/x86_64-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/ -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/glib/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -lglib-2.0 /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a -lintl -lole32 -lwinmm
+	$(CC) -o $(OUTDIR)/$@ gelled-ctrl.c -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0/include -I/usr/x86_64-w64-mingw32/sys-root/mingw/include/glib-2.0 -I/usr/x86_64-w64-mingw32/sys-root/mingw/lib/glib-2.0/include/ -DVERSION_STR=$(VERSION_STR) -L/usr/x86_64-w64-mingw32/sys-root/mingw/lib -g -D_POSIX -static -lglib-2.0 -lole32 -lwinmm -lintl -fstack-protector -lws2_32 -luuid
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
-	cp $(OUTDIR)/gelled-ctrl-x86_64-w64-mingw32 ../dist/x86_64-w64-mingw32/
+	cp $(OUTDIR)/$@.exe ../dist/x86_64-w64-mingw32/
 
 # default is 64 bit
 gelled:
@@ -195,9 +202,9 @@ gelled:
 	cp $(OUTDIR)/gelled ../dist/x86_64-Linux/
 
 gelled-x86_64-w64-mingw32:
-	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lintl /usr/x86_64-w64-mingw32/sys-root/mingw/lib/libws2_32.a
+	$(CC) -o $(OUTDIR)/$@ gelled.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -DCURL_STATICLIB -static -lm -lpng -lcurl -lz -lssl -lcrypto -lgdi32 -lssh2 -lwldap32 -lidn -liconv -lws2_32 -fstack-protector -lidn2 -lcrypt32 -lbcrypt -lmincore
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
-	cp $(OUTDIR)/gelled-x86_64-w64-mingw32 ../dist/x86_64-w64-mingw32/
+	cp $(OUTDIR)/$@.exe ../dist/x86_64-w64-mingw32/
 
 # default is 64 bit
 wmasterd:
@@ -214,7 +221,7 @@ wmasterd-esx:
 	cp $(OUTDIR)/wmasterd ../dist/esx/
 
 wmasterd-x86_64-w64-mingw32:
-	$(CC) -o $(OUTDIR)/wmasterd-x86_64-w64-mingw32 wmasterd.c windows_error.c -L/usr/lib/gcc/x86_64-w64-mingw32/4.9-posix/ -lws2_32 -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -lpthread -static
+	$(CC) -o $(OUTDIR)/$@ wmasterd.c windows_error.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -lpthread -lws2_32
 	test -d ../dist/x86_64-w64-mingw32/ || mkdir ../dist/x86_64-w64-mingw32/
 	cp $(OUTDIR)/wmasterd-x86_64-w64-mingw32* ../dist/x86_64-w64-mingw32/
 

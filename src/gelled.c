@@ -541,22 +541,41 @@ int check_if_sea(double lat, double lon)
 	snprintf(pngfile, 255, "%s/%d/%d/%d.png", cachedir, ZOOM, xtile, ytile);
 	print_debug(LOG_DEBUG, "pngfile %s", pngfile);
 
-    if (mkdir(cachedir, 0755) && errno != EEXIST) {
+#ifndef _WIN32
+	if (mkdir(cachedir, 0755) && errno != EEXIST) {
 		print_debug(LOG_ERR, "cannot create dir %s", cachedir);
 		return -1;
 	}
 
 	snprintf(zoomdir, 255, "%s/%d", cachedir, ZOOM);
-    if (mkdir(zoomdir, 0755) && errno != EEXIST) {
+	if (mkdir(zoomdir, 0755) && errno != EEXIST) {
 		print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
 		return -1;
 	}
 
 	snprintf(xdir, 255, "%s/%d/%d", cachedir, ZOOM, xtile);
-    if (mkdir(xdir, 0755) && errno != EEXIST) {
+   	if (mkdir(xdir, 0755) && errno != EEXIST) {
 		print_debug(LOG_ERR, "cannot create dir %s", xdir);
 		return -1;
 	}
+#else
+        if (mkdir(cachedir) && errno != EEXIST) {
+                print_debug(LOG_ERR, "cannot create dir %s", cachedir);
+                return -1;
+        }
+
+        snprintf(zoomdir, 255, "%s/%d", cachedir, ZOOM);
+        if (mkdir(zoomdir) && errno != EEXIST) {
+                print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
+                return -1;
+        }
+
+        snprintf(xdir, 255, "%s/%d/%d", cachedir, ZOOM, xtile);
+        if (mkdir(xdir) && errno != EEXIST) {
+                print_debug(LOG_ERR, "cannot create dir %s", xdir);
+                return -1;
+        }
+#endif
 
 	stat(pngfile, &statbuf);
 	if (!S_ISREG(statbuf.st_mode)) {
@@ -633,6 +652,7 @@ void send_stop(int radio)
 		args[index] = "-v";
 	}
 
+	// TODO use popen for windows
 	/* fork */
 	pid = fork();
 
@@ -721,6 +741,7 @@ void process_rmc(char *line)
 			printf("- longitude: %f\n", lon);
 		}
 		ret = check_if_sea(lat, lon);
+#ifndef _WIN32
 		if (ret < 0) {
 			print_debug(LOG_ERR, "check_if_sea failed");
 		} else if (land && (ret == 1)) {
@@ -730,6 +751,7 @@ void process_rmc(char *line)
 			print_debug(LOG_DEBUG, "hit land, stopping");
 			send_stop(radio_id);
 		}
+#endif
 	}
 }
 
@@ -962,6 +984,7 @@ void *send_status(void *arg)
 	return ((void *)0);
 }
 
+#ifndef _WIN32
 /**
  * 	\brief returns the netns of the current process
 */
@@ -982,6 +1005,7 @@ int get_mynetns(void)
 	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
 	return 0;
 }
+#endif
 
 /**
  *      @brief main function
@@ -1126,9 +1150,10 @@ int main(int argc, char *argv[])
 
     inside_netns = 0;
 
-    /* get my netns */
-    if (get_mynetns() < 0) {
-		    mynetns = 0;
+#ifndef _WIN32
+	/* get my netns */
+	if (get_mynetns() < 0) {
+		mynetns = 0;
 	};
 
 	/* get all netns */
@@ -1176,6 +1201,7 @@ int main(int argc, char *argv[])
 	} else {
 		print_debug(LOG_ERR, "cannot open /run/netns");
 	}
+#endif
 
 	if (inside_netns) {
 		print_debug(LOG_INFO, "running inside netns %ld", mynetns);
