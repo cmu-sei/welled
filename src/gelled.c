@@ -119,8 +119,10 @@ struct sockaddr_vm myservaddr_vm;
 struct sockaddr_in myservaddr_in;
 /** server address for OSM tiles */
 char *mapserver;
+/** device mask for write */
+char *dev_mask;
 /** device path for write */
-char *dev_path;
+char dev_path[256];
 /** for tracking our VMCI CID and sending in velocty change */
 int cid;
 /** whether our gps device needs to stay at sea */
@@ -185,7 +187,7 @@ void show_usage(int exval)
 	printf("  -D, --debug		debug level for syslog\n");
 	printf("  -l, --land		gps should only travel on land\n");
 	printf("  -w, --water		gps should only travel on water\n");
-	printf("  -d, --device		serial device to write NMEA GPS data\n");
+	printf("  -d, --devicemask	serial device to write NMEA GPS data\n");
 	printf("  -s, --server		wmasterd server address\n");
 	printf("  -p, --port		wmasterd server port\n");
 	printf("  -m, --mapserver	use this server for map tiles\n\n");
@@ -299,7 +301,7 @@ int download_osm_tile(int x, int y, int zoom, char *filename)
 			print_debug(LOG_ERR, "failed to open %s for writing", filename);
 			return -1;
 		}
-		//TODO handle https
+
 		if (strncmp("http", mapserver, 4) == 0) {
 			snprintf(url, 1024, "%s/%d/%d/%d.png",
 					mapserver, zoom, x, y);
@@ -867,8 +869,8 @@ void recv_from_master(void)
 	print_debug(LOG_DEBUG, "Received NMEA: '%s'", nmea);
 
 	/* write to device */
+	snprintf(dev_path, 256, "%s%d", dev_mask, hdr->dest_radio_id * 2);
 	if (stat(dev_path, &buf_stat) < 0) {
-		//perror("stat");
 		print_debug(LOG_ERR, "Error: stat failed: %s does not exist",
 				dev_path);
 		goto out;
@@ -876,6 +878,8 @@ void recv_from_master(void)
 	print_debug(LOG_DEBUG, "writing to device %s", dev_path);
 
 #ifdef _WIN32
+	// TODO determine pattern that would be used
+	snprintf(dev_path, 256, "%s%d", dev_mask, hdr->dest_radio_id + 2);
 	fp = CreateFile(dev_path, GENERIC_WRITE, 0,
 		NULL, OPEN_EXISTING, 0, NULL);
 	if (!fp) {
@@ -1022,11 +1026,11 @@ int main(int argc, char *argv[])
 	running = 1;
 	af = 0;
 	long_index = 0;
-	#ifdef _WIN32
-	dev_path = "COM2";
-	#else
-	dev_path = "/dev/ttyUSB0";
-	#endif
+#ifdef _WIN32
+	dev_mask = "COM"; // COM2
+#else
+	dev_mask = "/dev/ttyUSB"; // /dev/ttyUSB0
+#endif
 	mapserver = "127.0.0.1";
 	water = 0;
 	land = 0;
@@ -1065,7 +1069,7 @@ int main(int argc, char *argv[])
 			_exit(EXIT_SUCCESS);
 			break;
 		case 'd':
-			dev_path = optarg;
+			dev_mask = optarg;
 			break;
 		case 'v':
 			verbose = 1;
@@ -1109,6 +1113,11 @@ int main(int argc, char *argv[])
 
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
+
+	if (radio_id < 0 || radio_id > 99) {
+		printf("Error - radio must be 0-99\n");
+		show_usage(EXIT_FAILURE);
+	}
 
 #ifndef _WIN32
 	if (loglevel >= 0)
