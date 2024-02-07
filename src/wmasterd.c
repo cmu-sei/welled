@@ -2145,7 +2145,6 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 	int age;
 	int now;
 	int distance;
-	char *send_buf;
 	int bytes_sent;
 	struct in_addr ip;
 
@@ -2435,7 +2434,6 @@ void recv_from_welled(void)
 	struct sockaddr_vm client_vm;
 	struct sockaddr_in client_in;
 	unsigned int src_addr;
-	int ret;
 
 	if (vsock) {
 		client_len = sizeof(client_vm);

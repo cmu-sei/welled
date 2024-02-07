@@ -220,9 +220,9 @@ wmasterd:
 # differs because of older libc version
 wmasterd-esx:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
-	$(CC) -o $(OUTDIR)/wmasterd wmasterd.c $(CFLAGS) -D_ESX -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -lm -lpthread
+	$(CC) -o $(OUTDIR)/$@ wmasterd.c $(CFLAGS) -D_ESX -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 -lm -lpthread
 	test -d ../dist/esx || mkdir ../dist/esx
-	cp $(OUTDIR)/wmasterd ../dist/esx/
+	cp $(OUTDIR)/$@ ../dist/esx/wmasterd
 
 wmasterd-x86_64-w64-mingw32:
 	$(CC) -o $(OUTDIR)/$@ wmasterd.c windows_error.c -DVERSION_STR=$(VERSION_STR) -g -D_POSIX -static -lpthread -lws2_32
