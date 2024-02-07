@@ -460,7 +460,7 @@ gboolean update_display(void)
 	print_debug(LOG_DEBUG, "location: %f %f", latitude, longitude);
 
 	/* draw current location */
-	if (pixbuf) {
+	if (pixbuf && map) {
 		osm_gps_map_image_remove_all((OsmGpsMap *)map);
 		image = osm_gps_map_image_add((OsmGpsMap *)map,
 				latitude, longitude, pixbuf);
@@ -491,8 +491,7 @@ static void activate(GtkApplication *app, gpointer user_data)
 	/* create window */
 	window = gtk_application_window_new(app);
 	gtk_window_set_default_size(GTK_WINDOW(window), 600, 350);
-	gtk_window_set_title(GTK_WINDOW(window),
-		"GELLED-GUI");
+	gtk_window_set_title(GTK_WINDOW(window), "GELLED-GUI");
 	gtk_container_set_border_width(GTK_CONTAINER(window), 10);
 
 	/* create grid */
@@ -545,7 +544,7 @@ static void activate(GtkApplication *app, gpointer user_data)
 			//"map-source", map_source,
 			//"repo-uri", map_server,
 			"tile-cache", cachedir,
-			//"tile-cache-base", cachebasedir,
+			//"t../tmp/descriptor.xmlile-cache-base", cachebasedir,
 			"proxy-uri", g_getenv("http_proxy"),
 			NULL);
 
@@ -707,7 +706,7 @@ int main (int argc, char **argv)
 	if (key_value)
 		g_snprintf(gps_icon, 256, "%s", key_value);
 	else
-		g_snprintf(gps_icon, 256, "/usr/share/welled/pix/gps.png");
+		g_snprintf(gps_icon, 256, "/usr/local/share/welled/pix/gps.png");
 
 	if (stat(gps_icon, &buf_stat) == 0) {
 		pixbuf = gdk_pixbuf_new_from_file(gps_icon, NULL);

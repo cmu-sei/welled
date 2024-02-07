@@ -351,14 +351,14 @@ rpm:
 	mkdir -p welled-$(VERSION)
 	mkdir -p welled-$(VERSION)/etc/
 	mkdir -p welled-$(VERSION)/bin/
-	mkdir -p welled-$(VERSION)/usr/share/welled/pix/
+	mkdir -p welled-$(VERSION)/usr/local/share/welled/pix/
 	mkdir -p welled-$(VERSION)/lib/systemd/system/
 	mkdir -p welled-$(VERSION)/usr/local/share/man/man8/
 	install -m 755 ../bin/welled welled-$(VERSION)/bin/
 	install -m 755 ../bin/gelled welled-$(VERSION)/bin/
 	install -m 755 ../bin/gelled-ctrl welled-$(VERSION)/bin/
 	install -m 755 ../bin/gelled-gui welled-$(VERSION)/bin/
-	install -m 755 ../pix/gps.png welled-$(VERSION)/usr/share/welled/pix/
+	install -m 755 ../pix/gps.png welled-$(VERSION)/usr/local/share/welled/pix/
 	install -m 755 ../scripts/welled.path welled-$(VERSION)/lib/systemd/system/
 	install -m 755 ../scripts/welled.service welled-$(VERSION)/lib/systemd/system/
 	install -m 755 ../scripts/gelled.service welled-$(VERSION)/lib/systemd/system/gelled.service
@@ -377,5 +377,8 @@ rpm-x86_64-Linux: x86_64-Linux rpm
 	cp ../rpmbuild/RPMS/x86_64/welled-$(VERSION)-1.fc30.x86_64.rpm ../dist/x86_64-Linux/
 	rm -rf ../rpmbuild
 
-
+install-gps: gelled gelled-ctrl gelled-gui
+	mkdir -p /usr/local/share/welled/pix/
+	cp ../pix/gps.png /usr/local/share/welled/pix/gps.png
+	cp ../bin/gelled* /usr/local/bin/
 
