@@ -1,8 +1,8 @@
 <metadataResponse>
   <version>3.0</version>
-  <timestamp>2019-01-23T00:00:00.000000</timestamp>
+  <timestamp>TIMESTAMP</timestamp>
   <bulletin>
-    <id>wmasterd-VERSION</id>
+    <id>wmasterd-VERSION.DATE</id>
     <vendor>Carnegie Mellon University</vendor>
     <summary>wmasterd for ESX</summary>
     <severity>general</severity>
@@ -12,15 +12,16 @@
     <description>wmasterd Utility</description>
     <kbUrl>http://github.com/cmu-sei/welled</kbUrl>
     <contact>arwelle@cert.org</contact>
-    <releaseDate>2019-01-23T00:00:00.000000+00:00</releaseDate>
+    <releaseDate>RELEASEDATE</releaseDate>
     <platforms>
       <softwarePlatform locale="" version="5.*" productLineID="embeddedEsx"/>
       <softwarePlatform locale="" version="6.*" productLineID="embeddedEsx"/>
+      <softwarePlatform locale="" version="7.*" productLineID="embeddedEsx"/>
     </platforms>
     <vibList>
       <vib>
         <vibVersion>1.4.5</vibVersion>
-        <vibID>CMU_bootbank_wmasterd_VERSION</vibID>
+        <vibID>CMU_bootbank_wmasterd_VERSION.DATE</vibID>
         <name>wmasterd</name>
 	<version>VERSION</version>
         <vendor>CMU</vendor>
@@ -48,7 +49,7 @@
         </softwareTags>
         <vibFile>
           <sourceUrl></sourceUrl>
-          <relativePath>vib20/wmasterd/CMU_bootbank_wmasterd_VERSION.vib</relativePath>
+          <relativePath>vib20/wmasterd/CMU_bootbank_wmasterd_VERSION.DATE.vib</relativePath>
           <packedSize>VIBSIZE</packedSize>
           <checksum>
             <checksumType>sha-256</checksumType>

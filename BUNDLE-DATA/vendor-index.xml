@@ -13,5 +13,12 @@
     <url>metadata.zip</url>
     <channelName>default</channelName>
   </metadata>
+  <metadata>
+    <productId>embeddedEsx</productId>
+    <version>7.*</version>
+    <locale></locale>
+    <url>metadata.zip</url>
+    <channelName>default</channelName>
+  </metadata>
 </metaList>
 
