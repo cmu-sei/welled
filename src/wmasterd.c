@@ -2242,15 +2242,16 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			continue;
 		}
 
+		int port = WMASTERD_PORT_WELLED;
 		if (vsock) {
 			memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 			servaddr_vm.svm_cid = curr->address;
-			servaddr_vm.svm_port = WMASTERD_PORT_WELLED;
+			servaddr_vm.svm_port = port;
 			servaddr_vm.svm_family = af;
 		} else {
 			memset(&servaddr_in, 0, sizeof(servaddr_in));
 			servaddr_in.sin_addr.s_addr = curr->address;
-			servaddr_in.sin_port = WMASTERD_PORT_WELLED;
+			servaddr_in.sin_port = port;
 			servaddr_in.sin_family = af;
 		}
 
@@ -2899,6 +2900,15 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
+        if (vsock) {
+		print_debug(LOG_INFO, "listening on %u:%d",
+				myservaddr_vm.svm_cid,
+				port);
+	} else {
+		print_debug(LOG_INFO, "listening on %s:%d",
+				inet_ntoa(myservaddr_in.sin_addr),
+				port);
+	}
 	pthread_mutex_init(&list_mutex, NULL);
 	pthread_mutex_init(&file_mutex, NULL);
 
