@@ -2251,7 +2251,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		} else {
 			memset(&servaddr_in, 0, sizeof(servaddr_in));
 			servaddr_in.sin_addr.s_addr = curr->address;
-			servaddr_in.sin_port = port;
+			servaddr_in.sin_port = htons(port);
 			servaddr_in.sin_family = af;
 		}
 
