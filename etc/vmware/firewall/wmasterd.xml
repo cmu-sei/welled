@@ -13,6 +13,24 @@
       <porttype>dst</porttype>
       <port>2018</port>
     </rule>
+    <rule id='0002'>
+      <direction>inbound</direction>
+      <protocol>udp</protocol>
+      <porttype>dst</porttype>
+      <port>1111</port>
+    </rule>
+    <rule id='0003'>
+      <direction>outbound</direction>
+      <protocol>udp</protocol>
+      <porttype>dst</porttype>
+      <port>2222</port>
+    </rule>
+    <rule id='0004'>
+      <direction>outbound</direction>
+      <protocol>udp</protocol>
+      <porttype>dst</porttype>
+      <port>3333</port>
+    </rule>
     <enabled>true</enabled>
     <required>false</required>
   </service>
