@@ -2645,21 +2645,21 @@ int main(int argc, char *argv[])
 	}
 
 	if (vsock) {
+		af = -1;
 		/* TODO: add check for other hypervisors */
 		vsock_dev_fd = open("/dev/vsock", 0);
 		if (vsock_dev_fd < 0) {
 			sock_error("wmasterd: open");
 			print_debug(LOG_ERR, "could not open /dev/vsock\n");
-			_exit(EXIT_FAILURE);
+		} else {
+			if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
+				perror("wmasterd: ioctl IOCTL_VM_SOCKETS_GET_LOCAL_CID");
+			}
+			if (ioctl(vsock_dev_fd, IOCTL_VMCI_SOCKETS_GET_AF_VALUE, &af) < 0) {
+				perror("wmasterd: ioctl IOCTL_VMCI_SOCKETS_GET_AF_VALUE");
+				af = -1;
+			}
 		}
-		if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
-			perror("wmasterd: ioctl IOCTL_VM_SOCKETS_GET_LOCAL_CID");
-		}
-		if (ioctl(vsock_dev_fd, IOCTL_VMCI_SOCKETS_GET_AF_VALUE, &af) < 0) {
-			perror("wmasterd: ioctl IOCTL_VMCI_SOCKETS_GET_AF_VALUE");
-			af = -1;
-		}
-
 		if (af == -1) {
 			/* take a guess */
 			if (esx)
