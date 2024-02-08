@@ -18,11 +18,11 @@ rm -rf ../tmp/etc/ ../tmp/usr/
 
 echo Building: CMU_bootbank_wmasterd_$VERSION.$DATE.vib
 
-SIZE=`stat --format %s ../tmp/stage.vtar`
 SHA1=`sha1sum ../tmp/stage.vtar| cut -f 1 -d ' '`
 
 cd ../tmp/; gzip -c stage.vtar > wmasterd; cd -
 
+SIZE=`stat --format %s ../tmp/wmasterd`
 SHA256=`sha256sum ../tmp/wmasterd | cut -f 1 -d ' '`
 
 # create empty signature file
