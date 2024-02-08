@@ -2883,7 +2883,7 @@ int main(int argc, char *argv[])
 
 	memset(&servaddr_in, 0, sizeof(servaddr_in));
 	servaddr_in.sin_addr = wmasterd_address;
-	servaddr_in.sin_port = port;
+	servaddr_in.sin_port = htons(port);
 	servaddr_in.sin_family = AF_INET;
 
 	/* setup socket to send data */

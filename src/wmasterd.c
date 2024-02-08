@@ -73,10 +73,54 @@
   #define sock_error perror
 #endif
 
-#ifdef _ESX
+#ifdef _ESX5
 /** ESXi 5.5 and 6.0 do not have 2.24 so we need to link older one */
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 #endif
+#ifdef _ESX6
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+#endif
+
+/*
+#ifdef _ESX7
+*/
+/** When compiling on a system that has glibc of 2.34 or higher, we need
+ * to update many symbols and also figure out how to link pthread functions
+ * because they are no longer separate.
+ * This is not working... maybe try static compilation??
+ */
+/*
+__asm__(".symver __libc_start_main_old,__libc_start_main@GLIBC_2.2.5");
+int __libc_start_main_old(int (*main) (int, char **, char **),
+                          int argc,
+                          char **argv,
+                          __typeof (main) init,
+                          void (*fini) (void),
+                          void (*rtld_fini) (void),
+                          void *stack_end);
+
+int __wrap___libc_start_main(int (*main) (int, char **, char **),
+                             int argc,
+                             char **argv,
+                             __typeof (main) init,
+                             void (*fini) (void),
+                             void (*rtld_fini) (void),
+                             void *stack_end)
+{
+  return __libc_start_main_old(main,argc,argv,init,fini,rtld_fini,stack_end);
+}
+
+#endif
+*/
+/*
+__asm__(".symver pthread_create,pthread_create@GLIBC_2.2.5");
+__asm__(".symver pthread_join,pthread_join@GLIBC_2.2.5");
+__asm__(".symver pthread_cancel,pthread_cancel@GLIBC_2.2.5");
+__asm__(".symver pthread_mutex_destroy,pthread_mutex_destroy@GLIBC_2.2.5");
+__asm__(".symver pthread_mutex_unlock,pthread_mutex_unlock@GLIBC_2.2.5");
+__asm__(".symver pthread_mutex_init,pthread_mutex_init@GLIBC_2.2.5");
+__asm__(".symver pthread_mutex_lock,pthread_mutex_lock@GLIBC_2.2.5");
+*/
 
 #include "wmasterd.h"
 
@@ -2843,7 +2887,7 @@ int main(int argc, char *argv[])
 	} else {
 		memset(&myservaddr_in, 0, sizeof(myservaddr_in));
 		myservaddr_in.sin_addr.s_addr = INADDR_ANY;
-		myservaddr_in.sin_port = port;
+		myservaddr_in.sin_port = htons(port);
 		myservaddr_in.sin_family = af; /* AF_INET */
 		ret = bind(myservfd, (struct sockaddr *)&myservaddr_in,
 				sizeof(struct sockaddr));
