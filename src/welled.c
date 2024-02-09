@@ -2920,7 +2920,7 @@ int main(int argc, char *argv[])
 	myservaddr_vm.svm_port = htons(WMASTERD_PORT_WELLED);
 	myservaddr_vm.svm_family = af;
 
-	memset(&myservaddr_in, 0, sizeof(myservaddr_vm));
+	memset(&myservaddr_in, 0, sizeof(myservaddr_in));
 	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
 	myservaddr_in.sin_port = htons(WMASTERD_PORT_WELLED);
 	myservaddr_in.sin_family = AF_INET;
