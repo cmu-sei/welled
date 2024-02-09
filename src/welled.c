@@ -2878,7 +2878,7 @@ int main(int argc, char *argv[])
 	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 	servaddr_vm.svm_cid = VMADDR_CID_HOST;
-	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_port = htons(port);
 	servaddr_vm.svm_family = af;
 
 	memset(&servaddr_in, 0, sizeof(servaddr_in));
@@ -2917,12 +2917,12 @@ int main(int argc, char *argv[])
 	/* we can initalize this struct because it never changes */
 	memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
 	myservaddr_vm.svm_cid = VMADDR_CID_ANY;
-	myservaddr_vm.svm_port = WMASTERD_PORT_WELLED;
+	myservaddr_vm.svm_port = htons(WMASTERD_PORT_WELLED);
 	myservaddr_vm.svm_family = af;
 
 	memset(&myservaddr_in, 0, sizeof(myservaddr_vm));
 	myservaddr_in.sin_addr.s_addr = INADDR_ANY;
-	myservaddr_in.sin_port = WMASTERD_PORT_WELLED;
+	myservaddr_in.sin_port = htons(WMASTERD_PORT_WELLED);
 	myservaddr_in.sin_family = AF_INET;
 
 	if (vsock) {

@@ -1182,12 +1182,12 @@ void send_nmea_to_nodes(void)
 		if (vsock) {
 			memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 			servaddr_vm.svm_cid = curr->address;
-			servaddr_vm.svm_port = WMASTERD_PORT_GELLED;
+			servaddr_vm.svm_port = htons(WMASTERD_PORT_GELLED);
 			servaddr_vm.svm_family = af;
 		} else {
 			memset(&servaddr_in, 0, sizeof(servaddr_in));
 			servaddr_in.sin_addr.s_addr = curr->address;
-			servaddr_in.sin_port = WMASTERD_PORT_GELLED;
+			servaddr_in.sin_port = htons(WMASTERD_PORT_GELLED);
 			servaddr_in.sin_family = af;
 		}
 
@@ -2246,7 +2246,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		if (vsock) {
 			memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 			servaddr_vm.svm_cid = curr->address;
-			servaddr_vm.svm_port = port;
+			servaddr_vm.svm_port = htons(port);
 			servaddr_vm.svm_family = af;
 		} else {
 			memset(&servaddr_in, 0, sizeof(servaddr_in));
@@ -2881,7 +2881,7 @@ int main(int argc, char *argv[])
 	if (vsock) {
 		memset(&myservaddr_vm, 0, sizeof(myservaddr_vm));
 		myservaddr_vm.svm_cid = cid;
-		myservaddr_vm.svm_port = port;
+		myservaddr_vm.svm_port = htons(port);
 		myservaddr_vm.svm_family = af; /* AF_VSOCK */
 		ret = bind(myservfd, (struct sockaddr *)&myservaddr_vm,
 				sizeof(struct sockaddr));
