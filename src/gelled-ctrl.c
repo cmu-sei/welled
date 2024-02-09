@@ -552,12 +552,12 @@ options:
 	/* setup wmasterd details */
 	memset(&servaddr_vm, 0, sizeof(servaddr_vm));
 	servaddr_vm.svm_cid = VMADDR_CID_HOST;
-	servaddr_vm.svm_port = port;
+	servaddr_vm.svm_port = htons(port);
 	servaddr_vm.svm_family = af;
 
 	memset(&servaddr_in, 0, sizeof(servaddr_in));
 	servaddr_in.sin_addr = wmasterd_address;
-	servaddr_in.sin_port = port;
+	servaddr_in.sin_port = htons(port);
 	servaddr_in.sin_family = af;
 
 	if (vsock) {
