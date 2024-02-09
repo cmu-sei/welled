@@ -1289,9 +1289,9 @@ attempt idx, count: -1 0
 			print_debug(LOG_ERR, "ERROR: Could not TX frame to wmasterd");
 		} else {
 			if (vsock) {
-				print_debug(LOG_INFO, "sent %5d bytes to wmasterd %u:%d from radio %d", bytes, servaddr_vm.svm_cid, servaddr_vm.svm_port, node->radio_id);
+				print_debug(LOG_INFO, "sent %5d bytes to wmasterd %u:%d from radio %d", bytes, servaddr_vm.svm_cid, port, node->radio_id);
 			} else {
-				print_debug(LOG_INFO, "sent %5d bytes to wmasterd %s:%d from radio %d", bytes, inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port, node->radio_id);
+				print_debug(LOG_INFO, "sent %5d bytes to wmasterd %s:%d from radio %d", bytes, inet_ntoa(servaddr_in.sin_addr), port, node->radio_id);
 			}
 		}
 		free(message);
