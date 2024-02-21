@@ -808,6 +808,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 			print_debug(LOG_DEBUG, "NLMSG_DONE processing hwsim nl msgs");
 			break;
 		case NLMSG_ERROR:
+                        print_debug(LOG_ERR, "NLMSG_ERROR processing hwsim nl msgs");
 			err = nlmsg_data(nlh);
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 			int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
@@ -883,7 +884,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 
 	/*
 	NL_OK
-	Proceed with wathever would come next.
+	Proceed with whatever would come next.
 
 	NL_SKIP
 	Skip this message.
