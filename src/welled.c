@@ -2726,14 +2726,14 @@ int main(int argc, char *argv[])
 		case 'D':
 			loglevel = atoi(optarg);
 			if ((loglevel < 0) || (loglevel > 7)) {
-				show_usage(EXIT_FAILURE);
+				show_usage(EXIT_SUCCESS);
 			}
 			printf("welled: syslog level set to %d\n", loglevel);
 			break;
 		case 'p':
 			port = atoi(optarg);
 			if (port < 1 || port > 65535) {
-				show_usage(EXIT_FAILURE);
+				show_usage(EXIT_SUCCESS);
 			}
 			break;
 /*
@@ -2745,13 +2745,13 @@ int main(int argc, char *argv[])
 			vsock = 0;
 			if (inet_pton(AF_INET, optarg, &wmasterd_address) == 0) {
 				printf("welled: invalid ip address\n");
-				show_usage(EXIT_FAILURE);
+				show_usage(EXIT_SUCCESS);
 			}
 			break;
 		case '?':
-			printf("Error - No such option: `%c'\n\n",
+			printf("welled: No such option: `%c'\n\n",
 				optopt);
-			show_usage(EXIT_FAILURE);
+			show_usage(EXIT_SUCCESS);
 			break;
 		}
 	}
@@ -2759,14 +2759,14 @@ int main(int argc, char *argv[])
 	if (optind < argc)
 		show_usage(EXIT_FAILURE);
 
-	if (loglevel >= 0)
-		openlog("welled", LOG_PID, LOG_USER);
-
 	euid = geteuid();
 	if (euid != 0) {
-		print_debug(LOG_ERR, "must run as root");
+		printf("welled: must run as root\n");
 		_exit(EXIT_FAILURE);
 	}
+
+	if (loglevel >= 0)
+		openlog("welled", LOG_PID, LOG_USER);
 
 	if (vsock) {
 		/* code for vm_sockets */
@@ -2777,14 +2777,14 @@ int main(int argc, char *argv[])
 		if (ioctl_fd < 0) {
 			perror("open");
 			print_debug(LOG_ERR, "could not open /dev/vsock");
-			_exit(EXIT_FAILURE);
-		}
-		err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
-		if (err < 0) {
-			perror("ioctl: Cannot get local CID");
-			print_debug(LOG_ERR, "could not get local CID");
 		} else {
-			print_debug(LOG_DEBUG, "CID: %u", cid);
+			err = ioctl(ioctl_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid);
+			if (err < 0) {
+				perror("ioctl: Cannot get local CID");
+				print_debug(LOG_ERR, "could not get local CID");
+			} else {
+				print_debug(LOG_DEBUG, "CID: %u", cid);
+			}
 		}
 	} else {
 		af = AF_INET;
