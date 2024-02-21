@@ -690,7 +690,6 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			int frame_data_len = nla_len(nla_data(attr));
 			if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
 				print_debug(LOG_ERR, "frame_data_len is not valid size");
-				_exit(EXIT_FAILURE);
 			}
 			if (verbose) {
 				printf("- HWSIM_ATTR_FRAME:\n");
