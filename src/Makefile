@@ -147,6 +147,18 @@ welled-x86_64-Linux-vyos:
 	test -d ../dist/x86_64-Linux-vyos || mkdir ../dist/x86_64-Linux-vyos/
 	cp $(OUTDIR)/welled ../dist/x86_64-Linux-vyos/
 
+welled-i486-openwrt-linux-uclibc:
+	test -d $(OUTDIR) || mkdir $(OUTDIR)
+	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
+	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
+	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
+
+welled-i486-openwrt-linux-musl:
+	test -d $(OUTDIR) || mkdir $(OUTDIR)
+	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
+	$(CC) nodes.c -c $(LDFLAGS) $(CFLAGS)
+	$(CC) -o $(OUTDIR)/welled welled.o nodes.o $(LDFLAGS) -lnl-route-3 -lm
+
 welled-x86_64-openwrt-linux-uclibc:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
 	$(CC) welled.c -c $(LDFLAGS) $(CFLAGS) -DAF_VSOCK=40 -D_OPENWRT
@@ -184,6 +196,14 @@ gelled-ctrl-x86_64-Linux-vyos:
 	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0` -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
 	test -d ../dist/x86_64-Linux || mkdir ../dist/x86_64-Linux
 	cp $(OUTDIR)/gelled-ctrl ../dist/x86_64-Linux/
+
+gelled-ctrl-i486-openwrt-linux-uclibc:
+	test -d $(OUTDIR) || mkdir $(OUTDIR)
+	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
+
+gelled-ctrl-i486-openwrt-linux-musl:
+	test -d $(OUTDIR) || mkdir $(OUTDIR)
+	$(CC) -o $(OUTDIR)/gelled-ctrl gelled-ctrl.c -DVERSION_STR=$(VERSION_STR) `pkg-config --cflags --libs glib-2.0`
 
 gelled-ctrl-x86_64-openwrt-linux-uclibc:
 	test -d $(OUTDIR) || mkdir $(OUTDIR)
