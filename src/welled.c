@@ -687,6 +687,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 		// we check the radio address before sending the frame but we
 		// do not check the channel
 		if (attr->nla_type == HWSIM_ATTR_FRAME) {
+			frame = 1;
 			int frame_data_len = nla_len(nla_data(attr));
 			if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
 				print_debug(LOG_ERR, "frame_data_len is not valid size");
@@ -773,7 +774,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	} else if ((err == -EINVAL) && frame && freq) {
 		print_debug(LOG_ERR, "frame rejected, likely off channel, channel: %d", freq);
 	} else if (err == -EINVAL) {
-		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found");
+		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found, frame %d", frame);
 	} else {
 		print_debug(LOG_ERR, "unknown nl error: %d", err);
 	}
@@ -808,7 +809,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 			print_debug(LOG_DEBUG, "NLMSG_DONE processing hwsim nl msgs");
 			break;
 		case NLMSG_ERROR:
-                        print_debug(LOG_ERR, "NLMSG_ERROR processing hwsim nl msgs");
+			print_debug(LOG_DEBUG, "NLMSG_ERROR processing hwsim nl msgs");
 			err = nlmsg_data(nlh);
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 			int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
@@ -819,7 +820,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 
 			if (err->error == -22) {
 				/* not sure of the cause */
-				//print_debug(LOG_ERR, "-EINVAL from hwsim");
+				print_debug(LOG_ERR, "-EINVAL from hwsim");
 
 				//TODO check which cmd was returned, maybe it was 2 for a frame
 
@@ -834,7 +835,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 				return NL_STOP;
 			} else if (err->error == -19) {
 				/* radio does not exist */
-				//print_debug(LOG_ERR, "-ENODEV from hwsim");
+				print_debug(LOG_ERR, "-ENODEV from hwsim");
 
 				parse_nl_error_attr(attr, payload_len, err->error);
 			} else if (err->error == -34) {
