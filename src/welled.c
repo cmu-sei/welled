@@ -768,12 +768,14 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 
 	if ((err == -ERANGE) && tx_info) {
 		print_debug(LOG_ERR, "tx_info frame rejected");
-	}
-	if ((err == -ENODEV) && (radio_id >= 0)) {
+	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
-	}
-	if ((err == -EINVAL) && frame && freq) {
+	} else if ((err == -EINVAL) && frame && freq) {
 		print_debug(LOG_ERR, "frame rejected, likely off channel, channel: %d", freq);
+	} else if (err == -EINVAL) {
+		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found");
+	} else {
+		print_debug(LOG_ERR, "unknown nl error: %d", err);
 	}
 }
 
@@ -1098,24 +1100,27 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	round = 0;
 	tx_ok = 0;
 /*
-printf("###\n");
-int i;
-	for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
-		printf("rate idx, count: %d %d\n", tx_rates[i].idx, tx_rates[i].count);
+	if (verbose) {
+		int i;
+		printf("###\n");
+		for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
+			printf("tx_rates[%d].idx   %3d\n", i, tx_rates[i].idx);
+			printf("tx_rates[%d].count %3d\n", i, tx_rates[i].count);
+		}
+		printf("###\n");
 	}
 */
 /*
-rate idx, count: 0 1
-rate idx, count: -1 0
-rate idx, count: -1 0
-rate idx, count: -1 0
-rate idx, count: 12 0
-attempt idx, count: 2 0
-attempt idx, count: 0 0
-attempt idx, count: 0 0
-attempt idx, count: 0 0
-attempt idx, count: 50 0
-
+tx_rates[0].idx     0
+tx_rates[0].count   1
+tx_rates[1].idx    -1
+tx_rates[1].count   0
+tx_rates[2].idx    -1
+tx_rates[2].count   0
+tx_rates[3].idx    -1
+tx_rates[3].count   0
+tx_rates[4].idx    16
+tx_rates[4].count   0
 */
 /*
 printf("###\n");
@@ -1124,31 +1129,47 @@ printf("setting rates invalid\n");
 	/* We prepare the tx_attempts struct */
 	set_all_rates_invalid(tx_attempts);
 
-	/* TODO: print tx_attempts */
 /*
-printf("###\n");
-	for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
-		printf("rate idx, count: %d %d\n", tx_rates[i].idx, tx_rates[i].count);
-	}
-	for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
-		printf("attempt idx, count: %d %d\n", tx_attempts[i].idx, tx_attempts[i].count);
+	if (verbose) {
+		int i;
+		printf("###\n");
+		for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
+			printf("tx_rates[%d].idx   %3d\n", i, tx_rates[i].idx);
+			printf("tx_rates[%d].count %3d\n", i, tx_rates[i].count);
+		}
+		for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
+			printf("tx_attempts[%d].idx   %3d\n", i, tx_attempts[i].idx);
+			printf("tx_attempts[%d].count %3d\n", i, tx_attempts[i].count);
+		}
+		printf("###\n");
 	}
 */
 /*
-rate idx, count: 0 1
-rate idx, count: -1 0
-rate idx, count: -1 0
-rate idx, count: -1 0
-rate idx, count: 12 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
+tx_rates[0].idx     0
+tx_rates[0].count   1
+tx_rates[1].idx    -1
+tx_rates[1].count   0
+tx_rates[2].idx    -1
+tx_rates[2].count   0
+tx_rates[3].idx    -1
+tx_rates[3].count   0
+tx_rates[4].idx    16
+tx_rates[4].count   0
+tx_attempts[0].idx    -1
+tx_attempts[0].count   0
+tx_attempts[1].idx    -1
+tx_attempts[1].count   0
+tx_attempts[2].idx    -1
+tx_attempts[2].count   0
+tx_attempts[3].idx    -1
+tx_attempts[3].count   0
+tx_attempts[4].idx    -1
+tx_attempts[4].count   0
 */
 	while (round < IEEE80211_MAX_RATES_PER_TX &&
 			tx_rates[round].idx != -1 && tx_ok != 1) {
-
+		if (verbose)
+			printf("round %d of %d\n", round, IEEE80211_MAX_RATES_PER_TX);
 		counter = 1;
 
 		/* tx_rates comes from the driver...
@@ -1160,41 +1181,55 @@ attempt idx, count: -1 0
 		tx_attempts[round].idx = tx_rates[round].idx;
 
 		while (counter <= tx_rates[round].count && tx_ok != 1) {
+			if (verbose)
+				printf("counter %d of %d\n", counter, tx_rates[round].count);
 			tx_attempts[round].count = counter;
 			counter++;
 		}
 		round++;
 	}
-/*
-printf("###\n");
-printf("adjustments\n");
-*/
-	/* TODO: print tx_attempts */
-/*
-	for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
-		printf("rates idx, count: %d %d\n", tx_rates[i].idx, tx_rates[i].count);
+
+	if (verbose) {
+		int i;
+		printf("###\n");
+		printf("original\n");
+		for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
+			printf("tx_rates[%d].idx   %3d\n", i, tx_rates[i].idx);
+			printf("tx_rates[%d].count %3d\n", i, tx_rates[i].count);
+		}
+		printf("adjustment\n");
+		for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
+			printf("tx_attempts[%d].idx   %3d\n", i, tx_attempts[i].idx);
+			printf("tx_attempts[%d].count %3d\n", i, tx_attempts[i].count);
+		}
+		printf("###\n");
 	}
-	for (i = 0; i < IEEE80211_MAX_RATES_PER_TX; i++) {
-		printf("attempt idx, count: %d %d\n", tx_attempts[i].idx, tx_attempts[i].count);
-	}
-printf("###\n");
-*/
 /*
-rates idx, count: 0 1
-rates idx, count: -1 0
-rates idx, count: -1 0
-rates idx, count: -1 0
-rates idx, count: 12 0
-attempt idx, count: 0 1
-attempt idx, count: -1 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
-attempt idx, count: -1 0
+adjustments
+tx_rates[0].idx     0
+tx_rates[0].count   1
+tx_rates[1].idx    -1
+tx_rates[1].count   0
+tx_rates[2].idx    -1
+tx_rates[2].count   0
+tx_rates[3].idx    -1
+tx_rates[3].count   0
+tx_rates[4].idx    16
+tx_rates[4].count   0
+tx_attempts[0].idx     0
+tx_attempts[0].count   1
+tx_attempts[1].idx    -1
+tx_attempts[1].count   0
+tx_attempts[2].idx    -1
+tx_attempts[2].count   0
+tx_attempts[3].idx    -1
+tx_attempts[3].count   0
+tx_attempts[4].idx    -1
+tx_attempts[4].count   0
 */
 	/* round -1 is the last element of the array */
 	/* this is the signal sent to the sender, not the receiver */
 	signal = -11;
-
 
 	if (attrs[HWSIM_ATTR_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
@@ -1214,6 +1249,7 @@ attempt idx, count: -1 0
 	flags |= HWSIM_TX_STAT_ACK;
 	/* this has to be an ack the driver expects */
 	/* what does the driver do with these values? can i remove them? */
+	// TODO maybe get ack from the rx radio and send a custom message back
 	send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie);
 	print_debug(LOG_DEBUG, "sent tx_info frame to hwsim");
 	/*
@@ -1832,9 +1868,9 @@ void recv_from_master(void)
 
 	if (verbose) {
 		mac_address_to_string(addr_string, tx_src);
-        printf("- nl tx src: %s\n", addr_string);
+		printf("- nl tx src: %s\n", addr_string);
 		mac_address_to_string(addr_string, &framesrc);
-        printf("- frame src: %s\n", addr_string);
+		printf("- frame src: %s\n", addr_string);
 		mac_address_to_string(addr_string, &framedst);
 		printf("- frame dst: %s\n", addr_string);
 	}
