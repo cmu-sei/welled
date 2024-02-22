@@ -1144,7 +1144,7 @@ int main(int argc, char *argv[])
 			perror("ioctl: Cannot get local CID");
 			print_debug(LOG_ERR, "could not get local CID");
 		} else {
-			print_debug(LOG_INFO, "CID: %u\n", cid);
+			print_debug(LOG_INFO, "CID: %u", cid);
 		}
 #endif
 	} else {
