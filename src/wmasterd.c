@@ -1944,7 +1944,7 @@ void list_nodes(void)
 
 	if (!fp && esx) {
 		perror("wmasterd: fopen");
-		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status\n");
+		print_debug(LOG_WARNING, "could not open /tmp/wmasterd.status");
 	}
 
 	if (fp) {
@@ -2047,7 +2047,7 @@ void remove_node(unsigned int dsthost, int radio_id)
 
 	/* exit if we hit the end of the list */
 	if (curr == NULL) {
-		print_debug(LOG_INFO, "node not found: %16u\n", dsthost);
+		print_debug(LOG_INFO, "node not found: %16u", dsthost);
 		return;
 	}
 
@@ -2151,7 +2151,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sockfd < 0) {
 		sock_error("wmasterd: socket");
-		print_debug(LOG_ERR, "error: could not create udp socket\n");
+		print_debug(LOG_ERR, "error: could not create udp socket");
 		free(buffer);
 		return;
 	}
@@ -2165,7 +2165,7 @@ void send_to_hosts(char *buf, int bytes, char *room)
 	if (bytes_sent < 0)
 		sock_error("wmasterd: sendto\n");
 	else
-		print_debug(LOG_DEBUG, "sent %5d bytes to host: %s\n",
+		print_debug(LOG_DEBUG, "sent %5d bytes to host: %s",
 				bytes_sent, broadcast_addr);
 
 	/* cleanup */
@@ -2230,7 +2230,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 			temp = curr->next;
 
 			/* remove stale node */
-			print_debug(LOG_DEBUG, "stale node found\n");
+			print_debug(LOG_DEBUG, "stale node found");
 			remove_node(curr->address, curr->radio_id);
 
 			/* go to next node */
@@ -2293,7 +2293,7 @@ void relay_to_nodes(char *buf, int bytes, struct client *node)
 		if (bytes_sent < 0) {
 			if (verbose) {
 				sock_error("wmasterd: sendto");
-				print_debug(LOG_ERR, "error: name %s cid %d bytes %d\n", curr->name, curr->address, bytes + 12);
+				print_debug(LOG_ERR, "error: name %s cid %d bytes %d", curr->name, curr->address, bytes + 12);
 				print_node(curr);
 			}
 			/* since powering off a VM results in this error
@@ -2391,7 +2391,7 @@ void update_node_info(struct client *node, struct update_2 *data)
 	}
 
 	if (update_file) {
-		print_debug(LOG_INFO, "node name %s room %s\n", node->name, node->room);
+		print_debug(LOG_INFO, "node name %s room %s", node->name, node->room);
 		update_cache_file_info(node);
 	}
 }
@@ -2542,7 +2542,7 @@ void recv_from_welled(void)
 			return;
 		}
 	} else if (update_room && check_room && vsock) {
-		print_debug(LOG_DEBUG, "checking vmx for room update\n");
+		print_debug(LOG_DEBUG, "checking vmx for room update");
 		/* check for room change if room enforced */
 		strncpy(old_room, node->room, UUID_LEN - 1);
 		if (vsock) {
@@ -2798,7 +2798,7 @@ int main(int argc, char *argv[])
 		vsock_dev_fd = open("/dev/vsock", 0);
 		if (vsock_dev_fd < 0) {
 			sock_error("wmasterd: open");
-			print_debug(LOG_ERR, "could not open /dev/vsock\n");
+			print_debug(LOG_ERR, "could not open /dev/vsock");
 			_exit(EXIT_FAILURE);
 		}
 		if (ioctl(vsock_dev_fd, IOCTL_VM_SOCKETS_GET_LOCAL_CID, &cid) < 0) {
@@ -2855,7 +2855,7 @@ int main(int argc, char *argv[])
 
 		/* display result */
 		strncpy(broadcast_addr, inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr), 15);
-		print_debug(LOG_NOTICE, "relay to broadcast address: %s\n", broadcast_addr);
+		print_debug(LOG_NOTICE, "relay to broadcast address: %s", broadcast_addr);
 	}
 #endif
 
@@ -3023,7 +3023,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_destroy(&list_mutex);
 	pthread_mutex_destroy(&file_mutex);
 
-	print_debug(LOG_INFO, "Mutices have been destroyed\n");
+	print_debug(LOG_INFO, "Mutices have been destroyed");
 
 	if (cache_fp)
 		fclose(cache_fp);
@@ -3034,7 +3034,7 @@ int main(int argc, char *argv[])
 	close(vsock_dev_fd);
 	#endif
 
-	print_debug(LOG_NOTICE, "Exiting\n");
+	print_debug(LOG_NOTICE, "Exiting");
 
 	return EXIT_SUCCESS;
 }
