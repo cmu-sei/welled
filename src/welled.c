@@ -2463,6 +2463,9 @@ static int list_interface_handler(struct nl_msg *msg, void *arg)
 		/* set interface type */
 		node->iftype = iftype;
 
+		/* set netnsid */
+		node->netnsid = netnsid;
+
 		/* initialilze socket to be used for ioctl */
 		ioctl_fd = socket(AF_INET, SOCK_STREAM, 0);
 		if (ioctl_fd < 0) {
