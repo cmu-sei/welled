@@ -254,19 +254,19 @@ void print_device_node(int i, struct device_node *curr)
 	printf("N[%d]:netnsid    %ld\n", i, curr->netnsid);
 	switch (curr->iftype) {
 		case 2:
-			printf("M[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
+			printf("N[%d]:iftype:    NL80211_IFTYPE_STATION\n", i);
 			break;
 		case 3:
-			printf("M[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
+			printf("N[%d]:iftype:    NL80211_IFTYPE_AP\n", i);
 			break;
 		case 6:
-			printf("M[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
+			printf("N[%d]:iftype:    NL80211_IFTYPE_MONITOR\n", i);
 			break;
 		case 7:
-			printf("M[%d]:iftype:    NL80211_IFTYPE_MESH_POINT\n", i);
+			printf("N[%d]:iftype:    NL80211_IFTYPE_MESH_POINT\n", i);
 			break;
 		default:
-			printf("M[%d]:iftype:    %d\n", i, curr->iftype);
+			printf("N[%d]:iftype:    %d\n", i, curr->iftype);
 			break;
 	}
 	printf("N[%d]:address:   %02X:%02X:%02X:%02X:%02X:%02X\n", i,

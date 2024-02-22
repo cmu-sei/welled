@@ -251,19 +251,19 @@ void hex_dump(void *addr, int len)
 #ifndef _WIN32
 int get_mynetns(void)
 {
-        char *nspath = "/proc/self/ns/net";
-        char pathbuf[256];
-        int len = readlink(nspath, pathbuf, sizeof(pathbuf));
-        if (len < 0) {
-                perror("readlink");
-                return -1;
-        }
-        if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
-                perror("sscanf");
-                return -1;
-        }
-        print_debug(LOG_DEBUG, "netns: %ld", mynetns);
-        return 0;
+	char *nspath = "/proc/self/ns/net";
+	char pathbuf[256];
+	int len = readlink(nspath, pathbuf, 256);
+	if (len < 0) {
+		perror("readlink");
+		return -1;
+	}
+	if (sscanf(pathbuf, "net:[%ld]", &mynetns) < 0) {
+		perror("sscanf");
+		return -1;
+	}
+	print_debug(LOG_DEBUG, "mynetns: %ld", mynetns);
+	return 0;
 }
 #endif
 
@@ -318,8 +318,8 @@ int main(int argc, char *argv[])
 		{"name",		required_argument, 0, 'n'},
 		{"server",      required_argument, 0, 's'},
 		{"port",		required_argument, 0, 'p'},
-        {"radio",       required_argument, 0, 'r'},
-        {"room",        required_argument, 0, 'R'},
+	{"radio",       required_argument, 0, 'r'},
+	{"room",	required_argument, 0, 'R'},
 		{"debug",       required_argument, 0, 'D'},
 		{0, 0, 0, 0}
 	};
@@ -374,12 +374,12 @@ options:
 		case 'v':
 			verbose = 1;
 			break;
-        case 'r':
-            radio_id = atoi(optarg);
-            break;
-        case 'R':
+		case 'r':
+			radio_id = atoi(optarg);
+			break;
+		case 'R':
 			strncpy(data.room, optarg, UUID_LEN);
-            break;
+			break;
 		case 'y':
 			data.latitude = strtof(optarg, NULL);
 			// check boundsa
@@ -486,7 +486,7 @@ options:
 		af = AF_INET;
 	}
 
-    inside_netns = 0;
+	inside_netns = 0;
 
 #ifndef _WIN32
 	/* get my netns */
@@ -526,10 +526,11 @@ options:
 				perror("fstat");
 			}
 			long int inode = statbuf->st_ino;
-			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
 
 			if (inode == mynetns) {
 				inside_netns = 1;
+			} else {
+				print_debug(LOG_INFO, "found netns %ld present on system named: %s", inode, file->d_name);
 			}
 			close(fd);
 			free(statbuf);

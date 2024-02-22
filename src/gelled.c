@@ -561,22 +561,22 @@ int check_if_sea(double lat, double lon)
 		return -1;
 	}
 #else
-        if (mkdir(cachedir) && errno != EEXIST) {
-                print_debug(LOG_ERR, "cannot create dir %s", cachedir);
-                return -1;
-        }
+	if (mkdir(cachedir) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", cachedir);
+		return -1;
+	}
 
-        snprintf(zoomdir, 255, "%s/%d", cachedir, ZOOM);
-        if (mkdir(zoomdir) && errno != EEXIST) {
-                print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
-                return -1;
-        }
+	snprintf(zoomdir, 255, "%s/%d", cachedir, ZOOM);
+	if (mkdir(zoomdir) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", zoomdir);
+		return -1;
+	}
 
-        snprintf(xdir, 255, "%s/%d/%d", cachedir, ZOOM, xtile);
-        if (mkdir(xdir) && errno != EEXIST) {
-                print_debug(LOG_ERR, "cannot create dir %s", xdir);
-                return -1;
-        }
+	snprintf(xdir, 255, "%s/%d/%d", cachedir, ZOOM, xtile);
+	if (mkdir(xdir) && errno != EEXIST) {
+		print_debug(LOG_ERR, "cannot create dir %s", xdir);
+		return -1;
+	}
 #endif
 
 	stat(pngfile, &statbuf);
@@ -996,7 +996,7 @@ int get_mynetns(void)
 {
 	char *nspath = "/proc/self/ns/net";
 	char *pathbuf = calloc(256, 1);
-	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	int len = readlink(nspath, pathbuf, 256);
 	if (len < 0) {
 		perror("readlink");
 		return -1;
@@ -1006,7 +1006,7 @@ int get_mynetns(void)
 		return -1;
 	}
 	free(pathbuf);
-	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+	print_debug(LOG_DEBUG, "mynetns: %ld", mynetns);
 	return 0;
 }
 #endif
@@ -1157,7 +1157,7 @@ int main(int argc, char *argv[])
 		check_position = 0;
 	}
 
-    inside_netns = 0;
+	inside_netns = 0;
 
 #ifndef _WIN32
 	/* get my netns */
@@ -1197,10 +1197,11 @@ int main(int argc, char *argv[])
 				perror("fstat");
 			}
 			long int inode = statbuf->st_ino;
-			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
 
 			if (inode == mynetns) {
 				inside_netns = 1;
+			} else {
+				print_debug(LOG_INFO, "found netns %ld present on system named: %s", inode, file->d_name);
 			}
 			close(fd);
 			free(statbuf);
