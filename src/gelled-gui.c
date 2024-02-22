@@ -135,7 +135,7 @@ void print_debug(int level, char *format, ...)
 }
 
 /**
- *      Convert decimal degrees to decimal minutes
+ *	Convert decimal degrees to decimal minutes
  *
  */
 void dec_deg_to_dec_min(float orig, char *dest, int len)
@@ -172,8 +172,8 @@ void dec_deg_to_dec_min(float orig, char *dest, int len)
 }
 
 /**
- *      monitor gps and set a watch for events
- *      this thread will post location updates if enabled
+ *	monitor gps and set a watch for events
+ *	this thread will post location updates if enabled
  */
 void *gps(void *arg)
 {
@@ -225,7 +225,7 @@ open:
 }
 
 /*
- *      Send new location to gelled-ctrl
+ *	Send new location to gelled-ctrl
  */
 static void send_location(void)
 {
@@ -316,7 +316,7 @@ static void zoom_to_current_location(GtkWidget *widget, gpointer user_data)
 }
 
 /**
- *      destrors the main gui window
+ *	destrors the main gui window
  */
 static void quit_click(GtkWidget *f)
 {
@@ -324,7 +324,7 @@ static void quit_click(GtkWidget *f)
 }
 
 /**
- *      creates the about window
+ *	creates the about window
  */
 static void show_about(GtkWidget *f)
 {
@@ -335,7 +335,7 @@ static void show_about(GtkWidget *f)
 		"http://www.openstreetmaps.org",
 		"Map data is available under the Open Database Licence.",
 		"Copyright © OpenStreetMap contributors",
-	       	"License and Terms at www.openstreetmap.org/copyright",
+		"License and Terms at www.openstreetmap.org/copyright",
 		"or www.opendatacommons.org/licenses/odbl.", NULL};
 
 	/* Create dialog */
@@ -365,7 +365,7 @@ static void show_about(GtkWidget *f)
 }
 
 /**
- *      save new gpsd address
+ *	save new gpsd address
  */
 void save_gpsd_address(GtkWidget *f, gpointer data)
 {
@@ -388,7 +388,7 @@ void save_gpsd_address(GtkWidget *f, gpointer data)
 }
 
 /**
- *      adjust gpsd server settings
+ *	adjust gpsd server settings
  */
 void set_gpsd_address(GtkWidget *f)
 {
@@ -445,7 +445,7 @@ void set_gpsd_address(GtkWidget *f)
 }
 
 /**
- *      updates the gui display's text fields
+ *	updates the gui display's text fields
  */
 gboolean update_display(void)
 {

@@ -80,7 +80,7 @@
 #include "nodes.h"
 
 /** Port used to send frames to wmasterd */
-#define WMASTERD_PORT	1111
+#define WMASTERD_PORT			1111
 /** Port used to receive frames from wmasterd */
 #define WMASTERD_PORT_WELLED		2222
 /** Address used to send frames to wmasterd */
@@ -90,7 +90,7 @@
 /** Buffer size for UDP datagrams */
 #define BUFF_LEN			10000
 /** Buffer size for netlink route interface list */
-#define IFLIST_REPLY_BUFFER     4096
+#define IFLIST_REPLY_BUFFER		4096
 
 /** wmasterd port */
 int port;
@@ -359,7 +359,7 @@ void set_all_rates_invalid(struct hwsim_tx_rate *tx_rate)
 }
 
 /**
- *      @brief Send a cloned frame to the kernel space driver.
+ *	@brief Send a cloned frame to the kernel space driver.
  *	This will send a frame to the driver using netlink.
  *	It is received by hwsim with hwsim_cloned_frame_received_nl()
  *	This is taken from wmediumd and modified. It is called after the
@@ -390,10 +390,10 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 		goto out;
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
-		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
+			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER,
-		     ETH_ALEN, dst);
+			ETH_ALEN, dst);
 	rc = nla_put(msg, HWSIM_ATTR_FRAME, data_len, data);
 	rc = nla_put_u32(msg, HWSIM_ATTR_RX_RATE, rate_idx);
 	rc = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
@@ -735,21 +735,21 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			if (verbose) {
 				printf("- HWSIM_ATTR_FLAGS:\n");
 				int flags = nla_get_u32(attr);
-				printf("- flags:     %u\n", flags);
+				printf("- flags:      %u\n", flags);
 			}
 		}
 		if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_SIGNAL:\n");
 				int signal = nla_get_u32(attr);
-				printf("- signal:    %d\n", signal);
+				printf("- signal:     %d\n", signal);
 			}
 		}
 		if (attr->nla_type == HWSIM_ATTR_COOKIE) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_COOKIE:\n");
 				unsigned long cookie = nla_get_u64(attr);
-				printf("- cookie:    %lu\n", cookie);
+				printf("- cookie:     %lu\n", cookie);
 			}
 		}
 		if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
@@ -763,14 +763,14 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			freq = nla_get_u32(attr);
 			if (verbose) {
 				printf("- HWSIM_ATTR_FREQ:\n");
-				printf("- freq:    %d\n", freq);
+				printf("- freq:      %d\n", freq);
 			}
 		}
 		attr = nla_next(attr, &remaining);
 	} while(remaining > 0);
 
 	if ((err == -ERANGE) && tx_info) {
-		print_debug(LOG_ERR, "tx_info frame rejected");
+		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie");
 	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
 	} else if ((err == -EINVAL) && frame && freq) {
@@ -1444,7 +1444,7 @@ int send_register_msg(void)
 	}
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
-		    0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
+			0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
 
 	nl_send_auto_complete(sock, msg);
 	nlmsg_free(msg);
@@ -1494,7 +1494,7 @@ int get_radio(int id)
  *	@param freq - the frequency on which this ack is sent
  *	@param src - the src address of the data frame this is response to
  *	@param dst - the dst address which now because the source of the ack
- *  @param radio_id - id of the sending radio
+ *	@param radio_id - id of the sending radio
  *	@return void
  */
 static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
@@ -1540,11 +1540,11 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		goto out;
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
-		    0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
+			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	/* set source address */
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER,
-		     ETH_ALEN, dst);
+			ETH_ALEN, dst);
 	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size,
 			hdr11);
 

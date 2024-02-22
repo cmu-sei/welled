@@ -268,7 +268,7 @@ int get_mynetns(void)
 #endif
 
 /**
- *      @brief main function
+ *	@brief main function
  */
 int main(int argc, char *argv[])
 {
@@ -315,11 +315,11 @@ int main(int argc, char *argv[])
 		{"degrees",     required_argument, 0, 'd'},
 		{"pitch",       required_argument, 0, 'P'},
 		{"follow",      required_argument, 0, 'f'},
-		{"name",		required_argument, 0, 'n'},
+		{"name",	required_argument, 0, 'n'},
 		{"server",      required_argument, 0, 's'},
-		{"port",		required_argument, 0, 'p'},
-	{"radio",       required_argument, 0, 'r'},
-	{"room",	required_argument, 0, 'R'},
+		{"port",	required_argument, 0, 'p'},
+		{"radio",       required_argument, 0, 'r'},
+		{"room",	required_argument, 0, 'R'},
 		{"debug",       required_argument, 0, 'D'},
 		{0, 0, 0, 0}
 	};

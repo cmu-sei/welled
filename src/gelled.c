@@ -166,9 +166,9 @@ char *strsep(char **sp, char *sep)
 #endif
 
 /**
- *      @brief Prints the CLI help
- *      @param exval - exit code
- *      @return - void, calls exit()
+ *	@brief Prints the CLI help
+ *	@param exval - exit code
+ *	@return - void, calls exit()
  */
 void show_usage(int exval)
 {
@@ -265,8 +265,8 @@ void print_debug(int level, char *format, ...)
 }
 
 /**
- *      @brief Signal handler which causes program to exit
- *      @return void - calls exit()
+ *	@brief Signal handler which causes program to exit
+ *	@return void - calls exit()
  */
 void signal_handler(void)
 {
@@ -610,9 +610,9 @@ int check_if_sea(double lat, double lon)
 #ifndef _WIN32
 /**
  *	@brief stop movement if we crashed
- *      sends velocity change of 0 to wmasterd
- *      to be used when we move from land to sea or sea to land
- *      this is basically gelled-ctrl
+ *	sends velocity change of 0 to wmasterd
+ *	to be used when we move from land to sea or sea to land
+ *	this is basically gelled-ctrl
  *	TODO: adjust altitude if we have a plane crash
  */
 void send_stop(int radio)
@@ -798,8 +798,8 @@ void send_notification(int radio_id, int netnsid, int cmd)
 }
 
 /**
- *      @brief parse vmci data from wmastered.
- *      @return void
+ *	@brief parse vmci data from wmastered.
+ *	@return void
  */
 void recv_from_master(void)
 {
@@ -935,10 +935,10 @@ out:
 }
 
 /***
- *      @brief send status message to wmasterd at some interval
+ *	@brief send status message to wmasterd at some interval
  *	this is a heartbeat to let wmasterd know we are still since gelled
  *	rarely sends data back to wmasterd
- *      @return void
+ *	@return void
  */
 void *send_status(void *arg)
 {
@@ -1012,7 +1012,7 @@ int get_mynetns(void)
 #endif
 
 /**
- *      @brief main function
+ *	@brief main function
  */
 int main(int argc, char *argv[])
 {
