@@ -92,20 +92,20 @@ __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
 /*
 __asm__(".symver __libc_start_main_old,__libc_start_main@GLIBC_2.2.5");
 int __libc_start_main_old(int (*main) (int, char **, char **),
-                          int argc,
-                          char **argv,
-                          __typeof (main) init,
-                          void (*fini) (void),
-                          void (*rtld_fini) (void),
-                          void *stack_end);
+			  int argc,
+			  char **argv,
+			  __typeof (main) init,
+			  void (*fini) (void),
+			  void (*rtld_fini) (void),
+			  void *stack_end);
 
 int __wrap___libc_start_main(int (*main) (int, char **, char **),
-                             int argc,
-                             char **argv,
-                             __typeof (main) init,
-                             void (*fini) (void),
-                             void (*rtld_fini) (void),
-                             void *stack_end)
+			     int argc,
+			     char **argv,
+			     __typeof (main) init,
+			     void (*fini) (void),
+			     void (*rtld_fini) (void),
+			     void *stack_end)
 {
   return __libc_start_main_old(main,argc,argv,init,fini,rtld_fini,stack_end);
 }
@@ -474,7 +474,7 @@ void update_cache_file_info(struct client *node)
 void remove_newline(char *str) {
     int len = strnlen(str, 1024);
     if (len > 0 && str[len - 1] == '\n') {
-        str[len - 1] = '\0';
+	str[len - 1] = '\0';
     } else {
 		printf("last char is '%c", str[len - 1]);
 	}
@@ -1294,7 +1294,14 @@ err:
 		} else {
 			print_debug(LOG_ERR, "error sending nmea to %16s radio %3d", inet_ntoa(ip), curr->radio_id);
 		}
-		print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
+		if (vsock) {
+			print_debug(LOG_NOTICE, "del: %16u radio: %d room: %36s time: %d name: %s",
+					curr->address, curr->radio_id, curr->room, curr->time, curr->name);
+		} else {
+			ip.s_addr = curr->address;
+			print_debug(LOG_NOTICE, "del: %16s radio: %d room: %36s time: %d name: %s",
+					inet_ntoa(ip), curr->radio_id, curr->room, curr->time, curr->name);
+		}
 
 		temp = curr->next;
 		remove_node(curr->address, curr->radio_id);
@@ -1850,15 +1857,28 @@ void clear_inactive_nodes(void)
 	while (curr != NULL) {
 		age = now - curr->time;
 		if (age > 300) {
-			print_debug(LOG_INFO, "node: %16u stale at %d sec",
-					curr->address, age);
+			struct in_addr ip;
+			ip.s_addr = curr->address;
+
+			if (vsock) {
+				print_debug(LOG_INFO, "node: %16u stale at %d sec",
+						curr->address, age);
+			} else {
+				print_debug(LOG_INFO, "node: %16s stale at %d sec",
+						inet_ntoa(ip), age);
+			}
 			/* delete node */
 			if (prev == NULL)
 				head = curr->next;
 			else
 				prev->next = curr->next;
 
-			print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
+			if (vsock) {
+				print_debug(LOG_NOTICE, "del: %16u room: %36s time: %d name: %s", curr->address, curr->room, curr->time, curr->name);
+			} else {
+				print_debug(LOG_NOTICE, "del: %16s room: %36s time: %d name: %s", inet_ntoa(ip), curr->room, curr->time, curr->name);
+			}
+
 			free(curr);
 			print_debug(LOG_DEBUG, "removed stale node");
 			return;
@@ -2900,7 +2920,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-        if (vsock) {
+	if (vsock) {
 		print_debug(LOG_INFO, "listening on %u:%d",
 				myservaddr_vm.svm_cid,
 				port);

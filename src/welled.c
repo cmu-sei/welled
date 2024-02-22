@@ -1903,6 +1903,11 @@ void recv_from_wmasterd(void)
 	print_debug(LOG_INFO, "sending to %s radio %d addr %s perm_addr %s",
 			node->name, node->radio_id, addr_string, perm_addr_string);
 
+/*
+ * @HWSIM_TX_CTL_REQ_TX_STATUS: require TX status callback for this frame.
+ * @HWSIM_TX_CTL_NO_ACK: tell the wmediumd not to wait for an ack
+ * @HWSIM_TX_STAT_ACK: Frame was acknowledged
+*/
 	if (attrs[HWSIM_ATTR_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
