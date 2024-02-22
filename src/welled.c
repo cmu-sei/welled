@@ -772,11 +772,11 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
 	} else if ((err == -EINVAL) && frame && freq) {
-		print_debug(LOG_ERR, "frame rejected, likely off channel, channel: %d", freq);
+		print_debug(LOG_ERR, "frame rejected, likely off channel, freq: %d", freq);
 	} else if (err == -EINVAL) {
-		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found, frame %d", frame);
+		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found");
 	} else {
-		print_debug(LOG_ERR, "unknown nl error: %d", err);
+		print_debug(LOG_ERR, "unknown nl error from hwsim: %d", err);
 	}
 }
 
