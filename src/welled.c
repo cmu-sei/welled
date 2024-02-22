@@ -989,7 +989,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 			mac_address_to_string(addr, (struct ether_addr *)node->perm_addr);
 			print_debug(LOG_INFO, "radio %d on %s with perm_addr %s", radio_id, data, addr);
 			mac_address_to_string(addr, (struct ether_addr *)node->address);
-			print_debug(LOG_INFO, "radio %d on %s with address  %s", radio_id, data, addr);
+			print_debug(LOG_INFO, "radio %d on %s with address   %s", radio_id, data, addr);
 		}
 		return NL_SKIP;
 	} else if (gnlh->cmd == HWSIM_CMD_ADD_MAC_ADDR) {
@@ -1081,6 +1081,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	} else {
 		node = get_device_node_by_radio_id(perm_addr[4]);
 		if (!node) {
+			/* radio could be in a different netns */
 			print_debug(LOG_ERR, "frame from unknown device");
 			get_radio(perm_addr[4]);
 			list_device_nodes();
@@ -2645,7 +2646,7 @@ int get_mynetns(void)
 {
 	char *nspath = "/proc/self/ns/net";
 	char *pathbuf = calloc(256, 1);
-	int len = readlink(nspath, pathbuf, sizeof(pathbuf));
+	int len = readlink(nspath, pathbuf, 256);
 	if (len < 0) {
 		perror("readlink");
 		return -1;
@@ -2654,8 +2655,10 @@ int get_mynetns(void)
 		perror("sscanf");
 		return -1;
 	}
+
 	free(pathbuf);
-	print_debug(LOG_DEBUG, "netns: %ld", mynetns);
+	print_debug(LOG_DEBUG, "mynetns: %ld", mynetns);
+
 	return 0;
 }
 
@@ -2796,7 +2799,7 @@ int main(int argc, char *argv[])
 
 	/* get my netns */
 	if (get_mynetns() < 0) {
-			mynetns = 0;
+		mynetns = 0;
 	};
 
 	/* get all netns */
@@ -2831,10 +2834,11 @@ int main(int argc, char *argv[])
 				perror("fstat");
 			}
 			long int inode = statbuf->st_ino;
-			print_debug(LOG_DEBUG, "%s has inode %ld", fullpath, inode);
 
 			if (inode == mynetns) {
 				inside_netns = 1;
+			} else {
+				print_debug(LOG_INFO, "found netns %ld present on system named: %s", inode, file->d_name);
 			}
 			close(fd);
 			free(statbuf);
