@@ -1543,6 +1543,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	}
 
 	ack_size = sizeof(struct ieee80211_hdr);
+	//ack_size = 10;
 	hdr11 = (struct ieee80211_hdr *)malloc(ack_size);
 	memset(hdr11, 0, ack_size);
 
@@ -1550,8 +1551,10 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 
 	/* src becomes dst */
 	memcpy(hdr11->addr1, src, ETH_ALEN);
-	hex_dump(hdr11, ack_size);
-	_exit(EXIT_FAILURE);
+	if (verbose) {
+		printf("- ack frame");
+		hex_dump(hdr11, ack_size);
+	}
 
 	msg = nlmsg_alloc();
 
@@ -1568,10 +1571,6 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	data[0] = 0xd4;
 	memcpy(&data[4], src, ETH_ALEN);
 */
-	/* may need to spoof so it looks to welled like it came from
-	 * the hwsim driver on another system? maybe not as long as it
-	 * shows up in a tcpdump
-	 */
 	if (hwsim_genl_family_id < 0)
 		goto out;
 
@@ -1580,7 +1579,8 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 
 	/* set source address to match the radio that received it */
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, dst);
-	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size, hdr11);
+	/* only copy 10 bytes */
+	rc = nla_put(msg, HWSIM_ATTR_FRAME, 10, hdr11);
 
 	if (freq) {
 		rc = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
