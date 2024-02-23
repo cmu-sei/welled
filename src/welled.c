@@ -822,7 +822,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 
 			if (err->error == -22) {
 				/* not sure of the cause */
-				print_debug(LOG_ERR, "-EINVAL from hwsim");
+				//print_debug(LOG_ERR, "-EINVAL from hwsim");
 
 				//TODO check which cmd was returned, maybe it was 2 for a frame
 
@@ -837,8 +837,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 				return NL_STOP;
 			} else if (err->error == -19) {
 				/* radio does not exist */
-				print_debug(LOG_ERR, "-ENODEV from hwsim");
-
+				//print_debug(LOG_ERR, "-ENODEV from hwsim");
 				parse_nl_error_attr(attr, payload_len, err->error);
 			} else if (err->error == -34) {
 				//print_debug(LOG_ERR, "-ERANGE from hwsim");
@@ -1236,6 +1235,7 @@ tx_attempts[4].count   0
 	/* round -1 is the last element of the array */
 	/* this is the signal sent to the sender, not the receiver */
 	signal = -11;
+	int send_tx_info = 0;
 
 	if (attrs[HWSIM_ATTR_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
@@ -1247,6 +1247,20 @@ tx_attempts[4].count   0
 		}
 		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
 			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
+			send_tx_info = 1;
+		}
+	}
+	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS])  {
+		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
+		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
+			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_CTL_NO_ACK");
+		}
+		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
+			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_STAT_ACK");
+		}
+		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_CTL_REQ_TX_STATUS");
+			send_tx_info = 1;
 		}
 	}
 
@@ -1256,8 +1270,10 @@ tx_attempts[4].count   0
 	/* this has to be an ack the driver expects */
 	/* what does the driver do with these values? can i remove them? */
 	// TODO maybe get ack from the rx radio and send a custom message back
-	send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie);
-	print_debug(LOG_DEBUG, "sent tx_info frame to hwsim");
+	if (send_tx_info) {
+		send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie);
+		print_debug(LOG_DEBUG, "sent tx_info frame to hwsim");
+	}
 	/*
 	 * no need to send a tx info frame indicating failure with a
 	 * signal of 0 - that was done in the tx code i took this from
@@ -1612,7 +1628,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 			perror("send");
 			print_debug(LOG_ERR, "ERROR: Could not TX ack frame to wmasterd");
 		} else {
-			print_debug(LOG_INFO, "sent %5d bytes to wmasterd from radio %d", bytes, hdr.src_addr);
+			print_debug(LOG_INFO, "sent %5d bytes to wmasterd from radio %d as ack frame", bytes, hdr.src_radio_id);
 		}
 		if (message) {
 			free(message);
@@ -1904,11 +1920,12 @@ void recv_from_wmasterd(void)
 			node->name, node->radio_id, addr_string, perm_addr_string);
 
 /*
+ * this are actually flags for HWSIM_ATTR_TX_INFO_FLAGS
  * @HWSIM_TX_CTL_REQ_TX_STATUS: require TX status callback for this frame.
  * @HWSIM_TX_CTL_NO_ACK: tell the wmediumd not to wait for an ack
  * @HWSIM_TX_STAT_ACK: Frame was acknowledged
 */
-	if (attrs[HWSIM_ATTR_FLAGS]) {
+	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
 			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
@@ -1928,6 +1945,7 @@ void recv_from_wmasterd(void)
 		}
 		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
 			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_REQ_TX_STATUS");
+			//TODO maybe send tx info back to wmasterd
 		}
 	}
 
