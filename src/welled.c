@@ -1930,7 +1930,7 @@ void recv_from_wmasterd(void)
  * @HWSIM_TX_STAT_ACK: Frame was acknowledged
 */
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
-		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
+		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
 			//print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
 			should_ack = 0;
