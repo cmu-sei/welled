@@ -1240,10 +1240,10 @@ tx_attempts[4].count   0
 	if (attrs[HWSIM_ATTR_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_NO_ACK");
+			//print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_NO_ACK");
 		}
 		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
-			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_STAT_ACK");
+			//print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_STAT_ACK");
 		}
 		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
 			print_debug(LOG_DEBUG, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
@@ -1253,10 +1253,10 @@ tx_attempts[4].count   0
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS])  {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_CTL_NO_ACK");
+			//print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_CTL_NO_ACK");
 		}
 		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
-			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_STAT_ACK");
+			//print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_STAT_ACK");
 		}
 		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
 			print_debug(LOG_DEBUG, "hwsim set tx flag HWSIM_TX_CTL_REQ_TX_STATUS");
@@ -1265,8 +1265,9 @@ tx_attempts[4].count   0
 	}
 
 	/* Let's flag this frame as ACK'ed */
-	/* whatever that means... */
+	/* setting this in case tx info is expecting it inside the driver */
 	flags |= HWSIM_TX_STAT_ACK;
+
 	/* this has to be an ack the driver expects */
 	/* what does the driver do with these values? can i remove them? */
 	// TODO maybe get ack from the rx radio and send a custom message back
@@ -1305,7 +1306,7 @@ tx_attempts[4].count   0
 		print_debug(LOG_INFO, "updating the TX src ATTR to match frame src addr");
 		/* copy dest address from frame to nlh */
 		/* this should be the attr addr transmitter */
-		/* in this way, netlink hdr will show user address 
+		/* in this way, netlink hdr will show user address
 		 * uniquely across vms */
 		memcpy((char *)nlh + 24, &framesrc, ETH_ALEN);
 	}
@@ -1508,8 +1509,8 @@ int get_radio(int id)
  *	@brief This will create a netlink message with the frame data for an
  *	ack response and send it to wmasterd.
  *	@param freq - the frequency on which this ack is sent
- *	@param src - the src address of the data frame this is response to
- *	@param dst - the dst address which now because the source of the ack
+ *	@param src - the nl tx src address of the data frame this is response to
+ *	@param dst - the nl rx dst address of the radio this was delivered to
  *	@param radio_id - id of the sending radio
  *	@return void
  */
@@ -1518,20 +1519,39 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 {
 	/* turn into a netlink message's format */
 	int rc;
-	struct nl_msg *msg;
 	int bytes;
 	int msg_len;
 	int ack_size;
+	struct nl_msg *msg;
 	struct ieee80211_hdr *hdr11;
 	struct nlmsghdr *nlh;
+	struct device_node *node = NULL;
+
+	char src_addr[18];
+	mac_address_to_string(src_addr, dst);
+	char dst_addr[18];
+	mac_address_to_string(dst_addr, src);
+
+	node = get_device_node_by_radio_id(radio_id);
+
+	if (node) {
+		print_debug(LOG_INFO, "sending ack frame from radio %3d with address %13s to address %13s",
+				radio_id, src_addr, dst_addr);
+	} else {
+		print_debug(LOG_ERR, "could not find node for radio %d", radio_id);
+		return;
+	}
 
 	ack_size = sizeof(struct ieee80211_hdr);
-
-	hdr11 = (struct ieee80211_hdr *) malloc(ack_size);
+	hdr11 = (struct ieee80211_hdr *)malloc(ack_size);
 	memset(hdr11, 0, ack_size);
 
 	hdr11->frame_control = IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK;
+
+	/* src becomes dst */
 	memcpy(hdr11->addr1, src, ETH_ALEN);
+	hex_dump(hdr11, ack_size);
+	_exit(EXIT_FAILURE);
 
 	msg = nlmsg_alloc();
 
@@ -1548,7 +1568,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	data[0] = 0xd4;
 	memcpy(&data[4], src, ETH_ALEN);
 */
-	/* may need to spoof so it loos to welled like it came from
+	/* may need to spoof so it looks to welled like it came from
 	 * the hwsim driver on another system? maybe not as long as it
 	 * shows up in a tcpdump
 	 */
@@ -1558,36 +1578,20 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
-	/* set source address */
-	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER,
-			ETH_ALEN, dst);
-	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size,
-			hdr11);
+	/* set source address to match the radio that received it */
+	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, dst);
+	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size, hdr11);
 
-	if (freq)
+	if (freq) {
 		rc = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
+	} else {
+		print_debug(LOG_WARNING, "freq not set when generating ack");
+	}
 
-	/* TODO: add COOKIE and TX info, signal, rate */
+	/* TODO: add COOKIE and TX info, signal, rate, if needed */
 
 	if (rc != 0) {
 		print_debug(LOG_ERR, "Error filling payload");
-		goto out;
-	}
-
-	char addr[18];
-	mac_address_to_string(addr, dst);
-	if (verbose)
-		printf("- frame dst: %s\n", addr);
-
-	struct device_node *node = NULL;
-	// TODO test this out
-	// tricky because dst is the frame info not perm addr
-	node = get_device_node_by_radio_id(radio_id);
-
-	if (node) {
-		print_debug(LOG_INFO, "sending ack frame radio %3d with address %s", radio_id, addr);
-	} else {
-		print_debug(LOG_ERR, "could not find node for %s radio %d", addr, radio_id);
 		goto out;
 	}
 
@@ -1928,19 +1932,21 @@ void recv_from_wmasterd(void)
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
+			//print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
 			should_ack = 0;
 		} else if (!broadcast) {
 			/* we should ack if:
 			* ack was requested and
-			* the frame was sent to this radio's address
+			* the frame was sent to this radio's address specifically
 			*/
 			// TODO check to make sure we dont ack an ack
 			if (memcmp(&framedst, dst_dev_user_mac, ETH_ALEN) == 0) {
+				print_debug(LOG_INFO, "must generate ack as framedst is useraddr for this radio");
 				should_ack = 1;
 			}
 		}
 		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
+			/* the frame was already marked as ack'd by the origin welled */
 			print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_STAT_ACK");
 		}
 		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
