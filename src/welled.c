@@ -928,6 +928,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	char perm_addr[ETH_ALEN];
 	int radio_id;
 	char *frame;
+	int frame_len;
 
 	gnlh = nlmsg_data(nlh);
 	memset(addr, 0, 18);
@@ -1290,7 +1291,13 @@ tx_attempts[4].count   0
 	/* we are now done with our code addition which sends the ack */
 
 	/* we get the attributes*/
+	frame_len = nla_len(attrs[HWSIM_ATTR_FRAME]);
 	frame = (char *)nla_data(attrs[HWSIM_ATTR_FRAME]);
+
+	if (frame_len  <= 10) {
+		print_debug(LOG_INFO, "we recevied an ack from hwsim");
+		_exit(EXIT_FAILURE);
+	}
 
 	/* TODO: retrieve all other attributes not retrieved above */
 
@@ -1534,8 +1541,9 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	struct device_node *node = NULL;
 	int ack_size = 10;
 	char src_addr[18];
-	mac_address_to_string(src_addr, dst);
 	char dst_addr[18];
+
+	mac_address_to_string(src_addr, dst);
 	mac_address_to_string(dst_addr, src);
 
 	node = get_device_node_by_radio_id(radio_id);
@@ -1967,6 +1975,11 @@ void recv_from_wmasterd(void)
 			should_ack = 1;
 		}
 	}
+	if (frame_len == 10) {
+		/* do not ack an ack */
+		print_debug(LOG_INFO, "will not ack an ack");
+		should_ack = 0;
+	}
 
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
@@ -1990,6 +2003,8 @@ void recv_from_wmasterd(void)
 	 * or a patch to the driver
 	 */
 	if (any_mac) {
+		/* deprecate this */
+		_exit(EXIT_FAILURE);
 		/* send without address modifications */
 		retval = send_cloned_frame_msg(dst_dev_user_mac, frame, frame_len,
 				rate_idx, signal, freq);
@@ -2006,7 +2021,7 @@ void recv_from_wmasterd(void)
 	}
 
 	retval = send_cloned_frame_msg((struct ether_addr *)node->perm_addr, frame,
-				frame_len, rate_idx, signal, freq);
+			frame_len, rate_idx, signal, freq);
 
 	if (should_ack && !retval) {
 		print_debug(LOG_INFO, "attempting to ack the frame with perm addr");
