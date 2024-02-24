@@ -372,7 +372,7 @@ void set_all_rates_invalid(struct hwsim_tx_rate *tx_rate)
  *	@param freq - frequency
  *	@return success or failure
  */
-int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
+int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 		int rate_idx, int signal, uint32_t freq)
 {
 	int rc;
@@ -384,17 +384,16 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 
 	if (!msg) {
 		print_debug(LOG_ERR, "Error allocating new message MSG!");
-		goto out;
+		goto err;
 	}
 	if (hwsim_genl_family_id < 0)
-		goto out;
+		goto err;
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
-	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER,
-			ETH_ALEN, dst);
-	rc = nla_put(msg, HWSIM_ATTR_FRAME, data_len, data);
+	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER, ETH_ALEN, dst);
+	rc = nla_put(msg, HWSIM_ATTR_FRAME, frame_len, frame);
 	rc = nla_put_u32(msg, HWSIM_ATTR_RX_RATE, rate_idx);
 	rc = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
 	if (freq) {
@@ -402,7 +401,9 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	} else {
 		print_debug(LOG_INFO, "not setting HWSIM_ATTR_FREQ");
 	}
-	/* this signal rate will not match the signal acked to the sender
+
+	/*
+	 * this signal rate will not match the signal acked to the sender
 	 * unless we set the same rate in both functions. normally,
 	 * the calling function determines this signal, and could
 	 * send the info back to the transmitting radio via wmasterd
@@ -410,8 +411,9 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 
 	if (rc != 0) {
 		print_debug(LOG_ERR, "Error filling payload in send_cloned_frame_msg");
-		goto out;
+		goto err;
 	}
+
 	/*
 	printf("#### welled -> hwsim nlmsg cloned beg ####\n");
 	struct nlmsghdr *nlh = nlmsg_hdr(msg);
@@ -423,13 +425,13 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *data, int data_len,
 	attrs_print(attrs);
 	printf("#### welled -> hwsim nlmsg cloned end ####\n");
 	*/
+
 	bytes = nl_send_auto_complete(sock, msg);
-	nlmsg_free(msg);
 	mac_address_to_string(addr, dst);
 	print_debug(LOG_INFO, "sent %5d bytes to radio with perm_addr %s", bytes, addr);
-
+	nlmsg_free(msg);
 	return 0;
-out:
+err:
 	nlmsg_free(msg);
 	return -1;
 }
@@ -1591,7 +1593,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
 	/* set source address to match the radio that received it */
-	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, dst);
+	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, node->address);
 	/* only copy 10 bytes */
 	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size, hdr11);
 
@@ -1926,15 +1928,14 @@ void recv_from_wmasterd(void)
 		printf("- loss: %f\n", loss);
 	}
 
-	/* copy dst address from frame */
 	memcpy(&framedst, frame + 4, ETH_ALEN);
-	memcpy(&framesrc, frame + 10, ETH_ALEN);
+	//memcpy(&framesrc, frame + 10, ETH_ALEN);
 
 	if (verbose) {
 		mac_address_to_string(addr_string, nl_tx_src);
 		printf("- nl tx src: %s\n", addr_string);
-		mac_address_to_string(addr_string, &framesrc);
-		printf("- frame src: %s\n", addr_string);
+		//mac_address_to_string(addr_string, &framesrc);
+		//printf("- frame src: %s\n", addr_string);
 		mac_address_to_string(addr_string, &framedst);
 		printf("- frame dst: %s\n", addr_string);
 	}
@@ -1977,8 +1978,17 @@ void recv_from_wmasterd(void)
 	}
 	if (frame_len == 10) {
 		/* do not ack an ack */
-		print_debug(LOG_INFO, "will not ack an ack");
+		print_debug(LOG_INFO, "received an ack from wmasterd");
+		hex_dump(frame, frame_len);
 		should_ack = 0;
+	} else if (frame_len >= 16) {
+		/* copy dst address from frame */
+		memcpy(&framesrc, frame + 10, ETH_ALEN);
+
+		if (verbose) {
+			mac_address_to_string(addr_string, &framesrc);
+			printf("- frame src: %s\n", addr_string);
+		}
 	}
 
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
