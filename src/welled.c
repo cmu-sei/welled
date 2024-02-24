@@ -680,6 +680,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	int frame = 0;
 	int freq = 0;
 	int radio_id = -1;
+	struct device_node *node = NULL;
 
 	do {
 		print_debug(LOG_DEBUG, "processing attribute in error message");
@@ -716,6 +717,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			if (verbose) {
 				printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
 			}
+			node = get_device_node_by_radio_id(radio_id);
 		}
 		if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
 			if (verbose) {
@@ -730,6 +732,10 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
 				printf("- HWSIM_ATTR_ADDR_RECEIVER: %s\n", addr);
 			}
+			char perm_addr[6];
+			memcpy((char *)perm_addr, nla_data(attr), ETH_ALEN);
+			print_debug(LOG_DEBUG, "radio id should be: %02X", perm_addr[4]);
+			node = get_device_node_by_perm_addr(perm_addr);
 		}
 		if (attr->nla_type == HWSIM_ATTR_FLAGS) {
 			if (verbose) {
@@ -773,8 +779,8 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie");
 	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
-	} else if ((err == -EINVAL) && frame && freq) {
-		print_debug(LOG_ERR, "frame rejected, likely off channel, freq: %d", freq);
+	} else if ((err == -EINVAL) && frame && freq && node) {
+		print_debug(LOG_INFO, "frame rejected by radio %3d, likely off channel, freq: %d", node->radio_id, freq);
 	} else if (err == -EINVAL) {
 		print_debug(LOG_ERR, "-EINVAL received, radio could be idle or not found");
 	} else {
@@ -1330,8 +1336,8 @@ tx_attempts[4].count   0
 		hdr.src_radio_id = node->radio_id;
 		hdr.netns = node->netnsid;
 		hdr.cmd = WMASTERD_FRAME;
-		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
-		memcpy(message + sizeof(struct message_hdr), nlh, msg_len);
+		memcpy(message, (char *)&hdr, hdr_size);
+		memcpy(message + hdr_size, nlh, msg_len);
 
 		pthread_mutex_lock(&send_mutex);
 		if (vsock) {
@@ -1521,12 +1527,12 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	int rc;
 	int bytes;
 	int msg_len;
-	int ack_size;
+	int hdr11_size;
 	struct nl_msg *msg;
 	struct ieee80211_hdr *hdr11;
 	struct nlmsghdr *nlh;
 	struct device_node *node = NULL;
-
+	int ack_size = 10;
 	char src_addr[18];
 	mac_address_to_string(src_addr, dst);
 	char dst_addr[18];
@@ -1542,17 +1548,16 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		return;
 	}
 
-	ack_size = sizeof(struct ieee80211_hdr);
-	//ack_size = 10;
-	hdr11 = (struct ieee80211_hdr *)malloc(ack_size);
-	memset(hdr11, 0, ack_size);
+	hdr11_size = sizeof(struct ieee80211_hdr);
+	hdr11 = (struct ieee80211_hdr *)malloc(hdr11_size);
+	memset(hdr11, 0, hdr11_size);
 
 	hdr11->frame_control = IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK;
 
 	/* src becomes dst */
 	memcpy(hdr11->addr1, src, ETH_ALEN);
 	if (verbose) {
-		printf("- ack frame");
+		printf("- ack frame\n");
 		hex_dump(hdr11, ack_size);
 	}
 
@@ -1580,7 +1585,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	/* set source address to match the radio that received it */
 	rc = nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, dst);
 	/* only copy 10 bytes */
-	rc = nla_put(msg, HWSIM_ATTR_FRAME, 10, hdr11);
+	rc = nla_put(msg, HWSIM_ATTR_FRAME, ack_size, hdr11);
 
 	if (freq) {
 		rc = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
@@ -1598,10 +1603,20 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	nlh = nlmsg_hdr(msg);
 	msg_len = nlh->nlmsg_len;
 
+	if (verbose) {
+		struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
+		genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
+
+		printf("#### hwsim -> welled nlmsg beg ####\n");
+		nlh_print(nlh);
+		attrs_print(attrs);
+		printf("#### hwsim -> welled nlmsg end ####\n");
+	}
+
 	/* send frame to wmasterd */
 	if (sockfd) {
 		struct message_hdr hdr = {};
-		int len = sizeof(struct message_hdr) + msg_len;
+		int len = hdr_size + msg_len;
 		char *message = malloc(len);
 		if (!message) {
 			print_debug(LOG_ERR, "cannot malloc");
@@ -1613,8 +1628,16 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 		hdr.src_radio_id = node->radio_id;
 		hdr.netns = node->netnsid;
 		hdr.cmd = WMASTERD_FRAME;
-		memcpy(message, (char *)&hdr, sizeof(struct message_hdr));
-		memcpy(message + sizeof(struct message_hdr), msg, msg_len);
+
+		memcpy(message, (char *)&hdr, hdr_size);
+		memcpy(message + hdr_size, nlh, msg_len);
+
+		if (verbose) {
+			printf("message\n");
+			hex_dump(message, len);
+			printf("nlmsg\n");
+			hex_dump(message + hdr_size, msg_len);
+		}
 
 		pthread_mutex_lock(&send_mutex);
 		if (vsock) {
@@ -1770,7 +1793,10 @@ void recv_from_wmasterd(void)
 	int msg_len;
 	msg_len = nlh->nlmsg_len;
 	if ((bytes - hdr_size) != msg_len) {
-		print_debug(LOG_ERR, "invalid msg len %d in read of %d bytes with %3d bytes hdr", msg_len, hdr_size, bytes);
+		print_debug(LOG_ERR, "invalid msg len %d in read of %d bytes with %3d bytes hdr", msg_len, bytes, hdr_size);
+		hex_dump(buf, bytes);
+		hex_dump(nlh, bytes - hdr_size);
+		_exit(EXIT_FAILURE);
 		goto out;
 	}
 
@@ -1929,21 +1955,24 @@ void recv_from_wmasterd(void)
  * @HWSIM_TX_CTL_NO_ACK: tell the wmediumd not to wait for an ack
  * @HWSIM_TX_STAT_ACK: Frame was acknowledged
 */
+
+	if (!broadcast) {
+		/* we should ack if:
+		* ack was requested and
+		* the frame was sent to this radio's address specifically
+		*/
+		// TODO check to make sure we dont ack an ack
+		if (memcmp(&framedst, dst_dev_user_mac, ETH_ALEN) == 0) {
+			print_debug(LOG_INFO, "must generate ack as framedst is useraddr for this radio");
+			should_ack = 1;
+		}
+	}
+
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
 			//print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
 			should_ack = 0;
-		} else if (!broadcast) {
-			/* we should ack if:
-			* ack was requested and
-			* the frame was sent to this radio's address specifically
-			*/
-			// TODO check to make sure we dont ack an ack
-			if (memcmp(&framedst, dst_dev_user_mac, ETH_ALEN) == 0) {
-				print_debug(LOG_INFO, "must generate ack as framedst is useraddr for this radio");
-				should_ack = 1;
-			}
 		}
 		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
 			/* the frame was already marked as ack'd by the origin welled */
