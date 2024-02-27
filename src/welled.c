@@ -486,7 +486,7 @@ void mac_address_to_string(char *address, struct ether_addr *mac)
  *	This is derived form wmediumd.
  *	TODO: modify if we create more accurate acking.
  *	@param src - mac address of transmitting radio
- *	@param flags - falgs
+ *	@param flags - flags
  *	@param signal - signal strength
  *	@param tx_attempts - number of transmit attempts
  *	@param cookie - unique identifier for frame
@@ -1273,9 +1273,47 @@ tx_attempts[4].count   0
 		}
 	}
 
+/**
+ * enum hwsim_tx_control_flags - flags to describe transmission info/status
+ *
+ * These flags are used to give the wmediumd extra information in order to
+ * modify its behavior for each frame
+ *
+ * @HWSIM_TX_CTL_REQ_TX_STATUS: require TX status callback for this frame.
+ * @HWSIM_TX_CTL_NO_ACK: tell the wmediumd not to wait for an ack
+ * @HWSIM_TX_STAT_ACK: Frame was acknowledged
+ *
+ */
+
 	/* Let's flag this frame as ACK'ed */
 	/* setting this in case tx info is expecting it inside the driver */
-	flags |= HWSIM_TX_STAT_ACK;
+	if (verbose) {
+		hex_dump(&flags, sizeof(flags));
+		if (flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			printf("HWSIM_TX_CTL_REQ_TX_STATUS is set\n");
+		}
+		if (flags & HWSIM_TX_CTL_NO_ACK) {
+			printf("HWSIM_TX_CTL_NO_ACK is set\n");
+		}
+		if (flags & HWSIM_TX_STAT_ACK) {
+			printf("HWSIM_TX_STAT_ACK is set\n");
+		}
+	}
+	if (!(flags & HWSIM_TX_CTL_NO_ACK)) {
+		flags |= HWSIM_TX_STAT_ACK;
+	}
+	if (verbose) {
+		hex_dump(&flags, sizeof(flags));
+		if (flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			printf("HWSIM_TX_CTL_REQ_TX_STATUS is set\n");
+		}
+		if (flags & HWSIM_TX_CTL_NO_ACK) {
+			printf("HWSIM_TX_CTL_NO_ACK is set\n");
+		}
+		if (flags & HWSIM_TX_STAT_ACK) {
+			printf("HWSIM_TX_STAT_ACK is set\n");
+		}
+	}
 
 	/* this has to be an ack the driver expects */
 	/* what does the driver do with these values? can i remove them? */
