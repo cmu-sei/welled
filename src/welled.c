@@ -703,8 +703,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 				printf("- frame: \n");
 				hex_dump(data, nla_len(attr));
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
+		} else if (attr->nla_type == HWSIM_ATTR_TX_INFO) {
 			tx_info = 1;
 			if (verbose) {
 				printf("- HWSIM_ATTR_TX_INFO:\n");
@@ -713,22 +712,19 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 				printf("- tx_rates: ");
 				hex_dump(tx_rates, nla_len(attr));
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
+		} else if (attr->nla_type == HWSIM_ATTR_RADIO_ID) {
 			radio_id = nla_get_u32(attr);
 			if (verbose) {
 				printf("- HWSIM_ATTR_RADIO_ID: %d\n", radio_id);
 			}
 			node = get_device_node_by_radio_id(radio_id);
-		}
-		if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
+		} else if (attr->nla_type == HWSIM_ATTR_ADDR_TRANSMITTER) {
 			if (verbose) {
 				char addr[18];
 				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
 				printf("- HWSIM_ATTR_ADDR_TRANSMITTER: %s\n", addr);
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
+		} else if (attr->nla_type == HWSIM_ATTR_ADDR_RECEIVER) {
 			if (verbose) {
 				char addr[18];
 				mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
@@ -738,41 +734,38 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			memcpy((char *)perm_addr, nla_data(attr), ETH_ALEN);
 			print_debug(LOG_DEBUG, "radio id should be: %02X", perm_addr[4]);
 			node = get_device_node_by_perm_addr(perm_addr);
-		}
-		if (attr->nla_type == HWSIM_ATTR_FLAGS) {
+		} else if (attr->nla_type == HWSIM_ATTR_FLAGS) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_FLAGS:\n");
 				int flags = nla_get_u32(attr);
 				printf("- flags:      %u\n", flags);
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
+		} else if (attr->nla_type == HWSIM_ATTR_SIGNAL) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_SIGNAL:\n");
 				int signal = nla_get_u32(attr);
 				printf("- signal:     %d\n", signal);
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_COOKIE) {
+		} else if (attr->nla_type == HWSIM_ATTR_COOKIE) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_COOKIE:\n");
 				unsigned long cookie = nla_get_u64(attr);
 				printf("- cookie:     %lu\n", cookie);
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
+		} else if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
 			if (verbose) {
 				printf("- HWSIM_ATTR_RX_RATE:\n");
 				int rate = nla_get_u32(attr);
 				printf("- rx rate:    %d\n", rate);
 			}
-		}
-		if (attr->nla_type == HWSIM_ATTR_FREQ) {
+		} else if (attr->nla_type == HWSIM_ATTR_FREQ) {
 			freq = nla_get_u32(attr);
 			if (verbose) {
 				printf("- HWSIM_ATTR_FREQ:\n");
 				printf("- freq:      %d\n", freq);
 			}
+		} else {
+			print_debug(LOG_ERR, "unknown attribute %d in nlmsg error", attr->nla_type);
 		}
 		attr = nla_next(attr, &remaining);
 	} while(remaining > 0);
@@ -1624,6 +1617,7 @@ static void generate_ack_frame(uint32_t freq, struct ether_addr *src,
 	data[0] = 0xd4;
 	memcpy(&data[4], src, ETH_ALEN);
 */
+
 	if (hwsim_genl_family_id < 0)
 		goto out;
 
@@ -2014,11 +2008,18 @@ void recv_from_wmasterd(void)
 			should_ack = 1;
 		}
 	}
-	if (frame_len == 10) {
+
+	struct ieee80211_hdr *hdr11 = (struct ieee80211_hdr *)frame;
+	if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
 		/* do not ack an ack */
 		print_debug(LOG_INFO, "received an ack from wmasterd");
+		should_ack = 0;
+	} else if (frame_len == 10) {
+		/* do not ack an ack */
+		print_debug(LOG_ERR, "received unknown size 10 frame from wmasterd");
 		hex_dump(frame, frame_len);
 		should_ack = 0;
+		_exit(EXIT_FAILURE);
 	} else if (frame_len >= 16) {
 		/* copy dst address from frame */
 		memcpy(&framesrc, frame + 10, ETH_ALEN);
