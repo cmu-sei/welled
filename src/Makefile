@@ -260,29 +260,7 @@ zip: clean
 	rm ../../welled_$(VERSION)_src.zip
 	cd ../..; zip --exclude=welled/.git/* --exclude=welled/dist/* --exclude=welled/drivers/* -r welled_$(VERSION)_src.zip welled/; cd -
 
-vtar: wmasterd-esx
-	mkdir -p ../tmp/usr/lib/vmware/wmasterd/bin/
-	cp ../dist/esx/wmasterd ../tmp/usr/lib/vmware/wmasterd/bin/wmasterd
-	chmod 775 ../tmp/usr/lib/vmware/wmasterd/bin/wmasterd
-	cp -r ../etc ../tmp/
-	cd ../tmp/; tar --owner=0 --group=0 -cvf stage.vtar usr/ etc/; cd -
-	rm -rf ../tmp/etc/ ../tmp/usr/
-
-vib: vtar
-	cd ../tmp/; gzip -c stage.vtar > wmasterd; cd -
-	touch ../tmp/sig.pkcs7
-	cp ../VIB-DATA/descriptor.xml ../tmp/descriptor.xml
-	sed -i "s/VERSION/$(VERSION)/g" ../tmp/descriptor.xml
-	sed -i "s/SIZE/$(shell stat --format %s ../tmp/stage.vtar)/" ../tmp/descriptor.xml
-	sed -i "s/SHA256/$(shell sha256sum ../tmp/wmasterd | cut -f 1 -d ' ')/" ../tmp/descriptor.xml
-	sed -i "s/SHA1/$(shell sha1sum ../tmp/stage.vtar| cut -f 1 -d ' ')/" ../tmp/descriptor.xml
-	sed -i "s/RELEASEDATE/$(RELEASEDATE)/" ../tmp/descriptor.xml
-	cd ../tmp; ar r CMU_bootbank_wmasterd_$(VERSION).$(DATE).vib descriptor.xml sig.pkcs7 wmasterd; cd -
-	mv ../tmp/CMU_bootbank_wmasterd_$(VERSION).$(DATE).vib ../dist/esx/
-	rm ../tmp/sig.pkcs7 ../tmp/stage.vtar ../tmp/wmasterd
-	rm -rf ../tmp
-
-offline-bundle:
+offline-bundle: wmasterd-esx
 	../scripts/build_vib.sh $(VERSION)
 
 doc:

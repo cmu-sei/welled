@@ -6,6 +6,11 @@ RELEASEDATE=`date -u +%FT%T.000000%:z`
 TIMESTAMP=`date -u +%FT%T.000000`
 DATE=`date +%s`
 
+if ! [ -f ../dist/esx/wmasterd ]; then
+	echo cannot find ../dist/esx/wmasterd
+	exit
+fi
+
 echo Building: wmasterd stage.vtar
 
 rm -rf ../tmp
