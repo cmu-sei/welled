@@ -1,0 +1,21 @@
+  <bulletin>
+    <id>wmasterd-VERSION.DATE</id>
+    <vendor>Carnegie Mellon University</vendor>
+    <summary>Wireless Master Daemon for mac80211_hwsim</summary>
+    <severity>general</severity>
+    <category>enhancement</category>
+    <urgency>Important</urgency>
+    <releaseType>extension</releaseType>
+    <description>Provides the wmasterd Utility from the Wireless Emulation Link Layer Exchange Daemon Project</description>
+    <kbUrl>http://github.com/cmu-sei/welled</kbUrl>
+    <contact>arwelle@cert.org</contact>
+    <releaseDate>RELEASEDATE</releaseDate>
+    <platforms>
+      <softwarePlatform locale="" version="5.*" productLineID="embeddedEsx"/>
+      <softwarePlatform locale="" version="6.*" productLineID="embeddedEsx"/>
+      <softwarePlatform locale="" version="7.*" productLineID="embeddedEsx"/>
+    </platforms>
+    <vibList>
+      <vibID>CMU_bootbank_wmasterd_VERSION.DATE</vibID>
+    </vibList>
+  </bulletin>

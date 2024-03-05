@@ -4,3 +4,5 @@ bin/
 html/
 latex/
 .*swp
+dist/*
+tmp/

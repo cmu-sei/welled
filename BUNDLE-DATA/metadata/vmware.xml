@@ -1,0 +1,62 @@
+<metadataResponse>
+  <version>3.0</version>
+  <timestamp>TIMESTAMP</timestamp>
+  <bulletin>
+    <id>wmasterd-VERSION.DATE</id>
+    <vendor>Carnegie Mellon University</vendor>
+    <summary>wmasterd for ESX</summary>
+    <severity>general</severity>
+    <category>enhancement</category>
+    <urgency>Important</urgency>
+    <releaseType>extension</releaseType>
+    <description>wmasterd Utility</description>
+    <kbUrl>http://github.com/cmu-sei/welled</kbUrl>
+    <contact>arwelle@cert.org</contact>
+    <releaseDate>RELEASEDATE</releaseDate>
+    <platforms>
+      <softwarePlatform locale="" version="5.*" productLineID="embeddedEsx"/>
+      <softwarePlatform locale="" version="6.*" productLineID="embeddedEsx"/>
+      <softwarePlatform locale="" version="7.*" productLineID="embeddedEsx"/>
+    </platforms>
+    <vibList>
+      <vib>
+        <vibVersion>1.4.5</vibVersion>
+        <vibID>CMU_bootbank_wmasterd_VERSION.DATE</vibID>
+        <name>wmasterd</name>
+	<version>VERSION</version>
+        <vendor>CMU</vendor>
+        <vibType>bootbank</vibType>
+        <summary>wmasterd: Wireless Master Daemon for mac80211_hwsim</summary>
+        <systemReqs>
+          <maintenanceMode>false</maintenanceMode>
+          <swPlatform locale="" version="5.*" productLineID="embeddedEsx"/>
+        </systemReqs>
+        <relationships>
+          <depends/>
+          <conflicts/>
+          <replaces/>
+          <provides>
+            <provide name="org.cert.wmasterd-VERSION"/>
+          </provides>
+          <compatibleWith/>
+        </relationships>
+        <postInstall>
+          <rebootRequired>false</rebootRequired>
+          <hostdRestart>false</hostdRestart>
+        </postInstall>
+        <softwareTags>
+          <tag>module</tag>
+        </softwareTags>
+        <vibFile>
+          <sourceUrl></sourceUrl>
+          <relativePath>vib20/wmasterd/CMU_bootbank_wmasterd_VERSION.DATE.vib</relativePath>
+          <packedSize>VIBSIZE</packedSize>
+          <checksum>
+            <checksumType>sha-256</checksumType>
+            <checksum>VIBSHA256</checksum>
+          </checksum>
+        </vibFile>
+      </vib>
+    </vibList>
+  </bulletin>
+</metadataResponse>
