@@ -28,17 +28,7 @@
 #  
 # 	DM17-0952
 
-define Profile/welled-vmware
-  NAME:=welled-vmware
-  KCONFIG:=CONFIG_VMCI_IMAGES=y
-  PACKAGES:=kmod-3c59x kmod-e100 kmod-e1000 kmod-natsemi kmod-ne2k-pci \
-	kmod-pcnet32 kmod-8139too kmod-r8169 kmod-sis900 kmod-tg3 \
-	kmod-via-rhine kmod-via-velocity kmod-mac80211-hwsim libnl welled \
-	tcpdump iperf hostapd luci-ssl strace valgrind glib2 wireless-tools \
-	kmod-vmw_vmci kmod-vmw_vsock_vmci_transport
-endef
-
-define Profile/welled/Description
-	Profile for welled and dependencies
-endef
-$(eval $(call Profile,welled))
+BOARDNAME:=Virtio Guest
+FEATURES:=ext4 pci usb
+DEFAULT_PACKAGES += kmod-acpi-button kmod-button-hotplug kmod-vmw_vsockets kmod-vsock kmod-vmw_vsock_virtio_transport kmod-fs-isofs kmod-scsi-cdrom kmod-vhost
+CPU_TYPE := i486

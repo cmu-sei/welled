@@ -28,17 +28,21 @@
 #  
 # 	DM17-0952
 
-define Profile/welled-vmware
-  NAME:=welled-vmware
-  KCONFIG:=CONFIG_VMCI_IMAGES=y
-  PACKAGES:=kmod-3c59x kmod-e100 kmod-e1000 kmod-natsemi kmod-ne2k-pci \
+define Profile/welled-virtio
+  NAME:=welled virtio
+  KCONFIG:=CONFIG_VMDK_IMAGES=y CONFIG_TARGET_IMAGES_PAD=y \
+	CONFIG_TARGET_KERNEL_PARTSIZE=1024 CONFIG_TARGET_ROOTFS_PARTSIZE=4096 \
+	CONFIG_VIRTIO_VSOCKETS=y CONFIG_VHOST_VSOCK=y
+  PACKAGES:=kmod-acpi-button kmod-button-hotplug kmod-vmw_virtio_vsockets kmod-vsock \
+	kmod-vmw_vsock_virtio_transport kmod-fs-isofs kmod-scsi-cdrom kmod-3c59x \
+	kmod-e100 kmod-e1000 kmod-natsemi kmod-ne2k-pci \
 	kmod-pcnet32 kmod-8139too kmod-r8169 kmod-sis900 kmod-tg3 \
 	kmod-via-rhine kmod-via-velocity kmod-mac80211-hwsim libnl welled \
 	tcpdump iperf hostapd luci-ssl strace valgrind glib2 wireless-tools \
-	kmod-vmw_vmci kmod-vmw_vsock_vmci_transport
+	kmod-mac802154_hwsim
 endef
 
-define Profile/welled/Description
-	Profile for welled and dependencies
+define Profile/welled-virtio/Description
+	Profile for welled and dependencies with virtio
 endef
-$(eval $(call Profile,welled))
+$(eval $(call Profile,welled-virtio))

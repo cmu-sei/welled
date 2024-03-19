@@ -28,17 +28,14 @@
 #  
 # 	DM17-0952
 
-define Profile/welled-vmware
-  NAME:=welled-vmware
-  KCONFIG:=CONFIG_VMCI_IMAGES=y
+define Profile/Generic
+  NAME:=Generic
   PACKAGES:=kmod-3c59x kmod-e100 kmod-e1000 kmod-natsemi kmod-ne2k-pci \
 	kmod-pcnet32 kmod-8139too kmod-r8169 kmod-sis900 kmod-tg3 \
-	kmod-via-rhine kmod-via-velocity kmod-mac80211-hwsim libnl welled \
-	tcpdump iperf hostapd luci-ssl strace valgrind glib2 wireless-tools \
-	kmod-vmw_vmci kmod-vmw_vsock_vmci_transport
+	kmod-via-rhine kmod-via-velocity kmod-vhost
 endef
 
-define Profile/welled/Description
-	Profile for welled and dependencies
+define Profile/Generic/Description
+	Generic Profile
 endef
-$(eval $(call Profile,welled))
+$(eval $(call Profile,Generic))
