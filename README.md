@@ -318,7 +318,7 @@ git clone --single-branch --branch openwrt-18.06 https://github.com/openwrt/open
 cd openwrt/package
 git clone https://github.com/cmu-sei/welled.git
 git clone https://github.com/cmu-sei/vtunnel.git
-git clone https://github.com/fangli/openwrt-vm-tools package/open-vm-tools
+git clone https://github.com/fangli/openwrt-vm-tools open-vm-tools
 cd ..
 ./scripts/feeds update
 ./scripts/feeds install luci-ssl
@@ -329,6 +329,30 @@ cat package/welled/vmw.mk >> package/kernel/linux/modules/virtual.mk
 touch target/linux/x86/Makefile
 make menuconfig #select arch x86_64, enable welled and open-vm-tools and softflowd and kmod-scsi-cdrom and vsock modules and wireless-tools and vtunnel
 make -j 12
+
+## More notes for 23.05
+./scripts/feeds install libpam
+./scripts/feeds install libnetsnmp
+cp package/welled/virtual.mk package/kernel/linux/modules/
+cp package/welled/64/profiles/001_welled-vmci.mk target/linux/x86/64/profiles/
+cp package/welled/64/profiles/001_welled-virtio.mk target/linux/x86/64/profiles/
+#cp -r package/welled/vmware_guest target/linux/x86/
+#cp -r package/welled/virtio_guest target/linux/x86/
+make menuconfig #select arch x86_64 and welled profile for vmware or virtio
+PACKAGE_kmod-vhost-net
+PACKAGE_kmod-vhost
+
+# Until we get the build menu to work, you can manually add these to .config:
+```
+CONFIG_VIRTIO_VSOCKETS=y
+CONFIG_VIRTIO_VSOCKETS_COMMON=y
+CONFIG_VSOCKETS=y
+CONFIG_VIRTIO=y
+CONFIG_VSOCKETS_LOOPBACK=y
+CONFIG_VSOCKETS_DIAG=y
+CONFIG_HYPERV=y
+CONFIG_HYPERV_VSOCKETS=y
+```
 
 Steps to rebuild `welled` package if making modifications.
 ```

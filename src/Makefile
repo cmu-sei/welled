@@ -54,7 +54,8 @@ gelled-ctrl-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 #gelled-gui-x86_64-w64-mingw32: CC=x86_64-w64-mingw32-gcc
 #gelled-gui-x86_64-w64-mingw32: LD=x86_64-w64-mingw32-ld
 rpm-x86_64-Linux: ARCH=x86_64
-debian-x86_64-Linux: ARCH=amd64
+welled-debian-x86_64-Linux: ARCH=amd64
+wmasterd-debian-x86_64-Linux: ARCH=amd64
 
 # on kali, install:
 # libnl-genl-3-dev libnl-3-dev libnl-genl-3 libnl-route-3-dev
@@ -292,14 +293,16 @@ dist: doc all
 
 	cd ../..; tar --exclude=.git --exclude=android/packages -cjvf welled_$(VERSION)_dist.tar.bz2 welled/; cd -
 
-debian:
+welled-debian: PACKAGE=welled
+welled-debian: welled gelled gelled-ctrl gelled-gui
 	mkdir -p welled-$(VERSION)/DEBIAN/
 	mkdir -p welled-$(VERSION)/etc/
 	mkdir -p welled-$(VERSION)/bin/
 	mkdir -p welled-$(VERSION)/lib/systemd/system/
 	mkdir -p welled-$(VERSION)/usr/share/man/man8/
 	cp ../DEBIAN/control  welled-$(VERSION)/DEBIAN/
-	sed -i "s/2.2.1/$(VERSION)/"  welled-$(VERSION)/DEBIAN/control
+	sed -i "s/PACKAGE/$(PACKAGE)/"  welled-$(VERSION)/DEBIAN/control
+	sed -i "s/VERSION/$(VERSION)/"  welled-$(VERSION)/DEBIAN/control
 	sed -i "s/Architecture: all/Architecture: $(ARCH)/"  welled-$(VERSION)/DEBIAN/control
 	cp $(OUTDIR)/welled welled-$(VERSION)/bin/
 	cp $(OUTDIR)/gelled welled-$(VERSION)/bin/
@@ -315,9 +318,31 @@ debian:
 	dpkg -b welled-$(VERSION)
 	rm -rf welled-$(VERSION)
 
-debian-x86_64-Linux: x86_64-Linux debian
+wmasterd-debian: PACKAGE=wmasterd
+wmasterd-debian: wmasterd
+	mkdir -p wmasterd-$(VERSION)/DEBIAN/
+	#mkdir -p wmasterd-$(VERSION)/etc/
+	mkdir -p wmasterd-$(VERSION)/bin/
+	#mkdir -p wmasterd-$(VERSION)/lib/systemd/system/
+	#mkdir -p wmasterd-$(VERSION)/usr/share/man/man8/
+	cp ../DEBIAN/control  wmasterd-$(VERSION)/DEBIAN/
+	sed -i "s/PACKAGE/$(PACKAGE)/"  wmasterd-$(VERSION)/DEBIAN/control
+	sed -i "s/VERSION/$(VERSION)/"  wmasterd-$(VERSION)/DEBIAN/control
+	sed -i "s/Architecture: all/Architecture: $(ARCH)/"  wmasterd-$(VERSION)/DEBIAN/control
+	cp $(OUTDIR)/wmasterd wmasterd-$(VERSION)/bin/
+	#cp ../scripts/wmasterd.path wmasterd-$(VERSION)/lib/systemd/system/
+	#cp ../scripts/wmasterd.service wmasterd-$(VERSION)/lib/systemd/system/
+	#cp ../man/wmasterd.8.gz wmasterd-$(VERSION)/usr/share/man/man8/
+	dpkg -b wmasterd-$(VERSION)
+	rm -rf wmasterd-$(VERSION)
+
+welled-debian-x86_64-Linux: x86_64-Linux welled-debian
 	mv welled-$(VERSION).deb ../dist/x86_64-Linux/
 	rm -rf welled-$(VERSION) welled-$(VERSION).deb
+
+wmasterd-debian-x86_64-Linux: x86_64-Linux wmasterd-debian
+	mv wmasterd-$(VERSION).deb ../dist/x86_64-Linux/
+	rm -rf wmasterd-$(VERSION) wmasterd-$(VERSION).deb
 
 debian-vyos:
 	mkdir -p welled-$(VERSION)-vyos/DEBIAN/
