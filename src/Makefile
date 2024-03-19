@@ -319,20 +319,20 @@ welled-debian: welled gelled gelled-ctrl gelled-gui
 	rm -rf welled-$(VERSION)
 
 wmasterd-debian: PACKAGE=wmasterd
-wmasterd-debian: wmasterd
+wmasterd-debian: wmasterd wmasterd.8
 	mkdir -p wmasterd-$(VERSION)/DEBIAN/
 	#mkdir -p wmasterd-$(VERSION)/etc/
 	mkdir -p wmasterd-$(VERSION)/bin/
-	#mkdir -p wmasterd-$(VERSION)/lib/systemd/system/
-	#mkdir -p wmasterd-$(VERSION)/usr/share/man/man8/
+	mkdir -p wmasterd-$(VERSION)/lib/systemd/system/
+	mkdir -p wmasterd-$(VERSION)/usr/share/man/man8/
 	cp ../DEBIAN/control  wmasterd-$(VERSION)/DEBIAN/
 	sed -i "s/PACKAGE/$(PACKAGE)/"  wmasterd-$(VERSION)/DEBIAN/control
 	sed -i "s/VERSION/$(VERSION)/"  wmasterd-$(VERSION)/DEBIAN/control
 	sed -i "s/Architecture: all/Architecture: $(ARCH)/"  wmasterd-$(VERSION)/DEBIAN/control
 	cp $(OUTDIR)/wmasterd wmasterd-$(VERSION)/bin/
-	#cp ../scripts/wmasterd.path wmasterd-$(VERSION)/lib/systemd/system/
-	#cp ../scripts/wmasterd.service wmasterd-$(VERSION)/lib/systemd/system/
-	#cp ../man/wmasterd.8.gz wmasterd-$(VERSION)/usr/share/man/man8/
+	cp ../scripts/wmasterd.path wmasterd-$(VERSION)/lib/systemd/system/
+	cp ../scripts/wmasterd.service wmasterd-$(VERSION)/lib/systemd/system/
+	cp ../man/wmasterd.8.gz wmasterd-$(VERSION)/usr/share/man/man8/
 	dpkg -b wmasterd-$(VERSION)
 	rm -rf wmasterd-$(VERSION)
 
