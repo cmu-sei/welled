@@ -773,7 +773,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	} while(remaining > 0);
 
 	if ((err == -ERANGE) && tx_info) {
-		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie %lu", cookie);
+		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie %lu 0x%x", cookie, cookie);
 	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
 	} else if ((err == -EINVAL) && frame && freq && node) {
@@ -2019,73 +2019,68 @@ void recv_from_wmasterd(void)
 	printf("checking flags ------      %02x       ------------\n", hdr11->frame_control);
 
 	if (hdr11->frame_control & IEEE80211_FTYPE_CTL) {
-		print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL %x", IEEE80211_FTYPE_CTL);
-		if (hdr11->frame_control & IEEE80211_STYPE_CTL_EXT) {
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL %x", IEEE80211_FTYPE_CTL);
+		if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_CTL_EXT");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_BACK_REQ) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK_REQ)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_BACK_REQ");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_BACK) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_BACK");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_PSPOLL) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_PSPOLL)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_PSPOLL");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_RTS) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_RTS)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_RTS");
-		}if (hdr11->frame_control & IEEE80211_STYPE_CTS) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTS)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_CTS");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_ACK) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK");
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
+			//print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK");
 			/* do not ack an ack */
 			print_debug(LOG_ERR,  "IEEE80211_FTYPE_CTL and IEEE80211_STYPE_ACK received an ack from wmasterd");
 			should_ack = 0;
 			printf("should_ack = 0; received an ack from wmasterd\n");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_CFEND) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFEND)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_CFEND");
-		}
-		if (hdr11->frame_control & IEEE80211_STYPE_CFENDACK) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFENDACK)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_CFENDACK");
 		} else {
-		   //     printf("IEEE80211_FTYPE_CTL unknown subtype\n");
+			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x\n", hdr11->frame_control);
 		}
 
 	} else if (hdr11->frame_control & IEEE80211_FTYPE_EXT) {
 		print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT %x", IEEE80211_FTYPE_EXT);
 	} else if (!(hdr11->frame_control & IEEE80211_FTYPE_MGMT)) {
-		/* had to invert because MGMT is 0 */
-		if (hdr11->frame_control & IEEE80211_STYPE_ASSOC_REQ) {
+                /* had to invert because MGMT is 0 */
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT %x", IEEE80211_FTYPE_MGMT);
+
+		if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_REQ)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_ASSOC_REQ");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_ASSOC_RESP) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_RESP)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_ASSOC_RESP");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_REASSOC_REQ) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_REQ)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_REASSOC_REQ");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_REASSOC_RESP) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_RESP)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_REASSOC_RESP");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_PROBE_REQ) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_REQ)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_PROBE_REQ");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_PROBE_RESP) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON)) {
+                        //print_debug(LOG_ERR,  "IEEE80211_STYPE_BEACON");
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_RESP)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_PROBE_RESP");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_BEACON) {
-			//print_debug(LOG_ERR,  "IEEE80211_STYPE_BEACON");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_ATIM) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ATIM)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_ATIM");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_AUTH) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_AUTH)) {
+			print_debug(LOG_ERR,  "IEEE80211_STYPE_AUTH");
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DEAUTH)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_DEAUTH");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_DEAUTH) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_DEAUTH");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_DISASSOC) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DISASSOC)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_DISASSOC");
-		} else if (hdr11->frame_control & IEEE80211_STYPE_ACTION) {
+		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION)) {
 			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACTION");
 		} else {
-			printf("IEEE80211_FTYPE_MGMT unknown subtype\n");
+			printf("IEEE80211_FTYPE_MGMT unknown subtype %x\n", hdr11->frame_control);
 		}
 	} else {
-		print_debug(LOG_ERR,  "unknown frame");
+		print_debug(LOG_ERR,  "unknown frame, %x", hdr11->frame_control);
 		hex_dump(frame, frame_len);
 
 	}
@@ -2100,7 +2095,7 @@ printf("done checking flags ------\n");
 			printf("- frame src: %s\n", addr_string);
 		}
 	} else {
-		printf("frame is not 16 bytes, do not ack\n");
+		print_debug(LOG_ERR, "frame is not 16 bytes, do not ack frame size %d", frame_len);
 		should_ack = 0;
 	}
 
