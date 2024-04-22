@@ -218,7 +218,7 @@ void print_debug(int level, char *format, ...)
 			lev = "error";
 			break;
 		case 4:
-			lev = "err";
+			lev = "warning";
 			break;
 		case 5:
 			lev = "notice";
@@ -544,7 +544,7 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 		_exit(EXIT_FAILURE);
 	}
 	nlmsg_free(msg);
-	printf("tx info frame sent for %lu 0x%lx\n", cookie, cookie);
+	print_debug(LOG_INFO, "tx info frame sent for %lu 0x%lx", cookie, cookie);
 	return 0;
 out:
 	nlmsg_free(msg);
@@ -1269,19 +1269,19 @@ tx_attempts[4].count   0
 
 	if (attrs[HWSIM_ATTR_FLAGS]) {
 		if (flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_INFO, "hwsim set HWSIM_TX_CTL_NO_ACK for %llu", cookie);
+			print_debug(LOG_INFO, "hwsim set HWSIM_TX_CTL_NO_ACK for %llu 0x%llx", cookie, cookie);
 		} else {
 			print_debug(LOG_INFO, "hwsim requires ack for %llu 0x%llx cookie", cookie, cookie);
 			// maybe check frame >= 16 and then send ack frame
 			// maybe also check the below flag
 		}
 		if (flags & HWSIM_TX_STAT_ACK) {
-			print_debug(LOG_ERR, "hwsim set HWSIM_TX_STAT_ACK");
+			print_debug(LOG_INFO, "hwsim set HWSIM_TX_STAT_ACK for %llu 0x%llx", cookie, cookie);
 		}
 		if (flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
-			print_debug(LOG_WARNING, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
-			print_debug(LOG_DEBUG, "hwsim_flags %d 0x%x", flags, flags);
-			print_debug(LOG_DEBUG, "we need to sent tx info back to driver for %llu 0x%llx", cookie, cookie);
+			print_debug(LOG_WARNING, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS for %llu 0x%llx", cookie, cookie);
+			print_debug(LOG_INFO, "hwsim_flags %d 0x%x", flags, flags);
+			print_debug(LOG_INFO, "we need to sent tx info back to driver for %llu 0x%llx", cookie, cookie);
 			send_tx_info = 1;
 		}
 	}
@@ -1301,13 +1301,13 @@ tx_attempts[4].count   0
 	/* setting this in case tx info is expecting it inside the driver */
 	/* setting HWSIM_TX_STAT_ACK tells driver that the frames was acked */
 	if (!(flags & HWSIM_TX_CTL_NO_ACK)) {
-		printf("HWSIM_TX_CTL_NO_ACK is not set for %llu 0x%llx\n", cookie, cookie);
+		print_debug(LOG_INFO, "HWSIM_TX_CTL_NO_ACK is not set for %llu 0x%llx", cookie, cookie);
 		if (flags & HWSIM_TX_STAT_ACK) {
-			printf("HWSIM_TX_STAT_ACK is set already for %llu 0x%llx\n", cookie, cookie);
+			print_debug(LOG_INFO, "HWSIM_TX_STAT_ACK is set already for %llu 0x%llx", cookie, cookie);
 		}
 		flags |= HWSIM_TX_STAT_ACK;
 		if (flags & HWSIM_TX_STAT_ACK) {
-			printf("HWSIM_TX_STAT_ACK is set - we set it for %llu 0x%llx\n", cookie, cookie);
+			print_debug(LOG_INFO, "HWSIM_TX_STAT_ACK is set - we set it for %llu 0x%llx", cookie, cookie);
 		}
 	}
 
@@ -1749,27 +1749,27 @@ int process_fc_field(int frame_control, char *rx_or_tx, unsigned long long cooki
 	if (frame_control & IEEE80211_FTYPE_CTL) {
 		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL 0x%x 0x%llx", IEEE80211_FTYPE_CTL, cookie);
 		if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CTL_EXT %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_CTL_EXT %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK_REQ %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_BACK_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_BACK %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_PSPOLL)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PSPOLL %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_PSPOLL %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_RTS)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_RTS %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_RTS %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTS)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CTS %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_CTS %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING,  "IEEE80211_STYPE_ACK %s 0x%llx", rx_or_tx, cookie);
 			/* do not ack an ack */
 			should_ack = 0;
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFEND)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CFEND % 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_CFEND % 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFENDACK)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CFENDACK %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_CFENDACK %s 0x%llx", rx_or_tx, cookie);
 		} else {
-			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_FTYPE_CTL unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
 		}
 
 	} else if (frame_control & IEEE80211_FTYPE_EXT) {
@@ -1780,34 +1780,34 @@ int process_fc_field(int frame_control, char *rx_or_tx, unsigned long long cooki
 		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT 0x%x %s 0x%llx", IEEE80211_FTYPE_MGMT, rx_or_tx, cookie);
 
 		if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_ASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_ASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_REASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_REASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_REQ %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_PROBE_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON)) {
-                        //print_debug(LOG_ERR, "IEEE80211_STYPE_BEACON %s 0x%llx", rx_or_tx, cookie);
+                        //print_debug(LOG_WARNING, "IEEE80211_STYPE_BEACON %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_RESP %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_PROBE_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ATIM)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ATIM %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_ATIM %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_AUTH)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_AUTH %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_AUTH %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DEAUTH)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_DEAUTH %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_DEAUTH %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DISASSOC)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_DISASSOC %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_DISASSOC %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ACTION %s 0x%llx", rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_STYPE_ACTION %s 0x%llx", rx_or_tx, cookie);
 		} else {
-			print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
+			print_debug(LOG_WARNING, "IEEE80211_FTYPE_MGMT unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
 		}
 	} else {
-		print_debug(LOG_ERR, "unknown frame, 0x%x %s", rx_or_tx, frame_control);
+		print_debug(LOG_WARNING, "unknown frame, 0x%x %s", rx_or_tx, frame_control);
 	}
 	if (verbose) {
 		printf("done checking flags ------\n");

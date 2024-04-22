@@ -269,7 +269,7 @@ void print_debug(int level, char *format, ...)
 			lev = "error";
 			break;
 		case 4:
-			lev = "err";
+			lev = "warning";
 			break;
 		case 5:
 			lev = "notice";
