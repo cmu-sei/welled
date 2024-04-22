@@ -86,5 +86,6 @@ void print_debug(int, char *, ...);
 int get_radio(int);
 int process_hwsim_nl_msg(struct nlmsghdr *);
 void send_notification(int, int, int);
+int process_fc_field(int, char *);
 
 #endif /* WELLED_H_ */

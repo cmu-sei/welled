@@ -375,7 +375,7 @@ void set_all_rates_invalid(struct hwsim_tx_rate *tx_rate)
 int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 		int rate_idx, int signal, uint32_t freq)
 {
-	int rc;
+	int retval = -1;
 	struct nl_msg *msg;
 	char addr[18];
 	int bytes;
@@ -392,12 +392,12 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_FRAME, VERSION_NR);
 
-	rc = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER, ETH_ALEN, dst);
-	rc = nla_put(msg, HWSIM_ATTR_FRAME, frame_len, frame);
-	rc = nla_put_u32(msg, HWSIM_ATTR_RX_RATE, rate_idx);
-	rc = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
+	retval = nla_put(msg, HWSIM_ATTR_ADDR_RECEIVER, ETH_ALEN, dst);
+	retval = nla_put(msg, HWSIM_ATTR_FRAME, frame_len, frame);
+	retval = nla_put_u32(msg, HWSIM_ATTR_RX_RATE, rate_idx);
+	retval = nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
 	if (freq) {
-		rc = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
+		retval = nla_put_u32(msg, HWSIM_ATTR_FREQ, freq);
 	} else {
 		print_debug(LOG_INFO, "not setting HWSIM_ATTR_FREQ");
 	}
@@ -409,7 +409,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 	 * send the info back to the transmitting radio via wmasterd
 	 */
 
-	if (rc != 0) {
+	if (retval < 0) {
 		print_debug(LOG_ERR, "Error filling payload in send_cloned_frame_msg");
 		goto err;
 	}
@@ -427,13 +427,15 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 	*/
 
 	bytes = nl_send_auto_complete(sock, msg);
-	mac_address_to_string(addr, dst);
-	print_debug(LOG_INFO, "sent %5d bytes to radio with perm_addr %s", bytes, addr);
-	nlmsg_free(msg);
-	return 0;
+	if (bytes < 0) {
+		mac_address_to_string(addr, dst);
+		print_debug(LOG_INFO, "sent %5d bytes to radio with perm_addr %s", bytes, addr);
+		retval = 0;
+	}
+
 err:
 	nlmsg_free(msg);
-	return -1;
+	return retval;
 }
 
 /**
@@ -495,7 +497,9 @@ void mac_address_to_string(char *address, struct ether_addr *mac)
 int send_tx_info_frame_nl(struct ether_addr *src,
 			unsigned int flags, int signal,
 			struct hwsim_tx_rate *tx_attempts,
-			unsigned long cookie)
+			unsigned long cookie,
+			unsigned int tx_info_flags)
+
 {
 	struct nl_msg *msg;
 
@@ -516,11 +520,11 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	 */
 	nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, src);
 	nla_put_u32(msg, HWSIM_ATTR_FLAGS, flags);
-	nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
 	nla_put(msg, HWSIM_ATTR_TX_INFO,
 			IEEE80211_MAX_RATES_PER_TX * sizeof(struct hwsim_tx_rate),
 			tx_attempts);
-
+	nla_put_u32(msg, HWSIM_ATTR_TX_INFO_FLAGS, tx_info_flags);
+	nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
 	nla_put_u64(msg, HWSIM_ATTR_COOKIE, cookie);
 
 	/*
@@ -534,9 +538,13 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	attrs_print(attrs);
 	printf("#### welled -> hwsim nlmsg tx info end ####\n");
 	*/
-	nl_send_auto_complete(sock, msg);
+	int ret = nl_send_auto_complete(sock, msg);
+	if (ret < 0) {
+		print_debug(LOG_ERR, "failed to send tx info");
+		_exit(EXIT_FAILURE);
+	}
 	nlmsg_free(msg);
-	printf("tx info frame sent for %lu\n", cookie);
+	printf("tx info frame sent for %lu 0x%lx\n", cookie, cookie);
 	return 0;
 out:
 	nlmsg_free(msg);
@@ -633,7 +641,7 @@ void attrs_print(struct nlattr *attrs[])
 		printf("nla len    %u\n", attrs[HWSIM_ATTR_COOKIE]->nla_len);
 		printf("nla type   %u\n", attrs[HWSIM_ATTR_COOKIE]->nla_type);
 		cookie = nla_get_u64(attrs[HWSIM_ATTR_COOKIE]);
-		printf("cookie:    %lu\n", cookie);
+		printf("cookie:    %lu 0x%lx\n", cookie, cookie);
 	}
 	if (attrs[HWSIM_ATTR_CHANNELS]) {
 		printf("HWSIM_ATTR_CHANNELS\n");
@@ -684,7 +692,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	int freq = 0;
 	int radio_id = -1;
 	struct device_node *node = NULL;
-	unsigned long cookie;
+	unsigned long long cookie = 0;
 
 	do {
 		print_debug(LOG_DEBUG, "processing attribute in error message");
@@ -752,7 +760,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			cookie = nla_get_u64(attr);
 			if (verbose) {
 				printf("- HWSIM_ATTR_COOKIE:\n");
-				printf("- cookie:     %lu\n", cookie);
+				printf("- cookie:     %llu 0x%llx\n", cookie, cookie);
 			}
 		} else if (attr->nla_type == HWSIM_ATTR_RX_RATE) {
 			if (verbose) {
@@ -766,6 +774,18 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 				printf("- HWSIM_ATTR_FREQ:\n");
 				printf("- freq:      %d\n", freq);
 			}
+                } else if (attr->nla_type == HWSIM_ATTR_TX_INFO_FLAGS) {
+                        int tx_info_flags = nla_get_u32(attr);
+                        if (verbose) {
+                                printf("- HWSIM_ATTR_TX_INFO_FLAGS:\n");
+                                printf("- flags:      %d\n", tx_info_flags);
+                        }
+                } else if (attr->nla_type == HWSIM_ATTR_PERM_ADDR) {
+                        if (verbose) {
+                                char addr[18];
+                                mac_address_to_string(addr, (struct ether_addr *)nla_data(attr));
+                                printf("- HWSIM_ATTR_PERM_ADDR: %s\n", addr);
+                        }
 		} else {
 			print_debug(LOG_ERR, "unknown attribute %d in nlmsg error", attr->nla_type);
 		}
@@ -773,7 +793,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	} while(remaining > 0);
 
 	if ((err == -ERANGE) && tx_info) {
-		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie %lu 0x%x", cookie, cookie);
+		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie %llu 0x%llx", cookie, cookie);
 	} else if ((err == -ENODEV) && (radio_id >= 0)) {
 		print_debug(LOG_ERR, "device not present: %d", radio_id);
 	} else if ((err == -EINVAL) && frame && freq && node) {
@@ -908,9 +928,10 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
 	struct genlmsghdr *gnlh;
 	struct ether_addr *src;
+	unsigned int tx_info_flags;
 	unsigned int flags;
 	struct hwsim_tx_rate *tx_rates;
-	unsigned long cookie;
+	unsigned long long cookie;
 	struct hwsim_tx_rate tx_attempts[IEEE80211_MAX_RATES_PER_TX];
 	int round;
 	int tx_ok;
@@ -1055,8 +1076,9 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 		}
 		*/
 		return NL_SKIP;
+	} else {
+		print_debug(LOG_DEBUG, "processing new frame from hwsim");
 	}
-	print_debug(LOG_DEBUG, "processing new frame from hwsim");
 
 	/* processing original HWSIM_CMD_FRAME */
 	genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
@@ -1072,7 +1094,8 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	/* this check was duplicated below in a second if statement, now gone */
 	if (!(attrs[HWSIM_ATTR_ADDR_TRANSMITTER])) {
 		// TODO determine if this is always perm_addr
-		print_debug(LOG_INFO, "HWSIM_ATTR_ADDR_TRANSMITTER missing");
+		print_debug(LOG_ERR, "HWSIM_ATTR_ADDR_TRANSMITTER missing");
+		_exit(EXIT_FAILURE);
 		return NL_SKIP;
 	}
 
@@ -1089,6 +1112,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 			print_debug(LOG_ERR, "frame from unknown device");
 			get_radio(perm_addr[4]);
 			list_device_nodes();
+			_exit(EXIT_FAILURE);
 			return NL_SKIP;
 		}
 	}
@@ -1096,6 +1120,7 @@ int process_hwsim_nl_msg(struct nlmsghdr *nlh)
 	/* we get the attributes*/
 	src = (struct ether_addr *)nla_data(attrs[HWSIM_ATTR_ADDR_TRANSMITTER]);
 	flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
+	tx_info_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
 	tx_rates = (struct hwsim_tx_rate *)nla_data(attrs[HWSIM_ATTR_TX_INFO]);
 	cookie = nla_get_u64(attrs[HWSIM_ATTR_COOKIE]);
 
@@ -1243,38 +1268,23 @@ tx_attempts[4].count   0
 	int send_tx_info = 0;
 
 	if (attrs[HWSIM_ATTR_FLAGS]) {
-		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_FLAGS]);
-		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_INFO, "hwsim set HWSIM_TX_CTL_NO_ACK for %lu", cookie);
+		if (flags & HWSIM_TX_CTL_NO_ACK) {
+			print_debug(LOG_INFO, "hwsim set HWSIM_TX_CTL_NO_ACK for %llu", cookie);
 		} else {
-			printf("hwsim requires ack for %lu\n", cookie);
+			print_debug(LOG_INFO, "hwsim requires ack for %llu 0x%llx cookie", cookie, cookie);
+			// maybe check frame >= 16 and then send ack frame
+			// maybe also check the below flag
 		}
-		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
+		if (flags & HWSIM_TX_STAT_ACK) {
 			print_debug(LOG_ERR, "hwsim set HWSIM_TX_STAT_ACK");
 		}
-		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
-			print_debug(LOG_ERR, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
-			printf("we need to sent tx info back to driver for %lu\n", cookie);
+		if (flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
+			print_debug(LOG_WARNING, "hwsim set HWSIM_TX_CTL_REQ_TX_STATUS");
+			print_debug(LOG_DEBUG, "hwsim_flags %d 0x%x", flags, flags);
+			print_debug(LOG_DEBUG, "we need to sent tx info back to driver for %llu 0x%llx", cookie, cookie);
 			send_tx_info = 1;
 		}
 	}
-	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS])  {
-		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
-		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
-			print_debug(LOG_ERR, "hwsim set tx flag HWSIM_TX_CTL_NO_ACK for %lu", cookie);
-		} else {
-			//printf("hwsim requires tx ack for %lu\n", cookie);
-		}
-		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
-			print_debug(LOG_ERR, "hwsim set tx flag HWSIM_TX_STAT_ACK");
-		}
-		if (hwsim_flags & HWSIM_TX_CTL_REQ_TX_STATUS) {
-			print_debug(LOG_ERR, "hwsim set tx flag HWSIM_TX_CTL_REQ_TX_STATUS");
-			printf("we need to sent tx info back to driver for %lu\n", cookie);
-			send_tx_info = 1;
-		}
-	}
-
 /**
  * enum hwsim_tx_control_flags - flags to describe transmission info/status
  *
@@ -1291,13 +1301,13 @@ tx_attempts[4].count   0
 	/* setting this in case tx info is expecting it inside the driver */
 	/* setting HWSIM_TX_STAT_ACK tells driver that the frames was acked */
 	if (!(flags & HWSIM_TX_CTL_NO_ACK)) {
-		printf("HWSIM_TX_CTL_NO_ACK is not set for %lu\n", cookie);
+		printf("HWSIM_TX_CTL_NO_ACK is not set for %llu 0x%llx\n", cookie, cookie);
 		if (flags & HWSIM_TX_STAT_ACK) {
-			printf("HWSIM_TX_STAT_ACK is set already for %lu\n", cookie);
+			printf("HWSIM_TX_STAT_ACK is set already for %llu 0x%llx\n", cookie, cookie);
 		}
 		flags |= HWSIM_TX_STAT_ACK;
 		if (flags & HWSIM_TX_STAT_ACK) {
-			printf("HWSIM_TX_STAT_ACK is set - we set it for %lu\n", cookie);
+			printf("HWSIM_TX_STAT_ACK is set - we set it for %llu 0x%llx\n", cookie, cookie);
 		}
 	}
 
@@ -1305,8 +1315,8 @@ tx_attempts[4].count   0
 	/* what does the driver do with these values? can i remove them? */
 	// TODO maybe get ack from the rx radio and send a custom message back
 	if (send_tx_info) {
-		send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie);
-		print_debug(LOG_DEBUG, "sent tx_info frame to hwsim for %lu", cookie);
+		send_tx_info_frame_nl(src, flags, signal, tx_attempts, cookie, tx_info_flags);
+		print_debug(LOG_DEBUG, "sent tx_info frame to hwsim for %llu 0x%llx", cookie, cookie);
 	}
 	/*
 	 * no need to send a tx info frame indicating failure with a
@@ -1319,11 +1329,12 @@ tx_attempts[4].count   0
 	/* we get the attributes*/
 	frame_len = nla_len(attrs[HWSIM_ATTR_FRAME]);
 	frame = (char *)nla_data(attrs[HWSIM_ATTR_FRAME]);
-	int ack_size = sizeof(struct ieee80211_hdr);
+	//int ack_size = sizeof(struct ieee80211_hdr);
+	int ack_size = 10;
 
-	if (frame_len  <= ack_size) {
+	if (frame_len <= ack_size) {
 		print_debug(LOG_INFO, "we recevied an ack from hwsim");
-		//_exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 
 	/* TODO: retrieve all other attributes not retrieved above */
@@ -1350,6 +1361,9 @@ tx_attempts[4].count   0
 		 * uniquely across vms */
 		memcpy((char *)nlh + 24, &framesrc, ETH_ALEN);
 	}
+
+        struct ieee80211_hdr *hdr11 = (struct ieee80211_hdr *)frame;
+        process_fc_field(hdr11->frame_control, "tx");
 
 	if (!node) {
 		print_debug(LOG_ERR, "unknown node");
@@ -1724,6 +1738,83 @@ int is_multicast_ether_addr(const u8 *addr)
 	return 0x01 & addr[0];
 }
 
+// returns should_ack
+int process_fc_field(int frame_control, char *rx_or_tx)
+{
+	int should_ack;
+	if (verbose) {
+		printf("checking flags ------   %d   0x%02x       ------------\n", frame_control, frame_control);
+	}
+
+	if (frame_control & IEEE80211_FTYPE_CTL) {
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL 0x%x", IEEE80211_FTYPE_CTL);
+		if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CTL_EXT %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK_REQ)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK_REQ %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_PSPOLL)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PSPOLL %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_RTS)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_RTS %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTS)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CTS %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
+			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK %s", rx_or_tx);
+			/* do not ack an ack */
+			should_ack = 0;
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFEND)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CFEND %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFENDACK)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CFENDACK %s", rx_or_tx);
+		} else {
+			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x %s", frame_control, rx_or_tx);
+		}
+
+	} else if (frame_control & IEEE80211_FTYPE_EXT) {
+		// ignore these for now
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT 0x%x %s", IEEE80211_FTYPE_EXT, rx_or_tx);
+	} else if (!(frame_control & IEEE80211_FTYPE_MGMT)) {
+                /* had to invert because MGMT is 0 */
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT 0x%x %s", IEEE80211_FTYPE_MGMT, rx_or_tx);
+
+		if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_REQ)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_REQ %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_RESP)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_RESP %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_REQ)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_REQ %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_RESP)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_RESP %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_REQ)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_REQ %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON)) {
+                        //print_debug(LOG_ERR, "IEEE80211_STYPE_BEACON %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_RESP)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_RESP %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ATIM)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ATIM %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_AUTH)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_AUTH %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DEAUTH)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_DEAUTH %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DISASSOC)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_DISASSOC %s", rx_or_tx);
+		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION)) {
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ACTION %s", rx_or_tx);
+		} else {
+			print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT unknown subtype %x %s", frame_control, rx_or_tx);
+		}
+	} else {
+		print_debug(LOG_ERR, "unknown frame, 0x%x %s", rx_or_tx, frame_control);
+	}
+	if (verbose) {
+		printf("done checking flags ------\n");
+	}
+	return should_ack;
+}
+
 /**
  *	@brief parse data received from wmasterd.
  *	At the moment, this will not
@@ -1869,7 +1960,8 @@ void recv_from_wmasterd(void)
 
 	/*  ignore HWSIM_CMD_TX_INFO_FRAME for now */
 	if (gnlh->cmd == HWSIM_CMD_TX_INFO_FRAME) {
-		print_debug(LOG_WARNING, "Ignoring HWSIM_CMD_TX_INFO_FRAME");
+		print_debug(LOG_ERR, "Ignoring HWSIM_CMD_TX_INFO_FRAME");
+		_exit(EXIT_FAILURE);
 		goto out;
 	}
 
@@ -2010,81 +2102,10 @@ void recv_from_wmasterd(void)
 		if (memcmp(&framedst, dst_dev_user_mac, ETH_ALEN) == 0) {
 			print_debug(LOG_INFO, "must generate ack as framedst is useraddr for this radio");
 			should_ack = 1;
-			printf("should_ack = 1 framedst is useraddr for this radio\n");
 		}
 	}
-	//int ack_size = sizeof(struct ieee80211_hdr);
 	struct ieee80211_hdr *hdr11 = (struct ieee80211_hdr *)frame;
-
-	printf("checking flags ------      %02x       ------------\n", hdr11->frame_control);
-
-	if (hdr11->frame_control & IEEE80211_FTYPE_CTL) {
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL %x", IEEE80211_FTYPE_CTL);
-		if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_CTL_EXT");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK_REQ)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_BACK_REQ");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_BACK");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_PSPOLL)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_PSPOLL");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_RTS)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_RTS");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTS)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_CTS");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
-			//print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK");
-			/* do not ack an ack */
-			print_debug(LOG_ERR,  "IEEE80211_FTYPE_CTL and IEEE80211_STYPE_ACK received an ack from wmasterd");
-			should_ack = 0;
-			printf("should_ack = 0; received an ack from wmasterd\n");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFEND)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_CFEND");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFENDACK)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_CFENDACK");
-		} else {
-			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x\n", hdr11->frame_control);
-		}
-
-	} else if (hdr11->frame_control & IEEE80211_FTYPE_EXT) {
-		print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT %x", IEEE80211_FTYPE_EXT);
-	} else if (!(hdr11->frame_control & IEEE80211_FTYPE_MGMT)) {
-                /* had to invert because MGMT is 0 */
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT %x", IEEE80211_FTYPE_MGMT);
-
-		if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_REQ)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ASSOC_REQ");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_RESP)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ASSOC_RESP");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_REQ)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_REASSOC_REQ");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_RESP)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_REASSOC_RESP");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_REQ)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_PROBE_REQ");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON)) {
-                        //print_debug(LOG_ERR,  "IEEE80211_STYPE_BEACON");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_RESP)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_PROBE_RESP");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ATIM)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ATIM");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_AUTH)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_AUTH");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DEAUTH)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_DEAUTH");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DISASSOC)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_DISASSOC");
-		} else if (hdr11->frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACTION");
-		} else {
-			printf("IEEE80211_FTYPE_MGMT unknown subtype %x\n", hdr11->frame_control);
-		}
-	} else {
-		print_debug(LOG_ERR,  "unknown frame, %x", hdr11->frame_control);
-		hex_dump(frame, frame_len);
-
-	}
-printf("done checking flags ------\n");
+	should_ack = process_fc_field(hdr11->frame_control, "rx");
 
 	if (frame_len >= 16) {
 		/* copy dst address from frame */
@@ -2096,13 +2117,19 @@ printf("done checking flags ------\n");
 		}
 	} else {
 		print_debug(LOG_ERR, "frame is not 16 bytes, do not ack frame size %d", frame_len);
-		should_ack = 0;
+		if (should_ack) {
+			print_debug(LOG_ERR, "should_ack = 0 - unsetting due to size");
+			should_ack = 0;
+		}
 	}
 
 	if (attrs[HWSIM_ATTR_TX_INFO_FLAGS]) {
 		unsigned int hwsim_flags = nla_get_u32(attrs[HWSIM_ATTR_TX_INFO_FLAGS]);
 		if (hwsim_flags & HWSIM_TX_CTL_NO_ACK) {
 			//print_debug(LOG_DEBUG, "msg recvd has HWSIM_TX_CTL_NO_ACK");
+			if (should_ack) {
+				print_debug(LOG_ERR, "should_ack = 0 - unsetting due to flag");
+			}
 			should_ack = 0;
 		}
 		if (hwsim_flags & HWSIM_TX_STAT_ACK) {
@@ -2141,7 +2168,7 @@ printf("done checking flags ------\n");
 	retval = send_cloned_frame_msg((struct ether_addr *)node->perm_addr, frame,
 			frame_len, rate_idx, signal, freq);
 
-	if (should_ack && !retval) {
+	if (should_ack && (retval > 0)) {
 		print_debug(LOG_INFO, "attempting to ack the frame with perm addr");
 		generate_ack_frame(freq, nl_tx_src, (struct ether_addr *)node->perm_addr, node->radio_id);
 	}
