@@ -1363,7 +1363,7 @@ tx_attempts[4].count   0
 	}
 
         struct ieee80211_hdr *hdr11 = (struct ieee80211_hdr *)frame;
-        process_fc_field(hdr11->frame_control, "tx");
+        process_fc_field(hdr11->frame_control, "tx", cookie);
 
 	if (!node) {
 		print_debug(LOG_ERR, "unknown node");
@@ -1739,7 +1739,7 @@ int is_multicast_ether_addr(const u8 *addr)
 }
 
 // returns should_ack
-int process_fc_field(int frame_control, char *rx_or_tx)
+int process_fc_field(int frame_control, char *rx_or_tx, unsigned long long cookie)
 {
 	int should_ack;
 	if (verbose) {
@@ -1747,64 +1747,64 @@ int process_fc_field(int frame_control, char *rx_or_tx)
 	}
 
 	if (frame_control & IEEE80211_FTYPE_CTL) {
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL 0x%x", IEEE80211_FTYPE_CTL);
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL 0x%x 0x%llx", IEEE80211_FTYPE_CTL, cookie);
 		if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CTL_EXT %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CTL_EXT %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK_REQ %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_BACK)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_BACK %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_PSPOLL)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PSPOLL %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PSPOLL %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_RTS)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_RTS %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_RTS %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTS)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CTS %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CTS %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_ACK)) {
-			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK %s", rx_or_tx);
+			print_debug(LOG_ERR,  "IEEE80211_STYPE_ACK %s 0x%llx", rx_or_tx, cookie);
 			/* do not ack an ack */
 			should_ack = 0;
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFEND)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CFEND %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CFEND % 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CFENDACK)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_CFENDACK %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_CFENDACK %s 0x%llx", rx_or_tx, cookie);
 		} else {
-			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x %s", frame_control, rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
 		}
 
 	} else if (frame_control & IEEE80211_FTYPE_EXT) {
 		// ignore these for now
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT 0x%x %s", IEEE80211_FTYPE_EXT, rx_or_tx);
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT 0x%x %s0x%llx", IEEE80211_FTYPE_EXT, rx_or_tx, cookie);
 	} else if (!(frame_control & IEEE80211_FTYPE_MGMT)) {
                 /* had to invert because MGMT is 0 */
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT 0x%x %s", IEEE80211_FTYPE_MGMT, rx_or_tx);
+		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT 0x%x %s 0x%llx", IEEE80211_FTYPE_MGMT, rx_or_tx, cookie);
 
 		if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_REQ %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ASSOC_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_RESP %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_REQ %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_REASSOC_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_RESP %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_REASSOC_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_REQ)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_REQ %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_REQ %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON)) {
-                        //print_debug(LOG_ERR, "IEEE80211_STYPE_BEACON %s", rx_or_tx);
+                        //print_debug(LOG_ERR, "IEEE80211_STYPE_BEACON %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_PROBE_RESP)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_RESP %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_PROBE_RESP %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ATIM)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ATIM %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ATIM %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_AUTH)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_AUTH %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_AUTH %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DEAUTH)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_DEAUTH %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_DEAUTH %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_DISASSOC)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_DISASSOC %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_DISASSOC %s 0x%llx", rx_or_tx, cookie);
 		} else if (frame_control == (IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION)) {
-			print_debug(LOG_ERR, "IEEE80211_STYPE_ACTION %s", rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_STYPE_ACTION %s 0x%llx", rx_or_tx, cookie);
 		} else {
-			print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT unknown subtype %x %s", frame_control, rx_or_tx);
+			print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT unknown subtype %x %s 0x%llx", frame_control, rx_or_tx, cookie);
 		}
 	} else {
 		print_debug(LOG_ERR, "unknown frame, 0x%x %s", rx_or_tx, frame_control);
@@ -1849,6 +1849,7 @@ void recv_from_wmasterd(void)
 	struct sockaddr_vm client_vm;
 	struct sockaddr_in client_in;
 	struct in_addr origin_ip;
+	unsigned long long cookie;
 
 	should_ack = 0;
 	tv.tv_sec = 1;
@@ -1972,6 +1973,11 @@ void recv_from_wmasterd(void)
 		freq = nla_get_u32(attrs[HWSIM_ATTR_FREQ]);
 	else
 		freq = 0;
+
+	if (attrs[HWSIM_ATTR_COOKIE])
+		cookie = nla_get_u64(attrs[HWSIM_ATTR_COOKIE]);
+	else
+		cookie = 0;
 
 	/*
 	printf("#### hwsim -> welled nlmsg beg ####\n");
@@ -2105,7 +2111,7 @@ void recv_from_wmasterd(void)
 		}
 	}
 	struct ieee80211_hdr *hdr11 = (struct ieee80211_hdr *)frame;
-	should_ack = process_fc_field(hdr11->frame_control, "rx");
+	should_ack = process_fc_field(hdr11->frame_control, "rx", cookie);
 
 	if (frame_len >= 16) {
 		/* copy dst address from frame */
