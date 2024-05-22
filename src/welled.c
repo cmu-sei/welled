@@ -167,7 +167,7 @@ void show_usage(int exval)
 
 	printf("welled - wireless emulation link layer exchange daemon\n\n");
 
-	printf("Usage: welled [-hVav] [-s <ip_address>] [-p <port>] [-D <level>]\n\n");
+	printf("Usage: welled [-hVavN] [-s <ip_address>] [-p <port>] [-D <level>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help	print this help and exit\n");
@@ -176,6 +176,7 @@ void show_usage(int exval)
 	printf("  -s, --server	wmasterd server address\n");
 	printf("  -p, --port	wmasterd server port\n");
 	printf("  -D, --debug   debug level for syslog\n");
+	printf("  -N, --nldebug   show netlink debug\n");
 	printf("  -v, --verbose	verbose output\n\n");
 
 	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
@@ -426,7 +427,7 @@ int send_cloned_frame_msg(struct ether_addr *dst, char *frame, int frame_len,
 	printf("#### welled -> hwsim nlmsg cloned end ####\n");
 	*/
 
-	bytes = nl_send_auto_complete(sock, msg);
+	bytes = nl_send_auto(sock, msg);
 	if (bytes < 0) {
 		mac_address_to_string(addr, dst);
 		print_debug(LOG_INFO, "sent %5d bytes to radio with perm_addr %s", bytes, addr);
@@ -521,7 +522,7 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	nla_put(msg, HWSIM_ATTR_ADDR_TRANSMITTER, ETH_ALEN, src);
 	nla_put_u32(msg, HWSIM_ATTR_FLAGS, flags);
 	nla_put(msg, HWSIM_ATTR_TX_INFO,
-			IEEE80211_MAX_RATES_PER_TX * sizeof(struct hwsim_tx_rate),
+			1 * sizeof(struct hwsim_tx_rate),
 			tx_attempts);
 	nla_put_u32(msg, HWSIM_ATTR_TX_INFO_FLAGS, tx_info_flags);
 	nla_put_u32(msg, HWSIM_ATTR_SIGNAL, signal);
@@ -538,13 +539,13 @@ int send_tx_info_frame_nl(struct ether_addr *src,
 	attrs_print(attrs);
 	printf("#### welled -> hwsim nlmsg tx info end ####\n");
 	*/
-	int ret = nl_send_auto_complete(sock, msg);
+	int ret = nl_send_auto(sock, msg);
 	if (ret < 0) {
 		print_debug(LOG_ERR, "failed to send tx info");
 		_exit(EXIT_FAILURE);
 	}
 	nlmsg_free(msg);
-	print_debug(LOG_INFO, "tx info frame sent for %lu 0x%lx", cookie, cookie);
+	print_debug(LOG_INFO, "tx info frame %d bytes sent for %lu 0x%lx", ret, cookie, cookie);
 	return 0;
 out:
 	nlmsg_free(msg);
@@ -694,6 +695,8 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 	struct device_node *node = NULL;
 	unsigned long long cookie = 0;
 
+	int orig_verbose = nldebug;
+	verbose = nldebug;
 	do {
 		print_debug(LOG_DEBUG, "processing attribute in error message");
 		// could be invalid radio address
@@ -705,7 +708,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 			frame = 1;
 			int frame_data_len = nla_len(nla_data(attr));
 			if (frame_data_len < sizeof(struct ieee80211_hdr) || frame_data_len > IEEE80211_MAX_DATA_LEN) {
-				print_debug(LOG_ERR, "frame_data_len is not valid size");
+				print_debug(LOG_ERR, "frame_data_len %d is not valid size", frame_data_len);
 			}
 			if (verbose) {
 				printf("- HWSIM_ATTR_FRAME:\n");
@@ -778,7 +781,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
                         int tx_info_flags = nla_get_u32(attr);
                         if (verbose) {
                                 printf("- HWSIM_ATTR_TX_INFO_FLAGS:\n");
-                                printf("- flags:      %d\n", tx_info_flags);
+                                printf("- flags:      %u\n", tx_info_flags);
                         }
                 } else if (attr->nla_type == HWSIM_ATTR_PERM_ADDR) {
                         if (verbose) {
@@ -791,6 +794,7 @@ void parse_nl_error_attr(struct nlattr *attr, int payload_len, int err)
 		}
 		attr = nla_next(attr, &remaining);
 	} while(remaining > 0);
+	verbose = orig_verbose;
 
 	if ((err == -ERANGE) && tx_info) {
 		print_debug(LOG_ERR, "tx_info frame rejected, likely could not find cookie %llu 0x%llx", cookie, cookie);
@@ -819,7 +823,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 	int ret;
 	struct nlmsghdr *nlh;
 	int len;
-	struct nlmsgerr *err;
+	struct nlmsgerr *nlerr;
 	struct nlattr *attrs[HWSIM_ATTR_MAX + 1];
 
 	ret = NL_SKIP;
@@ -834,8 +838,8 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 			print_debug(LOG_DEBUG, "NLMSG_DONE processing hwsim nl msgs");
 			break;
 		case NLMSG_ERROR:
-			print_debug(LOG_DEBUG, "NLMSG_ERROR processing hwsim nl msgs");
-			err = nlmsg_data(nlh);
+			print_debug(LOG_DEBUG, "NLMSG_ERROR processing hwsim nl msgs of len %d", len);
+			nlerr = nlmsg_data(nlh);
 			genlmsg_parse(nlh, 0, attrs, HWSIM_ATTR_MAX, NULL);
 			int data_len = nla_len(attrs[HWSIM_ATTR_UNSPEC]);
 			char *data = (char *)nla_data(attrs[HWSIM_ATTR_UNSPEC]);
@@ -843,7 +847,7 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 			struct nlattr *attr = (struct nlattr *)ptr;
 			int payload_len = data_len - sizeof(struct nlmsghdr); // 16 bytes
 
-			if (err->error == -22) {
+			if (nlerr->error == -22) {
 				/* not sure of the cause */
 				//print_debug(LOG_ERR, "-EINVAL from hwsim");
 
@@ -852,34 +856,34 @@ static int process_hwsim_nl_event_cb(struct nl_msg *msg, void *arg)
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				parse_nl_error_attr(attr, payload_len, err->error);
+				parse_nl_error_attr(attr, payload_len, nlerr->error);
 
-			} else if (err->error == -2) {
+			} else if (nlerr->error == -2) {
 				/* driver unloaded */
 				print_debug(LOG_ERR, "-ENOENT from hwsim - driver unloaded");
 				return NL_STOP;
-			} else if (err->error == -19) {
+			} else if (nlerr->error == -19) {
 				/* radio does not exist */
 				//print_debug(LOG_ERR, "-ENODEV from hwsim");
-				parse_nl_error_attr(attr, payload_len, err->error);
-			} else if (err->error == -34) {
+				parse_nl_error_attr(attr, payload_len, nlerr->error);
+			} else if (nlerr->error == -34) {
 				//print_debug(LOG_ERR, "-ERANGE from hwsim");
 
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				parse_nl_error_attr(attr, payload_len, err->error);
-			} else if (err->error == -16) {
+				parse_nl_error_attr(attr, payload_len, nlerr->error);
+			} else if (nlerr->error == -16) {
 				print_debug(LOG_ERR, "-EBUSY from hwsim");
 				_exit(EXIT_FAILURE);
 			} else {
 				/* unknown error */
-				print_debug(LOG_ERR, "NLMSG_ERROR: %d", err->error);
+				print_debug(LOG_ERR, "NLMSG_ERROR: %d", nlerr->error);
 
 				// lets assume that the payload for this attribute has a header
 				// and after the header is the data we want to check for attributes
 
-				parse_nl_error_attr(attr, payload_len, err->error);
+				parse_nl_error_attr(attr, payload_len, nlerr->error);
 
 				list_device_nodes();
 				_exit(EXIT_FAILURE);
@@ -1517,7 +1521,7 @@ int send_register_msg(void)
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, hwsim_genl_family_id,
 			0, NLM_F_REQUEST, HWSIM_CMD_REGISTER, VERSION_NR);
 
-	nl_send_auto_complete(sock, msg);
+	nl_send_auto(sock, msg);
 	nlmsg_free(msg);
 
 	return 0;
@@ -1554,6 +1558,7 @@ int get_radio(int id)
 	}
 
 	nl_send_auto(sock, msg);
+	ret = nl_recvmsgs_default(sock);
 	nlmsg_free(msg);
 
 	return 0;
@@ -2846,7 +2851,7 @@ int nl80211_get_interface(int ifindex)
 	if (ifindex)
 		nla_put_u32(nlmsg, NL80211_ATTR_IFINDEX, ifindex);
 
-	nl_send_auto_complete(wifi.nls, nlmsg);
+	nl_send_auto(wifi.nls, nlmsg);
 
 	nl_cb_set(cb, NL_CB_FINISH, NL_CB_CUSTOM, finish_handler, &err);
 
