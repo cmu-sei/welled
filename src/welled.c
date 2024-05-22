@@ -1750,8 +1750,42 @@ int process_fc_field(int frame_control, char *rx_or_tx, unsigned long long cooki
 	if (verbose) {
 		printf("checking flags ------   %d   0x%02x       ------------\n", frame_control, frame_control);
 	}
-
-	if (frame_control & IEEE80211_FTYPE_CTL) {
+        if (frame_control & IEEE80211_FTYPE_DATA) {
+		print_debug(LOG_WARNING, "IEEE80211_FTYPE_DATA 0x%x 0x%llx", IEEE80211_FTYPE_DATA, cookie);
+		if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_DATA %s 0x%llx", rx_or_tx, cookie);
+		} else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA_CFACK)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_DATA_CFACK %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA_CFPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_DATA_CFPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA_CFACKPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_DATA_CFACKPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_NULLFUNC)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_NULLFUNC %s 0x%llx", rx_or_tx, cookie);
+		} else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_CFACK)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_CFACK %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_CFPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_CFPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_CFACKPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_CFACKPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_DATA)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_DATA %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_DATA_CFACK)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_DATA_CFACK %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_DATA_CFPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_DATA_CFPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_DATA_CFACKPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_DATA_CFACKPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_NULLFUNC)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_NULLFUNC %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_CFACK)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_CFACK %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_CFPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_CFPOLL %s 0x%llx", rx_or_tx, cookie);
+                } else if (frame_control == (IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_CFACKPOLL)) {
+                        print_debug(LOG_WARNING, "IEEE80211_STYPE_QOS_CFACKPOLL %s 0x%llx", rx_or_tx, cookie);
+                }
+	} else if (frame_control & IEEE80211_FTYPE_CTL) {
 		//print_debug(LOG_ERR, "IEEE80211_FTYPE_CTL 0x%x 0x%llx", IEEE80211_FTYPE_CTL, cookie);
 		if (frame_control == (IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT)) {
 			print_debug(LOG_WARNING, "IEEE80211_STYPE_CTL_EXT %s 0x%llx", rx_or_tx, cookie);
@@ -1779,7 +1813,7 @@ int process_fc_field(int frame_control, char *rx_or_tx, unsigned long long cooki
 
 	} else if (frame_control & IEEE80211_FTYPE_EXT) {
 		// ignore these for now
-		//print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT 0x%x %s0x%llx", IEEE80211_FTYPE_EXT, rx_or_tx, cookie);
+		print_debug(LOG_ERR, "IEEE80211_FTYPE_EXT 0x%x %s0x%llx", IEEE80211_FTYPE_EXT, rx_or_tx, cookie);
 	} else if (!(frame_control & IEEE80211_FTYPE_MGMT)) {
                 /* had to invert because MGMT is 0 */
 		//print_debug(LOG_ERR, "IEEE80211_FTYPE_MGMT 0x%x %s 0x%llx", IEEE80211_FTYPE_MGMT, rx_or_tx, cookie);
