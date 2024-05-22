@@ -1,0 +1,11 @@
+ctrl_interface=/var/run/hostapd
+ctrl_interface_group=wheel
+macaddr_acl=0
+auth_algs=3
+ignore_broadcast_ssid=0
+driver=nl80211
+interface=wlan0
+hw_mode=g
+channel=6
+ssid=test1
+#beacon_int=1000
