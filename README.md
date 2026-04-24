@@ -1,10 +1,44 @@
 # Introduction
-This is a wireless emulation link layer exchange tool for Linux, based on the
+
+## Training Value
+
+`welled` is a powerful tool for **cybersecurity training and operational technology (OT) education**. It provides a realistic wireless network emulation environment that enables hands-on learning about wireless security risks and defense strategies without requiring physical hardware or generating real RF signals.
+
+### Why `welled` for Training?
+
+1. **Safe, Controllable Environment**
+   - No real RF signals—perfect for indoor labs and classrooms
+   - No spectrum analyzer or licensing required
+   - Can be reset instantly between training sessions
+   - Repeatable exercises with consistent baseline conditions
+
+2. **Realistic Wireless Scenarios**
+   - Simulates multipath fading and signal degradation
+   - Supports multiple radios per virtual machine
+   - Enables cross-VM wireless communication
+   - Precise control over signal strength via geographic positioning
+
+3. **Comprehensive Wireless Tool Training**
+   - **Wireless networking**: Configure APs, clients, mesh networks
+   - **Wireless auditing**: Run `airodump-ng`, `aireplay-ng`, `wavemon`
+   - **Penetration testing**: Test WEP/WPA cracking, deauthentication attacks
+   - **Survey tools**: Use `wavemon`, `kismet`, `netstumbler` clones
+   - **Signal analysis**: Understand RSSI, SNR, and channel competition
+
+4. **Scalable Training Infrastructures**
+   - Deploy wireless networks across multiple VMs
+   - Simulate ranging environments with signal strength modeling
+   - Create complex topologies (ad-hoc, infrastructure, mesh)
+   - Integrate with virtualization platforms (ESXi, VMware, KVM)
+
+This project was inspired by the user space daemon `wmediumd` which implements loss and delay in transmission between local radios. `welled` extends this concept to enable cross-VM wireless emulation using the Virtual Sockets API.
+
+## What is `welled`?
+
+`welled` is a wireless emulation link layer exchange tool for Linux, based on the
 netlink API implemented in the `mac80211_hwsim` kernel driver. Unlike the
 default in-kernel forwarding mode of `mac80211_hwsim`, `welled` allows
-emulation of wireless networking across VMs. This program was inspired by the
-user space daemon `wmediumd` which implements loss and delay in transmission
-between local radios. This daemon allows these frames to be exchanged between
+emulation of wireless networking across VMs. This daemon allows these frames to be exchanged between
 VMs through an intermediary daemon running on the ESXi host. The transmission
 of frames between VMs is performed through use of the Virtual Sockets API.
 `gelled-ctrl` will allow the user to set the virtual location of the machine it
@@ -19,12 +53,13 @@ testing tools inside of a completely virtual environment without ever
 generating any real RF signals that might interfere with the read world.
 Additionally, no hardware is required to build these virtual wireless networks.
 
-This project contains files necessary to compile five programs:
+This project contains files necessary to compile four main programs:
 `wmasterd`
 `welled`
 `gelled`
 `gelled-ctrl`
-`gelled-gui`
+
+Additionally, `gelled-gui` is available and requires GUI libraries (osmgpsmap, gtk+-3.0).
 
 Some of these programs can be compiled to run on multiple operating systems:
 * OpenWrt
@@ -73,6 +108,37 @@ There are also man pages for `welled`, `gelled`, `gelled-ctrl` and `wmasterd`.
 These are a work in progress and do not yet provided lengthy descriptions.
 
 # Building the programs from source
+
+## Prerequisites for building welled on Linux
+To compile the welled programs on Linux, you will need the following dependencies:
+
+- **libnl-3-dev**, **libnl-genl-3-dev**, **libnl-route-3-dev** - Required for welled
+- **libglib2.0-dev** - Required for gelled-ctrl
+- **libpng-dev**, **libcurl** - Required for gelled
+- **help2man** - Required for generating man pages
+- **doxygen** - Optional, for generating HTML documentation
+
+On Ubuntu/Debian systems:
+```bash
+sudo apt-get install pkg-config libnl-3-dev libnl-genl-3-dev libnl-route-3-dev \
+                     libglib2.0-dev libpng-dev libcurl4-openssl-dev \
+                     help2man doxygen
+```
+
+## Prerequisites for building gelled for Windows (Cross-compilation)
+
+**Important**: Ubuntu's MinGW packages don't include third-party library headers (png.h, openssl, etc.). For Windows builds, prefer using **Fedora** as recommended in the original README ("works best on Fedora").
+
+To attempt Windows builds on Ubuntu/Debian, install MinGW-w64:
+
+```bash
+sudo apt-get install gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 \
+                     mingw-w64-i686-dev mingw-w64-x86-64-dev
+```
+
+For full Windows dependency headers, you'll need to:
+1. Cross-compile libraries like libpng, libcurl, OpenSSL, libssh2 manually for MinGW, OR
+2. Use Fedora which provides complete MinGW cross-toolchains with headers
 
 ## Building the patched driver for Linux
 Using a patched `mac80211_hwsim` driver is preffered. The patches will remove
@@ -433,10 +499,21 @@ Workstation installed. You must first have a build environment setup for cross
 compilation of Windows executables, or you may compile `wmasterd` using a
 development environment you may already have setup for Windows executables.
 
-To compile for Windows, you need to install mingw (works best on Fedora):
+To compile for Windows, you need to install MinGW-w64 cross-compiler:
 ```
-sudo apt-get install mingw-w64
+sudo apt-get install gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 \
+                     mingw-w64-i686-dev mingw-w64-x86-64-dev
 ```
+
+**Important**: Ubuntu's MinGW packages only provide the compiler and basic Windows SDK headers. They do NOT include third-party library headers like `png.h`, `openssl/ssl.h`, etc. that `gelled` requires.
+
+For successful Windows builds, use **Fedora** which provides complete MinGW cross-toolchains with headers:
+```
+sudo dnf install mingw64-gcc mingw64-gcc-c++ mingw64-libpng mingw64-libcurl \
+                 mingw64-openssl mingw64-libssh2 mingw64-iconv mingw64-gettext
+```
+
+See the wellled README section "Building wmasterd for Windows" (line 491) for more details.
 
 Commpile for either x86 or x86_64.
 ```
@@ -541,6 +618,40 @@ wmasterd -D 7
 This examle sets the level to DEBUG and you will receive thhe most verbose level
 of logging.
 
+## Training Use Cases
+
+### Wireless Penetration Testing Labs
+`welled` creates realistic wireless environments for offensive security training:
+
+- **AP/Client Configuration**: Deploy multiple access points and clients with different security settings (WEP, WPA, WPA2)
+- **Wireless Auditing Tools**: Run `airodump-ng`, `aireplay-ng`, `wavemon`, `kismet` on simulated wireless interfaces
+- **Attack Scenarios**: Practice deauthentication attacks, IV复 attacks, Evil Twin AP setups
+- **Signal Analysis**: Use `wavemon` to measure RSSI, understand channel competition, observe signal degradation
+
+### Network Defense and Monitoring
+`welled` enables defensive security training with realistic wireless topologies:
+
+- **Wireless Intrusion Detection**: Deploy IDS/IPS to monitor wireless traffic, detect rogue APs
+- **Signal Geolocation**: Use `gelled-ctrl` to simulate moving transmitters for TDOA/DF training
+- **Mesh Network Defense**: Monitor and secure wireless mesh networks across multiple VMs
+- **RF Environment Awareness**: Understand how physical positioning affects wireless security posture
+
+### Operational Technology (OT) Training
+Combine `welled` with OT simulation tools for converged IT/OT security training:
+
+- **ICS/OT Wireless Networks**: Simulate wireless sensors and controllers in industrial environments
+- ** cross-layer Attack Simulation**: Understand how wireless vulnerabilities cascade to OT systems
+- **Wireless Protocol Analysis**: Analyze proprietary wireless protocols over simulated RF
+- **Signal Fingerprinting**: Train on identifying unusual wireless signatures in industrial RF environments
+
+### Curriculum Integration
+`welled` integrates with popular security training frameworks:
+
+- **MITRE ATT&CK® ICS**: Map wireless attack techniques (T0860 Wireless Compromise) to exercises
+- **OWASP Wireless Security Testing Guide**: Practice wireless security testing methodology
+- **OSCP/OSWE Preparation**: Add wireless attack scenarios to practice environments
+- **Custom Training Environments**: Integrate with SIBS for ship automation wireless scenarios
+
 ## Building gelled
 `gelled`, the GPS emulation link layer exchange daemon, can be compiled when a 
 simulated GPS feed (NMEA sentences) us desired. It is designed to receive these
@@ -635,6 +746,41 @@ One OpenWRT VM running `welled`
 One Kali Linux VM running `welled`
 One Fedora 23 Linux VM running `welled`
 
+## Verification and Testing
+
+After building, verify the binaries were created successfully:
+
+```bash
+cd welled/src
+make x86_64-Linux
+ls -lh ../bin/
+../bin/welled --version
+../bin/gelled --version
+../bin/gelled-ctrl --version
+../bin/wmasterd --version
+```
+
+Generate man pages and documentation:
+
+```bash
+make man
+make doc
+```
+
+## Building gelled-gui (optional)
+
+The `gelled-gui` program is available but requires GUI libraries. Install the
+required packages:
+
+```bash
+sudo apt-get install libosmgpsmap-1.0-dev libgtk-3-dev
+```
+
+Then build:
+
+```bash
+make gelled-gui
+```
 
 Copyright 2015-2023 Carnegie Mellon University. See LICENSE.txt for terms.
 

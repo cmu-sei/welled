@@ -19,43 +19,50 @@ testing tools inside of a completely virtual environment without ever
 generating any real RF signals that might interfere with the read world.
 Additionally, no hardware is required to build these virtual wireless networks.
 
-This project contains files necessary to compile four programs:
+This project contains files necessary to compile four main programs:
 `wmasterd`
 `welled`
 `gelled`
 `gelled-ctrl`
 
-Some of these four programs can be compiled to run on multiple operating systems:
-* OpenWrt
-* Android
-* Fedora
-* Ubuntu
-* Kali
-* Vyos
-* Windows 7
-* ESXi
+An additional program `gelled-gui` is available but requires GUI libraries (osmgpsmap, gtk+-3.0) and has not been extensively tested.
 
-
-## Prerequisites for installing welled
+## Prerequisites for building on Linux
 First, you need a recent Linux kernel with the `mac80211_hwsim` module
 available. 
 Second, you will also need to have VMCI Sockets enabled in your kernel. On the
 OpenWRT VM, the following modules are required: `vmw_vmci`, `vsock`, and 
 `vmw_vsock_vmci_transport`.
-Finally, the `welled` program also requires `libnl-3` to be installed.
 
-## Prerequisites for installing gelled and gelled-ctrl
-You need to have VMCI Sockets enabled in your kernel. This requires `vmw_vmci`,
-`vsock` and `vmw_vsock_vmci_transport` kernels modules. You will also need to
-have `libpng` and `libglib2` installed.
+### Package dependencies
+To compile the welled programs on Linux, install the following packages:
 
+- **libnl-3-dev** - Required for welled (netlink communication)
+- **libnl-genl-3-dev** - Required for welled (netlink generic protocol support)
+- **libnl-route-3-dev** - Required for welled (route netlink support)
+- **libglib2.0-dev** - Required for gelled-ctrl (configuration file parsing)
+- **libpng-dev** - Required for gelled (PNG image handling)
+- **libcurl4-openssl-dev** - Required for gelled (HTTP/HTTPS support)
+- **help2man** - Required for generating man pages
+
+On Ubuntu/Debian systems:
+```bash
+sudo apt-get install pkg-config libnl-3-dev libnl-genl-3-dev libnl-route-3-dev \
+                     libglib2.0-dev libpng-dev libcurl4-openssl-dev \
+                     help2man
+```
+
+## Prerequisites for installing gelled-ctrl on Linux
+You need to have `libglib2` installed.
+
+## Prerequisites for installing gelled on Linux
+You need to have `libpng` and `libglib2` installed.
 
 ## Prerequisites for installing wmasterd
 None at the moment. `wmasterd` has been run on:
 * ESXi 5.5
 * ESXi 6.0
 * Windows 7 with VMware Workstation 12 and 14
-
 
 ## Installing welled on Linux
 There are two `systemd` unit files for `welled` that you must install in the
@@ -276,6 +283,33 @@ One OpenWRT VM running `welled`
 One Kali Linux VM running `welled`
 One Fedora 23 Linux VM running `welled`
 
+## Verification and Testing
 
-Copyright 2015-2018 Carnegie Mellon University. See LICENSE.txt for terms.
+After building, verify the binaries were created successfully:
+
+```bash
+cd welled/src
+make x86_64-Linux
+ls -lh ../bin/
+../bin/welled --version
+../bin/gelled --version
+../bin/gelled-ctrl --version
+../bin/wmasterd --version
+```
+
+Generate man pages:
+
+```bash
+make man
+```
+
+View man pages:
+```bash
+man ../man/welled.8.gz
+man ../man/gelled.8.gz
+man ../bin/gelled-ctrl.8.gz
+man ../bin/wmasterd.8.gz
+```
+
+Copyright 2015-2023 Carnegie Mellon University. See LICENSE.txt for terms.
 
