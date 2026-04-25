@@ -563,10 +563,10 @@ options:
 
 	if (vsock) {
 		print_debug(LOG_ERR, "connecting to wmasterd on VSOCK %u:%d",
-				servaddr_vm.svm_cid, servaddr_vm.svm_port);
+				servaddr_vm.svm_cid, ntohs(servaddr_vm.svm_port));
 	} else {
 		print_debug(LOG_ERR, "connecting to wmasterd on IP %s:%d",
-				inet_ntoa(servaddr_in.sin_addr), servaddr_in.sin_port);
+				inet_ntoa(servaddr_in.sin_addr), ntohs(servaddr_in.sin_port));
 	}
 
 	/* setup socket to send data */
