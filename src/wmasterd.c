@@ -212,7 +212,7 @@ void show_usage(int exval)
 
 	printf("wmasterd - wireless master daemon\n\n");
 
-	printf("Usage: wmasterd [-hVvbrudi] [-l <port>] [-D <level>] [-c <file>]\n\n");
+ 	printf("Usage: wmasterd [-hVvbrudiP] [-p <port>] [-D <level>] [-c <file>]\n\n");
 
 	printf("Options:\n");
 	printf("  -h, --help			print this help and exit\n");
@@ -225,8 +225,9 @@ void show_usage(int exval)
 	printf("  -D, --debug			debug level for syslog\n");
 	printf("  -c, --cache			file to save location data\n");
 	printf("  -n, --nogps			disable nmea\n");
-	printf("  -i, --ipv4			use ipv4\n");
-	printf("  -l, --listen-port		listen port\n\n");\
+ 	printf("  -i, --ipv4			use ipv4\n");
+	printf("  -p, --port			listen port\n");
+	printf("  -P, --pashr			send pashr frames\n\n");
 
 	printf("Copyright (C) 2015-2024 Carnegie Mellon University\n\n");
 	printf("License GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>\n");
@@ -2711,14 +2712,14 @@ int main(int argc, char *argv[])
 		{"update-room",		no_argument, 0, 'u'},
 		{"nogps",		no_argument, 0, 'n'},
 		{"distance",		no_argument, 0, 'd'},
-		{"pashr",		no_argument, 0, 'p'},
-		{"ip",		  	no_argument, 0, 'i'},
-		{"listen-port",	 	required_argument, 0, 'l'},
+		{"pashr",		no_argument, 0, 'P'},
+		{"ipv4",		no_argument, 0, 'i'},
+		{"port",		required_argument, 0, 'p'},
 		{"debug",		required_argument, 0, 'D'},
 		{"cache-file",		required_argument, 0, 'c'}
 	};
 
-	while ((opt = getopt_long(argc, argv, "hVvbrundpil:D:c:", long_options,
+	while ((opt = getopt_long(argc, argv, "hVvbrundPip:D:c:", long_options,
 			&long_index)) != -1) {
 		switch (opt) {
 		case 'h':
@@ -2752,7 +2753,7 @@ int main(int argc, char *argv[])
 			}
 			printf("wmasterd: syslog level set to %d\n", loglevel);
 			break;
-		case 'p':
+		case 'P':
 			send_pashr = 1;
 			break;
 		case 'n':
@@ -2773,7 +2774,7 @@ int main(int argc, char *argv[])
 		case 'i':
 			vsock = 0;
 			break;
-		case 'l':
+		case 'p':
 			port = atoi(optarg);
 			if (port < 1 || port > 65535) {
 				show_usage(EXIT_FAILURE);
